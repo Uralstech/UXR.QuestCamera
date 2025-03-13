@@ -15,7 +15,7 @@
 using System;
 using UnityEngine;
 
-namespace Uralstech.QuestCamera
+namespace Uralstech.UXR.QuestCamera
 {
     internal class NativeCameraFrameCallback : AndroidJavaProxy
     {

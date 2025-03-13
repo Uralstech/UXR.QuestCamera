@@ -13,13 +13,13 @@
 // limitations under the License.
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
 
-namespace Uralstech.QuestCamera
+namespace Uralstech.UXR.QuestCamera
 {
+    [AddComponentMenu("Uralstech/UXR/Quest Camera/Quest Camera Manager")]
     public class UCameraManager : MonoBehaviour
     {
         #region Native Method Names
