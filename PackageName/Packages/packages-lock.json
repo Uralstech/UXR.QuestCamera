@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "com.uralstech.package-name": {
+      "version": "file:com.uralstech.package-name",
+      "depth": 0,
+      "source": "embedded",
+      "dependencies": {}
+    }
+  }
+}

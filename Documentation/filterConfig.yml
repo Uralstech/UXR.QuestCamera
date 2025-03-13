@@ -1,0 +1,8 @@
+### YamlMime:ManagedReference
+apiRules:
+- include: # The namespaces to generate
+    uidRegex: ^Uralstech
+    type: Namespace
+- exclude:
+    uidRegex: .* # Every other namespaces are ignored
+    type: Namespace

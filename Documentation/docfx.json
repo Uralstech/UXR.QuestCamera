@@ -1,0 +1,67 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "src": "../PackageName",
+          "files": [
+            "Packages/com.uralstech.package-name/Runtime/**/*.cs"
+          ]
+        }
+      ],
+      "dest": "api",
+      "filter": "filterConfig.yml",
+      "includePrivateMembers": false,
+      "allowCompilationErrors": true
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "**/*.{md,yml}"
+        ],
+        "exclude": [
+          "_site/**"
+        ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [
+          "images/**"
+        ]
+      }
+    ],
+    "output": "_site",
+    "template": [
+      "default",
+      "modern"
+    ],
+    "globalMetadata": {
+      "_appName": "PackageName",
+      "_appTitle": "PackageName",
+      "_appFooter": "(C) 2024 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED, licensed under the <a href=\"https://github.com/Uralstech/PackageName/blob/master/LICENSE\">Apache License, Version 2.0</a>.",
+      "_enableSearch": true
+    },
+    "fileMetadata": {
+      "pdf": {
+        "api/toc.yml": true
+      },
+      "pdfPrintBackground": {
+        "api/toc.yml": true
+      },
+      "pdfTocPage": {
+        "api/toc.yml": true
+      },
+      "pdfFileName": {
+        "api/toc.yml": "APIReferenceManual.pdf"
+      }
+    },
+    "sitemap": {
+      "baseUrl": "https://uralstech.github.io/PackageName",
+      "priority": 1.0,
+      "changefreq": "monthly"
+    }
+  }
+}
