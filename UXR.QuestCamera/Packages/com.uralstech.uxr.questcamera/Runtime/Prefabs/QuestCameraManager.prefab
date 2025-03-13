@@ -1,0 +1,72 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &439309611987774447
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1528171967605105492}
+  - component: {fileID: 1727881059514603240}
+  m_Layer: 0
+  m_Name: QuestCameraManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1528171967605105492
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 439309611987774447}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1727881059514603240
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 439309611987774447}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cfe1b046d243a524aa171f4d1d110abc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  YUVConverter: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}
+  CallbackEvents:
+    OnCameraConnected:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraDisconnected:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraErred:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraConfigured:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraConfigureErred:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraAccessError:
+      m_PersistentCalls:
+        m_Calls: []
+    OnCameraCaptureStarted:
+      m_PersistentCalls:
+        m_Calls: []
+    OnFrameReceived:
+      m_PersistentCalls:
+        m_Calls: []

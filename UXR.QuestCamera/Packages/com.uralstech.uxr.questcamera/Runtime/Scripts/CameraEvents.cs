@@ -16,7 +16,7 @@ using System;
 using UnityEngine;
 using UnityEngine.Events;
 
-namespace Uralstech.QuestCamera
+namespace Uralstech.UXR.QuestCamera
 {
     [Serializable]
     public class CameraEvents
