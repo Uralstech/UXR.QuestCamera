@@ -19,4 +19,4 @@ jobs:
 
     - uses: RageAgainstThePixel/upm-subtree-split@v1.1
       with:
-        package-root: "**/Packages/com.uralstech.package-name"
+        package-root: "**/Packages/com.uralstech.uxr.questcamera"

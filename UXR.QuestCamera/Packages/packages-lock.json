@@ -1,7 +1,7 @@
 {
   "dependencies": {
-    "com.uralstech.package-name": {
-      "version": "file:com.uralstech.package-name",
+    "com.uralstech.uxr.questcamera": {
+      "version": "file:com.uralstech.uxr.questcamera",
       "depth": 0,
       "source": "embedded",
       "dependencies": {}

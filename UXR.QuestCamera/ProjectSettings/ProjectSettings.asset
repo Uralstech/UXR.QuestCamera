@@ -864,7 +864,7 @@ PlayerSettings:
   editorAssembliesCompatibilityLevel: 1
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: PackageTemplate
+  metroUXR.QuestCamera: PackageTemplate
   metroPackageVersion: 
   metroCertificatePath: 
   metroCertificatePassword: 

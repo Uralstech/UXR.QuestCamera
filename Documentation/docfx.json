@@ -3,9 +3,9 @@
     {
       "src": [
         {
-          "src": "../PackageName",
+          "src": "../UXR.QuestCamera",
           "files": [
-            "Packages/com.uralstech.package-name/Runtime/**/*.cs"
+            "Packages/com.uralstech.uxr.questcamera/Runtime/**/*.cs"
           ]
         }
       ],
@@ -39,9 +39,9 @@
       "modern"
     ],
     "globalMetadata": {
-      "_appName": "PackageName",
-      "_appTitle": "PackageName",
-      "_appFooter": "(C) 2024 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED, licensed under the <a href=\"https://github.com/Uralstech/PackageName/blob/master/LICENSE\">Apache License, Version 2.0</a>.",
+      "_appName": "UXR.QuestCamera",
+      "_appTitle": "UXR.QuestCamera",
+      "_appFooter": "(C) 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED, licensed under the <a href=\"https://github.com/Uralstech/UXR.QuestCamera/blob/master/LICENSE\">Apache License, Version 2.0</a>.",
       "_enableSearch": true
     },
     "fileMetadata": {
@@ -59,7 +59,7 @@
       }
     },
     "sitemap": {
-      "baseUrl": "https://uralstech.github.io/PackageName",
+      "baseUrl": "https://uralstech.github.io/UXR.QuestCamera",
       "priority": 1.0,
       "changefreq": "monthly"
     }
