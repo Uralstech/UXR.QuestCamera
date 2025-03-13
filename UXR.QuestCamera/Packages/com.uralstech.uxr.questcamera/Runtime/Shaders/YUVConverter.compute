@@ -1,0 +1,107 @@
+// Copyright 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+#pragma kernel CSMain
+
+// Input buffers (read-only)
+StructuredBuffer<uint> YBuffer;
+StructuredBuffer<uint> UBuffer;
+StructuredBuffer<uint> VBuffer;
+
+// Row strides
+uint YRowStride;
+uint UVRowStride;
+
+// Pixel strides
+uint UVPixelStride;
+
+// Image dimensions
+uint TargetWidth;
+uint TargetHeight;
+
+// Output texture (read-write)
+RWTexture2D<float4> OutputTexture;
+
+// Helper function to get the decompressed value from the buffer.
+uint GetDecompressedAdjustedBufferValue(StructuredBuffer<uint> buffer, uint decompressedIndex)
+{
+    uint targetByte = decompressedIndex % 4;
+    uint compressedIndex = (decompressedIndex - targetByte) / 4;
+    
+    uint value = 0;
+    [branch]
+    switch (targetByte)
+    {
+        case 0:
+            value = buffer[compressedIndex] & 0xFF;
+            break;
+        
+        case 1:
+            value = (buffer[compressedIndex] >> 8) & 0xFF;
+            break;
+        
+        case 2:
+            value = (buffer[compressedIndex] >> 16) & 0xFF;
+            break;
+        
+        case 3:
+            value = (buffer[compressedIndex] >> 24) & 0xFF;
+            break;
+    }
+    
+    return value;
+}
+
+// Helper function to convert YUV to RGB.
+float3 YUVtoRGB(uint y, uint u, uint v)
+{
+    // https://stackoverflow.com/questions/36212904/yuv-420-888-interpretation-on-samsung-galaxy-s7-camera2
+    
+    float uf = float(u) - 128.0;
+    float vf = float(v) - 128.0;
+    
+    float3 rgb = float3(
+        y + 1.140 * vf,
+        y - 0.395 * uf - 0.581 * vf,
+        y + 2.032 * uf
+    );
+    
+    return saturate(rgb / 255.0);
+}
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= TargetWidth || id.y >= TargetHeight)
+        return;
+    
+    // The YUV stream is flipped, so we have to un-flip it.
+    uint flippedY = TargetHeight - 1 - id.y;
+
+    // Index of Y value in buffer.
+    uint yIndex = flippedY * YRowStride + id.x;
+    
+    // Index of the U and V values in the buffer. They are the same for YUV_420_888:
+    // https://developer.android.com/reference/android/graphics/ImageFormat#YUV_420_888
+    uint uvIndex = (flippedY / 2) * UVRowStride + (id.x / 2) * UVPixelStride;
+   
+    // Get Y, U, and V values.
+    uint yValue = GetDecompressedAdjustedBufferValue(YBuffer, yIndex);
+    uint uValue = GetDecompressedAdjustedBufferValue(UBuffer, uvIndex);
+    uint vValue = GetDecompressedAdjustedBufferValue(VBuffer, uvIndex);
+    
+    // Convert them and set the output texture.
+    float3 converted = YUVtoRGB(yValue, uValue, vValue);
+    OutputTexture[id.xy] = float4(converted.rgb, 1.0);
+}

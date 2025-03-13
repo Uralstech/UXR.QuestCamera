@@ -1,3 +1,15 @@
 {
-  "dependencies": {}
+  "dependencies": {
+    "com.unity.ide.visualstudio": "2.0.22"
+  },
+  "scopedRegistries": [
+    {
+      "name": "OpenUPM",
+      "url": "https://package.openupm.com",
+      "scopes": [
+        "com.google.external-dependency-manager"
+      ],
+      "overrideBuiltIns": false
+    }
+  ]
 }
