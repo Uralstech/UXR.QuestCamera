@@ -42,63 +42,6 @@ Versions older than Unity 6.0 **REQUIRE** [com.utilities.async](https://github.c
 
 Do not use preview versions (i.e. versions that end with "-preview") for production use as they are unstable and untested.
 
-## AndroidManifest Setup
-
-You will have to define the following permissions in your Android Manifest:
-```xml
-<uses-permission android:name="android.permission.CAMERA" android:required="true"/>
-<uses-permission android:name="horizonos.permission.HEADSET_CAMERA" android:required="true"/>
-```
-
-This package cannot request these permissions for you during runtime, you will have to do that manually.
-
-## Example Usage
-
-```csharp
-using UnityEngine;
-using UnityEngine.UI;
-using Uralstech.UXR.QuestCamera;
-
-public class CameraTest : MonoBehaviour
-{
-    [SerializeField] private RawImage _rawImage;
-
-    private UCameraManager _cameraManager;
-
-    void Start()
-    {
-        _cameraManager = FindAnyObjectByType<UCameraManager>();
-
-        // Called when capture starts.
-        _cameraManager.CallbackEvents.OnCameraCaptureStarted.AddListener(_ => _rawImage.texture = _cameraManager.CurrentFrame);
-
-        // Get available camera devices.
-        string[] devices = _cameraManager.Devices;
-        foreach (string device in devices)
-            Debug.Log($"Found device: {device}");
-
-        Resolution largestResolution = new()
-        {
-            width = 0,
-            height = 0,
-        };
-
-        // Get supported resolutions for the first device, and select the largest.
-        foreach (Resolution resolution in _cameraManager.GetSupportedResolutions(devices[0]))
-        {
-            Debug.Log($"Supported resolution: {resolution}");
-            if (resolution.width * resolution.height > largestResolution.width * largestResolution.height)
-                largestResolution = resolution;
-        }
-
-        Debug.Log($"Selected resolution: {largestResolution}");
-
-        // Start capture.
-        _cameraManager.StartCapture(devices[0], largestResolution);
-    }
-}
-```
-
 ## Documentation
 
 See <https://uralstech.github.io/UXR.QuestCamera/DocSource/QuickStart.html> or `APIReferenceManual.pdf` and `Documentation.pdf` in the package documentation for the reference manual and tutorial.
