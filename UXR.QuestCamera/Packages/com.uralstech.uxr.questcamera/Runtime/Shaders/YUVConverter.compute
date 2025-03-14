@@ -15,9 +15,9 @@
 #pragma kernel CSMain
 
 // Input buffers (read-only)
-StructuredBuffer<uint> YBuffer;
-StructuredBuffer<uint> UBuffer;
-StructuredBuffer<uint> VBuffer;
+ByteAddressBuffer YBuffer;
+ByteAddressBuffer UBuffer;
+ByteAddressBuffer VBuffer;
 
 // Row strides
 uint YRowStride;
@@ -33,34 +33,22 @@ uint TargetHeight;
 // Output texture (read-write)
 RWTexture2D<float4> OutputTexture;
 
-// Helper function to get the decompressed value from the buffer.
-uint GetDecompressedAdjustedBufferValue(StructuredBuffer<uint> buffer, uint decompressedIndex)
+// Helper function to get a byte from a ByteAddressBuffer.
+//  buffer: The ByteAddressBuffer.
+//  byteIndex: The *byte* index (offset) into the buffer.
+uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
 {
-    uint targetByte = decompressedIndex % 4;
-    uint compressedIndex = (decompressedIndex - targetByte) / 4;
-    
-    uint value = 0;
-    [branch]
-    switch (targetByte)
-    {
-        case 0:
-            value = buffer[compressedIndex] & 0xFF;
-            break;
-        
-        case 1:
-            value = (buffer[compressedIndex] >> 8) & 0xFF;
-            break;
-        
-        case 2:
-            value = (buffer[compressedIndex] >> 16) & 0xFF;
-            break;
-        
-        case 3:
-            value = (buffer[compressedIndex] >> 24) & 0xFF;
-            break;
-    }
-    
-    return value;
+    // Calculate the 32-bit word offset (each word is 4 bytes).
+    uint wordOffset = byteIndex / 4;
+
+    // Load the 32-bit word containing the byte.
+    uint word = buffer.Load(wordOffset * 4); // MUST multiply by 4 for ByteAddressBuffer.Load()
+
+    // Calculate the byte position *within* the word (0, 1, 2, or 3).
+    uint byteInWord = byteIndex % 4;
+
+    // Extract the correct byte using bit shifts and masking.
+    return (word >> (byteInWord * 8)) & 0xFF;
 }
 
 // Helper function to convert YUV to RGB.
@@ -97,9 +85,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     uint uvIndex = (flippedY / 2) * UVRowStride + (id.x / 2) * UVPixelStride;
    
     // Get Y, U, and V values.
-    uint yValue = GetDecompressedAdjustedBufferValue(YBuffer, yIndex);
-    uint uValue = GetDecompressedAdjustedBufferValue(UBuffer, uvIndex);
-    uint vValue = GetDecompressedAdjustedBufferValue(VBuffer, uvIndex);
+    uint yValue = GetByteFromBuffer(YBuffer, yIndex);
+    uint uValue = GetByteFromBuffer(UBuffer, uvIndex);
+    uint vValue = GetByteFromBuffer(VBuffer, uvIndex);
     
     // Convert them and set the output texture.
     float3 converted = YUVtoRGB(yValue, uValue, vValue);

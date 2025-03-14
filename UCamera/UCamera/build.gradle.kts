@@ -40,8 +40,5 @@ android {
 dependencies {
     compileOnly(files("libs/classes.jar"))
     implementation(libs.androidx.core.ktx)
-
-    implementation(libs.androidx.lifecycle.process)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.camera.camera2)
 }

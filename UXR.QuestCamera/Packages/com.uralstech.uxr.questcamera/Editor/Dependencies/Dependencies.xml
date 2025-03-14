@@ -1,9 +1,5 @@
 <dependencies>
     <androidPackages>
         <androidPackage spec="androidx.camera:camera-camera2:1.4.1" />
-		
-		<!-- For some reason, I haven't been able to get newer versions of the lifecycle package to work in Unity. -->
-        <androidPackage spec="androidx.lifecycle:lifecycle-runtime-ktx:2.6.1" />
-        <androidPackage spec="androidx.lifecycle:lifecycle-process:2.6.1" />
     </androidPackages>
 </dependencies>

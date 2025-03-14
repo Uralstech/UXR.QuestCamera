@@ -44,29 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cfe1b046d243a524aa171f4d1d110abc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  YUVConverter: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}
-  CallbackEvents:
-    OnCameraConnected:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraDisconnected:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraErred:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraConfigured:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraConfigureErred:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraAccessError:
-      m_PersistentCalls:
-        m_Calls: []
-    OnCameraCaptureStarted:
-      m_PersistentCalls:
-        m_Calls: []
-    OnFrameReceived:
-      m_PersistentCalls:
-        m_Calls: []
+  YUVToRGBAComputeShader: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}

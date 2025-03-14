@@ -12,6 +12,7 @@ A Unity package to use the new Meta Quest Passthrough Camera API.
 ## Installation
 
 This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.0.
+Versions older than Unity 6.0 **REQUIRE** [com.utilities.async](https://github.com/RageAgainstThePixel/com.utilities.async/).
 
 # [OpenUPM](#tab/openupm)
 

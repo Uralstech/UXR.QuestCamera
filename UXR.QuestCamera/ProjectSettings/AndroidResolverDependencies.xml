@@ -1,8 +1,6 @@
 <dependencies>
   <packages>
     <package>androidx.camera:camera-camera2:1.4.1</package>
-    <package>androidx.lifecycle:lifecycle-process:2.6.1</package>
-    <package>androidx.lifecycle:lifecycle-runtime-ktx:2.6.1</package>
   </packages>
   <files />
   <settings>

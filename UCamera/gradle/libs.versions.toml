@@ -2,14 +2,11 @@
 agp = "8.9.0"
 camera2 = "1.4.1"
 kotlin = "2.0.21"
-lifecycle = "2.8.7"
 coreKtx = "1.15.0"
 
 [libraries]
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera2" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
-androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }

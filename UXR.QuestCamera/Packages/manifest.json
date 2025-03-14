@@ -1,14 +1,18 @@
 {
   "dependencies": {
     "com.unity.ide.visualstudio": "2.0.22",
-    "com.unity.ugui": "2.0.0"
+    "com.unity.mobile.android-logcat": "1.4.4",
+    "com.unity.ugui": "2.0.0",
+    "com.utilities.async": "2.2.2"
   },
   "scopedRegistries": [
     {
       "name": "OpenUPM",
       "url": "https://package.openupm.com",
       "scopes": [
-        "com.google.external-dependency-manager"
+        "com.google.external-dependency-manager",
+        "com.uralstech.utils.singleton",
+        "com.utilities.async"
       ],
       "overrideBuiltIns": false
     }

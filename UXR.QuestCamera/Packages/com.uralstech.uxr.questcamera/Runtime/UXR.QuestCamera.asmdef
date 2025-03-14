@@ -1,7 +1,10 @@
 {
     "name": "UXR.QuestCamera",
     "rootNamespace": "",
-    "references": [],
+    "references": [
+        "GUID:2281fe9ed9abb88469162fc481fcc7a1",
+        "GUID:a6609af893242c7438d701ddd4cce46a"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": true,
@@ -9,6 +12,12 @@
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "versionDefines": [],
+    "versionDefines": [
+        {
+            "name": "com.utilities.async",
+            "expression": "1.0.0",
+            "define": "UTILITIES_ASYNC"
+        }
+    ],
     "noEngineReferences": false
 }

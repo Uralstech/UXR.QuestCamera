@@ -16,7 +16,14 @@ package com.uralstech.ucamera
 
 import java.nio.ByteBuffer
 
+/**
+ * Callback receiver interface for Unity objects that
+ * want to receive the individual frames from the camera.
+ */
 interface CameraFrameCallback {
+    /**
+     * Called when a new YUV 4:2:0 encoded frame is ready.
+     */
     fun onFrameReady(
         yBuffer: ByteBuffer,
         uBuffer: ByteBuffer,

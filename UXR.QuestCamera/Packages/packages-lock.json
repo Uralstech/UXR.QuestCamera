@@ -7,6 +7,13 @@
       "dependencies": {},
       "url": "https://package.openupm.com"
     },
+    "com.unity.editorcoroutines": {
+      "version": "1.0.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
     "com.unity.ext.nunit": {
       "version": "2.0.5",
       "depth": 2,
@@ -21,6 +28,20 @@
       "dependencies": {
         "com.unity.test-framework": "1.1.9"
       },
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.mobile.android-logcat": {
+      "version": "1.4.4",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.nuget.mono-cecil": {
+      "version": "1.11.4",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
       "url": "https://packages.unity.com"
     },
     "com.unity.test-framework": {
@@ -43,14 +64,33 @@
         "com.unity.modules.imgui": "1.0.0"
       }
     },
+    "com.uralstech.utils.singleton": {
+      "version": "1.2.1",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
     "com.uralstech.uxr.questcamera": {
       "version": "file:com.uralstech.uxr.questcamera",
       "depth": 0,
       "source": "embedded",
       "dependencies": {
+        "com.uralstech.utils.singleton": "1.2.1",
         "com.unity.modules.androidjni": "1.0.0",
         "com.google.external-dependency-manager": "1.2.185"
       }
+    },
+    "com.utilities.async": {
+      "version": "2.2.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.unity.editorcoroutines": "1.0.0",
+        "com.unity.test-framework": "1.4.2",
+        "com.unity.nuget.mono-cecil": "1.11.4"
+      },
+      "url": "https://package.openupm.com"
     },
     "com.unity.modules.androidjni": {
       "version": "1.0.0",
