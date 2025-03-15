@@ -37,11 +37,13 @@ here: [EDM4U - Getting Started](https://github.com/googlesamples/unity-jar-resol
 2. Select the `+` icon and `Add package from git URL...`
 3. Paste the UPM branch URL and press enter:
     - `https://github.com/Uralstech/UXR.QuestCamera.git#upm`
+4. Check the instructions for [`Utils.Singleton`](https://uralstech.github.io/Utils.Singleton) to install the dependency
 
 # [GitHub Clone](#tab/github)
 
 1. Clone or download the repository from the desired branch (master, preview/unstable)
 2. Drag the package folder `UXR.QuestCamera/UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera` into your Unity project's `Packages` folder
+3. Check the instructions for [`Utils.Singleton`](https://uralstech.github.io/Utils.Singleton) to install the dependency
 
 ---
 
