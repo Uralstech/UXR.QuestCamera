@@ -6,3 +6,5 @@ pdfPrintBackground: true
 items:
 - name: Quick Start
   href: QuickStart.md
+- name: Advanced Samples
+  href: AdvancedSamples.md

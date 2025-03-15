@@ -112,6 +112,13 @@ Once started successfully, you will receive the frames from the camera in an ARG
 `CaptureSessionObject.TextureConverter.FrameRenderTexture`. See the documentation for `RenderTexture` on how to get its pixel data
 to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html>
 
+#### Capture Templates
+
+Camera2 allows you to set capture templates for capture requests. `CameraDevice.CreateCaptureSession()`
+also allows you do so. By default, it uses [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
+which is suitable for camera preview windows. You can change them by specifying one of the templates
+defined in `CameraDevice.CaptureTemplate`.
+
 ### Releasing Resources
 
 It is highly recommended to release or destroy all `CameraDevice`s and `CaptureSessionObject`s *immediately* after you have finished
@@ -191,71 +198,5 @@ public class CameraTest : MonoBehaviour
         // Set the image texture.
         _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
     }
-}
-```
-
-## Advanced - Custom Texture Converters
-
-The texture converter in `CaptureSessionObject.TextureConverter` allows you to easily change the conversion compute shader to custom
-ones. All you have to do is set `CaptureSessionObject.TextureConverter.Shader` to your shader. You can also change the compute shader
-for all new capture sessions by changing `UCameraManager.YUVToRGBAComputeShader`.
-
-For example, the following compute shader ignores the U and V values of the YUV stream to provide a Luminance-only image:
-
-```hlsl
-#pragma kernel CSMain
-
-// Input buffers (read-only)
-ByteAddressBuffer YBuffer;
-ByteAddressBuffer UBuffer;
-ByteAddressBuffer VBuffer;
-
-// Row strides
-uint YRowStride;
-uint UVRowStride;
-
-// Pixel strides
-uint UVPixelStride;
-
-// Image dimensions
-uint TargetWidth;
-uint TargetHeight;
-
-// Output texture (read-write)
-RWTexture2D<float4> OutputTexture;
-
-// Helper function to get a byte from a ByteAddressBuffer.
-//  buffer: The ByteAddressBuffer.
-//  byteIndex: The *byte* index (offset) into the buffer.
-uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
-{
-    // Calculate the 32-bit word offset (each word is 4 bytes).
-    uint wordOffset = byteIndex / 4;
-
-    // Load the 32-bit word containing the byte.
-    uint word = buffer.Load(wordOffset * 4); // MUST multiply by 4 for ByteAddressBuffer.Load()
-
-    // Calculate the byte position *within* the word (0, 1, 2, or 3).
-    uint byteInWord = byteIndex % 4;
-
-    // Extract the correct byte using bit shifts and masking.
-    return (word >> (byteInWord * 8)) & 0xFF;
-}
-
-[numthreads(8, 8, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= TargetWidth || id.y >= TargetHeight)
-        return;
-    
-    // The YUV stream is flipped, so we have to un-flip it.
-    uint flippedY = TargetHeight - 1 - id.y;
-
-    // Index of Y value in buffer.
-    uint yIndex = flippedY * YRowStride + id.x;
-    uint yValue = GetByteFromBuffer(YBuffer, yIndex);
-    
-    float3 luminance = float3(yValue, yValue, yValue) / 255.0;
-    OutputTexture[id.xy] = float4(luminance.rgb, 1.0);
 }
 ```
