@@ -25,35 +25,6 @@ namespace Uralstech.UXR.QuestCamera
     public class CameraDevice : MonoBehaviour
     {
         /// <summary>
-        /// Capture template to use when recording.
-        /// </summary>
-        public enum CaptureTemplate
-        {
-            /// <summary>Default value, do not use.</summary>
-            Default = 0,
-
-            /// <summary>Creates a request suitable for a camera preview window.</summary>
-            /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW"/></remarks>
-            Preview = 1,
-
-            /// <summary>Creates a request suitable for still image capture.</summary>
-            /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_STILL_CAPTURE"/></remarks>
-            StillCapture = 2,
-
-            /// <summary>Creates a request suitable for video recording.</summary>
-            /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_RECORD"/></remarks>
-            Record = 3,
-
-            /// <summary>Creates a request suitable for still image capture while recording video.</summary>
-            /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_VIDEO_SNAPSHOT"/></remarks>
-            VideoSnapshot = 4,
-
-            /// <summary>Creates a request suitable for zero shutter lag still capture.</summary>
-            /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_ZERO_SHUTTER_LAG"/></remarks>
-            ZeroShutterLag = 5,
-        }
-
-        /// <summary>
         /// Error codes that can be returned by the native CameraDevice wrapper.
         /// </summary>
         public enum ErrorCode
@@ -81,51 +52,6 @@ namespace Uralstech.UXR.QuestCamera
 
             /// <summary>The native code encountered a SecurityException.</summary>
             SecurityException = 1001,
-        }
-
-        /// <summary>
-        /// Simple class for grouping capture session related GameObjects.
-        /// </summary>
-        public class CaptureSessionObject<T> where T : CaptureSession
-        {
-            /// <summary>
-            /// The GameObject containing the <see cref="CaptureSession"/> and <see cref="TextureConverter"/> components.
-            /// </summary>
-            public readonly GameObject GameObject;
-
-            /// <summary>
-            /// The capture session wrapper.
-            /// </summary>
-            public readonly T CaptureSession;
-
-            /// <summary>
-            /// The YUV to RGBA texture converter.
-            /// </summary>
-            public readonly YUVToRGBAConverter TextureConverter;
-
-            /// <summary>
-            /// The camera frame forwarder.
-            /// </summary>
-            public readonly CameraFrameForwarder CameraFrameForwarder;
-
-            internal CaptureSessionObject(GameObject gameObject, T captureSession, YUVToRGBAConverter textureConverter, CameraFrameForwarder cameraFrameForwarder)
-            {
-                GameObject = gameObject;
-                CaptureSession = captureSession;
-                TextureConverter = textureConverter;
-                CameraFrameForwarder = cameraFrameForwarder;
-            }
-
-            /// <summary>
-            /// Destroys the GameObject to release all native resources.
-            /// </summary>
-            public void Destroy()
-            {
-                CaptureSession.Release();
-                TextureConverter.Release();
-
-                UnityEngine.Object.Destroy(GameObject);
-            }
         }
 
         /// <summary>
@@ -211,21 +137,21 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, either destroy its GameObject or call <see cref="CaptureSession.Release"/>
-        /// and <see cref="YUVToRGBAConverter.Release"/> to close the session and free up native and compute shader resources.
+        /// Once you have finished using the capture session, call <see cref="CaptureSessionObject{T}.Destroy"/>
+        /// to close the session and free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
         /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
-        public CaptureSessionObject<CaptureSession> CreateCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        public CaptureSessionObject<ContinuousCaptureSession> CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             if (!IsActiveAndUsable)
                 return null;
 
             CameraFrameForwarder cameraFrameForwarder = new();
-            GameObject wrapperGO = new($"{nameof(CaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
+            GameObject wrapperGO = new($"{nameof(ContinuousCaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
 
-            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createRepeatingCaptureSession",
+            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession",
                 wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
@@ -233,15 +159,24 @@ namespace Uralstech.UXR.QuestCamera
                 return null;
             }
 
-            CaptureSession wrapper = wrapperGO.AddComponent<CaptureSession>();
+            ContinuousCaptureSession wrapper = wrapperGO.AddComponent<ContinuousCaptureSession>();
             wrapper.SetCaptureSession(nativeObject);
 
             YUVToRGBAConverter converter = wrapper.gameObject.AddComponent<YUVToRGBAConverter>();
             converter.SetupCameraFrameForwarder(cameraFrameForwarder, resolution);
 
-            return new CaptureSessionObject<CaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
+            return new CaptureSessionObject<ContinuousCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
         }
 
+        /// <summary>
+        /// Creates a new on-demand capture session for use.
+        /// </summary>
+        /// <remarks>
+        /// Once you have finished using the capture session, call <see cref="CaptureSessionObject{T}.Destroy"/>
+        /// to close the session and free up native and compute shader resources.
+        /// </remarks>
+        /// <param name="resolution">The resolution of the capture.</param>
+        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
         public CaptureSessionObject<OnDemandCaptureSession> CreateOnDemandCaptureSession(Resolution resolution)
         {
             if (!IsActiveAndUsable)
@@ -275,6 +210,15 @@ namespace Uralstech.UXR.QuestCamera
             _cameraDevice?.Call("close");
             _cameraDevice?.Dispose();
             _cameraDevice = null;
+        }
+
+        /// <summary>
+        /// Releases the CameraDevice's native resources, and destroys its GameObject.
+        /// </summary>
+        public void Destroy()
+        {
+            Release();
+            Destroy(gameObject);
         }
 
         #region Native Callbacks

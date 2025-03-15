@@ -25,7 +25,7 @@ namespace Uralstech.UXR.QuestCamera
     /// This is different from <see cref="OnDemandCaptureSession"/> as it returns a
     /// continuous stream of images.
     /// </remarks>
-    public class CaptureSession : MonoBehaviour
+    public class ContinuousCaptureSession : MonoBehaviour
     {
         /// <summary>
         /// The current assumed state of the native CaptureSession wrapper.
