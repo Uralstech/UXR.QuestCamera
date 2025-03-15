@@ -21,6 +21,10 @@ namespace Uralstech.UXR.QuestCamera
     /// <summary>
     /// A wrapper for a native Camera2 CaptureSession and ImageReader.
     /// </summary>
+    /// <remarks>
+    /// This is different from <see cref="OnDemandCaptureSession"/> as it returns a
+    /// continuous stream of images.
+    /// </remarks>
     public class CaptureSession : MonoBehaviour
     {
         /// <summary>
@@ -53,7 +57,10 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public UnityEvent<string> OnSessionRequestFailed = new();
 
-        private AndroidJavaObject _captureSession;
+        /// <summary>
+        /// The native capture session object.
+        /// </summary>
+        protected AndroidJavaObject _captureSession;
 
         protected void OnDestroy()
         {

@@ -24,16 +24,17 @@ import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
+import android.view.Surface
 import com.unity3d.player.UnityPlayer
 import java.util.concurrent.Executors
 
 /**
  * Wrapper class for [CameraCaptureSession].
  */
-class CaptureSessionWrapper(
+abstract class CaptureSessionWrapper(
     private val unityListener: String,
     private val frameCallback: CameraFrameCallback,
-    width: Int, height: Int) {
+    width: Int, height: Int, imageQueueSize: Int) {
 
     companion object {
         private const val TAG = "CaptureSessionWrapper"
@@ -49,16 +50,16 @@ class CaptureSessionWrapper(
     var isActiveAndUsable: Boolean = true
 
     /** Readers used as buffers for camera still shots. */
-    private val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
+    protected val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, imageQueueSize)
 
     /** [HandlerThread] where all buffer reading operations run. */
     private val imageReaderThread = HandlerThread("ImageReaderThread").apply { start() }
 
     /** [Handler] corresponding to [imageReaderThread]. */
-    private val imageReaderHandler = Handler(imageReaderThread.looper)
+    protected val imageReaderHandler = Handler(imageReaderThread.looper)
 
     /** The capture session being wrapped by this object. */
-    private var captureSession: CameraCaptureSession? = null
+    protected var captureSession: CameraCaptureSession? = null
 
     /** Executor for the current capture session. */
     private val captureSessionExecutor = Executors.newSingleThreadExecutor()
@@ -91,13 +92,23 @@ class CaptureSessionWrapper(
     }
 
     /**
-     * Creates a new capture session and sets the capture request.
+     * Starts a new capture session.
      */
-    internal fun startCaptureSession(camera: CameraDevice, captureTemplate: Int, isRepeating: Boolean) {
+    internal abstract fun startCaptureSession(camera: CameraDevice, captureTemplate: Int)
+
+    /**
+     * Creates a new capture session and sets a repeating request.
+     */
+    protected fun startRepeatingCaptureSession(camera: CameraDevice, captureTemplate: Int, repeatingRequestSurface: Surface, otherSurface: Surface?) {
         try {
+            val outputConfigurations = mutableListOf(OutputConfiguration(repeatingRequestSurface))
+            if (otherSurface != null) {
+                outputConfigurations.add(OutputConfiguration(otherSurface))
+            }
+
             camera.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
-                listOf(OutputConfiguration(imageReader.surface)),
+                outputConfigurations,
                 captureSessionExecutor,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
@@ -105,7 +116,7 @@ class CaptureSessionWrapper(
                         UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIGURED, "")
 
                         captureSession = session
-                        setCaptureRequests(session, captureTemplate, isRepeating)
+                        setRepeatingCaptureRequest(session, captureTemplate, repeatingRequestSurface)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
@@ -130,19 +141,15 @@ class CaptureSessionWrapper(
     }
 
     /**
-     * Sets the capture request.
+     * Sets a repeating capture request.
      */
-    private fun setCaptureRequests(captureSession: CameraCaptureSession, captureTemplate: Int, isRepeating: Boolean) {
+    private fun setRepeatingCaptureRequest(captureSession: CameraCaptureSession, captureTemplate: Int, surface: Surface) {
         try {
             val captureRequest = captureSession.device.createCaptureRequest(captureTemplate).apply {
-                addTarget(imageReader.surface)
+                addTarget(surface)
             }.build()
 
-            if (isRepeating) {
-                captureSession.setRepeatingRequest(captureRequest, null, imageReaderHandler)
-            } else {
-                captureSession.capture(captureRequest, null, imageReaderHandler)
-            }
+            captureSession.setRepeatingRequest(captureRequest, null, imageReaderHandler)
 
             Log.i(TAG, "Session request set for camera session of camera with ID \"${captureSession.device.id}\".")
             UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_SET, "")
@@ -160,10 +167,10 @@ class CaptureSessionWrapper(
     }
 
     /**
-     * Releases associated resources and closes the camera device.
+     * Releases associated resources and closes the session.
      * This results in [isActiveAndUsable] being set to false.
      */
-    fun close() {
+    open fun close() {
         if (!isActiveAndUsable) {
             return
         }

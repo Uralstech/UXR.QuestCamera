@@ -115,7 +115,7 @@ to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/Rende
 #### Capture Templates
 
 Camera2 allows you to set capture templates for capture requests. `CameraDevice.CreateCaptureSession()`
-also allows you do so. By default, it uses [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
+also allows you to do so. By default, it uses [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
 which is suitable for camera preview windows. You can change them by specifying one of the templates
 defined in `CameraDevice.CaptureTemplate`.
 

@@ -86,7 +86,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Simple class for grouping capture session related GameObjects.
         /// </summary>
-        public class CaptureSessionObject
+        public class CaptureSessionObject<T> where T : CaptureSession
         {
             /// <summary>
             /// The GameObject containing the <see cref="CaptureSession"/> and <see cref="TextureConverter"/> components.
@@ -96,18 +96,24 @@ namespace Uralstech.UXR.QuestCamera
             /// <summary>
             /// The capture session wrapper.
             /// </summary>
-            public readonly CaptureSession CaptureSession;
+            public readonly T CaptureSession;
 
             /// <summary>
             /// The YUV to RGBA texture converter.
             /// </summary>
             public readonly YUVToRGBAConverter TextureConverter;
 
-            internal CaptureSessionObject(GameObject gameObject, CaptureSession captureSession, YUVToRGBAConverter textureConverter)
+            /// <summary>
+            /// The camera frame forwarder.
+            /// </summary>
+            public readonly CameraFrameForwarder CameraFrameForwarder;
+
+            internal CaptureSessionObject(GameObject gameObject, T captureSession, YUVToRGBAConverter textureConverter, CameraFrameForwarder cameraFrameForwarder)
             {
                 GameObject = gameObject;
                 CaptureSession = captureSession;
                 TextureConverter = textureConverter;
+                CameraFrameForwarder = cameraFrameForwarder;
             }
 
             /// <summary>
@@ -202,7 +208,7 @@ namespace Uralstech.UXR.QuestCamera
 #endif
 
         /// <summary>
-        /// Creates a new capture session for use.
+        /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
         /// Once you have finished using the capture session, either destroy its GameObject or call <see cref="CaptureSession.Release"/>
@@ -210,9 +216,8 @@ namespace Uralstech.UXR.QuestCamera
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <param name="isContinuous">Is this capture continuous (repeating) or for a single frame?</param>
         /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
-        public CaptureSessionObject CreateCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview, bool isContinuous = true)
+        public CaptureSessionObject<CaptureSession> CreateCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             if (!IsActiveAndUsable)
                 return null;
@@ -220,8 +225,8 @@ namespace Uralstech.UXR.QuestCamera
             CameraFrameForwarder cameraFrameForwarder = new();
             GameObject wrapperGO = new($"{nameof(CaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
 
-            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createCaptureSession",
-                wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height, (int)captureTemplate, isContinuous);
+            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createRepeatingCaptureSession",
+                wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
                 Destroy(wrapperGO);
@@ -234,7 +239,32 @@ namespace Uralstech.UXR.QuestCamera
             YUVToRGBAConverter converter = wrapper.gameObject.AddComponent<YUVToRGBAConverter>();
             converter.SetupCameraFrameForwarder(cameraFrameForwarder, resolution);
 
-            return new CaptureSessionObject(wrapperGO, wrapper, converter);
+            return new CaptureSessionObject<CaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
+        }
+
+        public CaptureSessionObject<OnDemandCaptureSession> CreateOnDemandCaptureSession(Resolution resolution)
+        {
+            if (!IsActiveAndUsable)
+                return null;
+
+            CameraFrameForwarder cameraFrameForwarder = new();
+            GameObject wrapperGO = new($"{nameof(OnDemandCaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
+
+            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession",
+                wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height);
+            if (nativeObject is null)
+            {
+                Destroy(wrapperGO);
+                return null;
+            }
+
+            OnDemandCaptureSession wrapper = wrapperGO.AddComponent<OnDemandCaptureSession>();
+            wrapper.SetCaptureSession(nativeObject);
+
+            YUVToRGBAConverter converter = wrapper.gameObject.AddComponent<YUVToRGBAConverter>();
+            converter.SetupCameraFrameForwarder(cameraFrameForwarder, resolution);
+
+            return new CaptureSessionObject<OnDemandCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
         }
 
         /// <summary>
