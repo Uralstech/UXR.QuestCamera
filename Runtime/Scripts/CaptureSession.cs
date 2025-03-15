@@ -80,6 +80,9 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
+        /// <remarks>
+        /// Requires Unity 6.0 or higher.
+        /// </remarks>
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync()
         {
