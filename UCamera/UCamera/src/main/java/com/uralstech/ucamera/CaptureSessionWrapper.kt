@@ -117,7 +117,7 @@ class CaptureSessionWrapper(
                 }
             ))
         } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exceptino.", exp)
+            Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exception.", exp)
             UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, exp.message)
 
             close()

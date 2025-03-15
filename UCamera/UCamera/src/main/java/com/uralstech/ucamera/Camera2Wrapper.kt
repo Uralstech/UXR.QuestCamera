@@ -63,7 +63,7 @@ class Camera2Wrapper {
      */
     fun getCameraDevices(): Array<String>? {
         return try {
-            Log.i(TAG, "Getting list of cameras.");
+            Log.i(TAG, "Getting list of cameras.")
             cameraManager.cameraIdList
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Could not get camera IDs due to a camera access exception.", exp)
@@ -79,7 +79,7 @@ class Camera2Wrapper {
      */
     fun getSupportedResolutionsForCamera(camera: String): Array<String>? {
         try {
-            Log.i(TAG, "Getting supported resolutions for camera with ID \"$camera\".");
+            Log.i(TAG, "Getting supported resolutions for camera with ID \"$camera\".")
 
             val characteristics = cameraManager.getCameraCharacteristics(camera)
             val outputResolutions = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!

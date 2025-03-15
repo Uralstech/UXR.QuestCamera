@@ -37,6 +37,13 @@ public class CameraTest : MonoBehaviour
 
     private IEnumerator Start()
     {
+        // Check if the current device is supported.
+        if (!CameraSupport.IsSupported)
+        {
+            Debug.LogError("Device does not support the Passthrough Camera API!");
+            yield break;
+        }
+
         // Get a camera device ID.
         string currentDevice = UCameraManager.Instance.CameraDevices[0];
 
@@ -59,6 +66,7 @@ public class CameraTest : MonoBehaviour
 
             // Very important, this frees up any resources held by the camera.
             Destroy(camera.gameObject);
+            yield break;
         }
 
         // Create a capture session with the camera, at the chosen resolution.
@@ -73,6 +81,7 @@ public class CameraTest : MonoBehaviour
             // Both of these are important for releasing the camera and session resources.
             Destroy(sessionObject.GameObject);
             Destroy(camera.gameObject);
+            yield break;
         }
 
         // Set the image texture.

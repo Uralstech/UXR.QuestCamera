@@ -3,7 +3,8 @@
     "rootNamespace": "",
     "references": [
         "GUID:2281fe9ed9abb88469162fc481fcc7a1",
-        "GUID:a6609af893242c7438d701ddd4cce46a"
+        "GUID:a6609af893242c7438d701ddd4cce46a",
+        "GUID:f64c9ebcd7899c3448a08dc9f9ddbe30"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
@@ -17,6 +18,11 @@
             "name": "com.utilities.async",
             "expression": "1.0.0",
             "define": "UTILITIES_ASYNC"
+        },
+        {
+            "name": "com.meta.xr.sdk.core",
+            "expression": "1.0.0",
+            "define": "META_XR_SDK_CORE"
         }
     ],
     "noEngineReferences": false

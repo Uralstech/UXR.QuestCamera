@@ -9,6 +9,9 @@
           ]
         }
       ],
+      "properties": {
+        "DefineConstants": "UNITY_6000_0_OR_NEWER;META_XR_SDK_CORE"
+      },
       "dest": "api",
       "filter": "filterConfig.yml",
       "includePrivateMembers": false,
