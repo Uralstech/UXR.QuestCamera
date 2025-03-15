@@ -106,7 +106,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Sets the camera frame forwarder.
         /// </summary>
-        internal void SetupCameraFrameForwarder(CameraFrameForwarder cameraFrameForwarder, Resolution textureResolution)
+        public virtual void SetupCameraFrameForwarder(CameraFrameForwarder cameraFrameForwarder, Resolution textureResolution)
         {
             CameraFrameForwarder = cameraFrameForwarder;
             CameraFrameForwarder.OnFrameReady += OnFrameReady;
