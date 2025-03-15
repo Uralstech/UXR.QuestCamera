@@ -2,7 +2,7 @@
   "dependencies": {
     "com.google.external-dependency-manager": {
       "version": "1.2.185",
-      "depth": 1,
+      "depth": 0,
       "source": "registry",
       "dependencies": {},
       "url": "https://package.openupm.com"
@@ -77,8 +77,7 @@
       "source": "embedded",
       "dependencies": {
         "com.uralstech.utils.singleton": "1.2.1",
-        "com.unity.modules.androidjni": "1.0.0",
-        "com.google.external-dependency-manager": "1.2.185"
+        "com.unity.modules.androidjni": "1.0.0"
       }
     },
     "com.utilities.async": {

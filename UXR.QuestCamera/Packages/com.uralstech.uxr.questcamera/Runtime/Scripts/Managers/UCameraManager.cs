@@ -25,6 +25,11 @@ namespace Uralstech.UXR.QuestCamera
     public class UCameraManager : DontCreateNewSingleton<UCameraManager>
     {
         /// <summary>
+        /// The permission required to access the Meta Quest's cameras.
+        /// </summary>
+        public const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
+
+        /// <summary>
         /// The compute shader to use to convert the camera's YUV 4:2:0 images to RGBA.
         /// </summary>
         public ComputeShader YUVToRGBAComputeShader;
