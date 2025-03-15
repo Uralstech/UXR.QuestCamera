@@ -12,20 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using static Uralstech.UXR.QuestCamera.CameraDevice;
-
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
     /// A wrapper for a native Camera2 CaptureSession and ImageReader.
     /// </summary>
     /// <remarks>
-    /// This is different from <see cref="CaptureSession"/> as it only returns a frame
+    /// This is different from <see cref="ContinuousCaptureSession"/> as it only returns a frame
     /// from the native plugin when required. This is recommended for single-image
     /// capturing or on-demand capturing where you don't need a continuous stream
     /// of images.
+    /// <br/><br/>
+    /// Why does <see cref="OnDemandCaptureSession"/> inherit from <see cref="ContinuousCaptureSession"/>?
+    /// Because under the hood, both do the same thing - a repeating capture session. A true on-demand
+    /// capture results in a black image, so <see cref="OnDemandCaptureSession"/> runs a repeating capture
+    /// request running on an dummy texture natively, and reads the actual image through an ImageReader only
+    /// when requested to do so. This means that while the <see cref="ContinuousCaptureSession"/> processes
+    /// each and every frame sent to it, converting it to RGBA, <see cref="OnDemandCaptureSession"/> only
+    /// does it when required.
     /// </remarks>
-    public class OnDemandCaptureSession : CaptureSession
+    public class OnDemandCaptureSession : ContinuousCaptureSession
     {
         /// <summary>
         /// Requests a new capture from the session.

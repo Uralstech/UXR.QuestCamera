@@ -112,7 +112,7 @@ class CameraDeviceWrapper(
     /**
      * Creates a new capture session with a repeating capture request and a wrapper for it.
      */
-    fun createRepeatingCaptureSession(
+    fun createContinuousCaptureSession(
         unityListener: String,
         frameCallback: CameraFrameCallback,
         width: Int, height: Int,
@@ -120,7 +120,7 @@ class CameraDeviceWrapper(
 
         val cameraDevice = this.cameraDevice
         if (!isActiveAndUsable || cameraDevice == null) {
-            Log.e(TAG, "Tried to call createRepeatingCaptureSession on unusable CameraDeviceWrapper!")
+            Log.e(TAG, "Tried to call createContinuousCaptureSession on unusable CameraDeviceWrapper!")
             return null
         }
 
