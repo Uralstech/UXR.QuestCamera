@@ -4,13 +4,12 @@ Please note that the code provided in this page is *purely* for learning purpose
 
 ## AndroidManifest Setup
 
-You will have to define the following permissions in your Android Manifest:
+You will have to add the following permission to your `AndroidManifest.xml` file:
 ```xml
-<uses-permission android:name="android.permission.CAMERA" android:required="true"/>
 <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" android:required="true"/>
 ```
 
-This package cannot request these permissions for you during runtime, you will have to do that manually.
+This package cannot request permissions for you during runtime, you will have to do so yourself.
 
 ## Project Setup
 
