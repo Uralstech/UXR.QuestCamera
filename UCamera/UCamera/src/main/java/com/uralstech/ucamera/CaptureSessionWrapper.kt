@@ -99,16 +99,11 @@ abstract class CaptureSessionWrapper(
     /**
      * Creates a new capture session and sets a repeating request.
      */
-    protected fun startRepeatingCaptureSession(camera: CameraDevice, captureTemplate: Int, repeatingRequestSurface: Surface, otherSurface: Surface?) {
+    protected fun startRepeatingCaptureSession(camera: CameraDevice, captureTemplate: Int, outputs: List<OutputConfiguration>, surface: Surface) {
         try {
-            val outputConfigurations = mutableListOf(OutputConfiguration(repeatingRequestSurface))
-            if (otherSurface != null) {
-                outputConfigurations.add(OutputConfiguration(otherSurface))
-            }
-
             camera.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
-                outputConfigurations,
+                outputs,
                 captureSessionExecutor,
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
@@ -116,7 +111,7 @@ abstract class CaptureSessionWrapper(
                         UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIGURED, "")
 
                         captureSession = session
-                        setRepeatingCaptureRequest(session, captureTemplate, repeatingRequestSurface)
+                        setRepeatingCaptureRequest(session, captureTemplate, surface)
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {

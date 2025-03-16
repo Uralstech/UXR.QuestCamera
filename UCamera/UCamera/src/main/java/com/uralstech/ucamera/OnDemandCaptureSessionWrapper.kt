@@ -18,6 +18,7 @@ import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.params.OutputConfiguration
 import android.util.Log
 import android.view.Surface
 
@@ -31,7 +32,7 @@ import android.view.Surface
 class OnDemandCaptureSessionWrapper(
     unityListener: String,
     frameCallback: CameraFrameCallback,
-    width: Int, height: Int) : CaptureSessionWrapper(unityListener, frameCallback, width, height, 1) {
+    width: Int, height: Int) : CaptureSessionWrapper(unityListener, frameCallback, width, height, 2) {
 
     companion object {
         const val TAG = "ODCaptureSessionWrapper"
@@ -52,7 +53,8 @@ class OnDemandCaptureSessionWrapper(
         dummySurfaceTexture = SurfaceTexture(1)
         dummySurface = Surface(dummySurfaceTexture)
 
-        super.startRepeatingCaptureSession(camera, captureTemplate, dummySurface, imageReader.surface)
+        super.startRepeatingCaptureSession(camera, captureTemplate,
+            listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
     }
 
     /**

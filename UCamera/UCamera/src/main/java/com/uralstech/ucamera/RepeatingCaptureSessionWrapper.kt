@@ -16,6 +16,7 @@ package com.uralstech.ucamera
 
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.params.OutputConfiguration
 
 /**
  * Wrapper class for [CameraCaptureSession] with a repeating capture request.
@@ -29,6 +30,7 @@ class RepeatingCaptureSessionWrapper(
      * Creates a new capture session and sets the repeating capture request.
      */
     override fun startCaptureSession(camera: CameraDevice, captureTemplate: Int) {
-        super.startRepeatingCaptureSession(camera, captureTemplate, imageReader.surface, null)
+        super.startRepeatingCaptureSession(camera, captureTemplate,
+            listOf(OutputConfiguration(imageReader.surface)), imageReader.surface)
     }
 }
