@@ -33,7 +33,7 @@ To install UXR.QuestCamera:
     - Scope(s): `com.uralstech`
 - Click `Apply`
 - Open the package manager and go to `My Registries` -> `OpenUPM`
-- Install UXR.QuestCamera >= `2.0.0-preview.5`
+- Install UXR.QuestCamera >= `2.1.0-preview.1`
 
 ### AndroidManifest.xml
 
@@ -95,34 +95,43 @@ After this, you can check the state of the camera by accessing its `CurrentState
 `NativeWrapperState.Opened`, the camera is ready for use. Otherwise, it means the camera could not be opened successfully.
 For error details, check logcat or add listeners to `CameraDevice.OnDeviceDisconnected` and `CameraDevice.OnDeviceErred`.
 
-If the camera could not be opened successfully, release the native resources held by it by destroying its `GameObject`.
+If the camera could not be opened successfully, release its native resources by calling `CameraDevice.Destroy`.
 
 ### Creating a Capture Session
 
-To create a new capture session, call `CameraDevice.CreateCaptureSession(resolution)` with the previously chosen resolution.
-This returns a `CameraDevice.CaptureSessionObject` object, which contains the wrapper for the native Camera2 `CaptureSession`
-and a YUV to RGBA texture converter. Yield `CaptureSessionObject.CaptureSession.WaitForInitialization()` or await
-`CaptureSessionObject.CaptureSession.WaitForInitializationAsync()` and check `CaptureSessionObject.CaptureSession.CurrentState`,
-just like with `CameraDevice`.
+You can create two kinds of capture session: continuous and on-demand. A continuous capture session will send each frame
+recorded by the camera to Unity, and convert it to RGBA. If you don't need the continuous stream of frames, you can save on
+resources by using an on-demand capture session. On-demand capture sessions will only send camera frames to Unity when
+requested to do so. Other than that, both function the exact same way.
 
-If the capture session could not be started successfully, release the native resources and `ComputeBuffer`s held by it by calling
-`CaptureSessionObject.Destroy()`.
+To create a new continuous capture session, call `CameraDevice.CreateContinuousCaptureSession(resolution)` with the previously
+chosen resolution. To create an on-demand capture session, call `CameraDevice.CreateOnDemandCaptureSession(resolution)` instead.
+
+They return `CaptureSessionObject<ContinuousCaptureSession>` and `CaptureSessionObject<OnDemandCaptureSession>` respectively,
+which contain the session object (`ContinuousCaptureSession` or `OnDemandCaptureSession`), a YUV to RGBA texture converter,
+the native-to-unity frame forwarder, and the `GameObject` that they are components of.
+
+Yield `CaptureSessionObject.CaptureSession.WaitForInitialization()` or await `CaptureSessionObject.CaptureSession.WaitForInitializationAsync()`
+and check `CaptureSessionObject.CaptureSession.CurrentState`, just like with `CameraDevice`. If the capture session could not be started
+successfully, release the native resources and `ComputeBuffer`s held by it by calling `CaptureSessionObject.Destroy()`.
 
 Once started successfully, you will receive the frames from the camera in an ARGB32 format `RenderTexture` as
-`CaptureSessionObject.TextureConverter.FrameRenderTexture`. See the documentation for `RenderTexture` on how to get its pixel data
-to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html>
+`CaptureSessionObject.TextureConverter.FrameRenderTexture`. For `OnDemandCaptureSession`s, the `RenderTexture` will remain
+black until you call `CaptureSessionObject.CaptureSession.RequestCapture()`, which can be called any number of times.
+
+See the documentation for `RenderTexture` on how to get its pixel data to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html>
 
 #### Capture Templates
 
-Camera2 allows you to set capture templates for capture requests. `CameraDevice.CreateCaptureSession()`
-also allows you do so. By default, it uses [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
-which is suitable for camera preview windows. You can change them by specifying one of the templates
-defined in `CameraDevice.CaptureTemplate`.
+Camera2 allows you to set capture templates for capture requests. `CameraDevice.CreateContinuousCaptureSession()` and `OnDemandCaptureSession.RequestCapture()`
+also allow you to do so. By default, continuous captures use [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
+which is suitable for camera preview windows, and on-demand captures use [TEMPLATE_STILL_CAPTURE](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_STILL_CAPTURE), which is suitable for still image capture. You can change them by specifying one of the templates
+defined in the `CaptureTemplate` enum.
 
 ### Releasing Resources
 
 It is highly recommended to release or destroy all `CameraDevice`s and `CaptureSessionObject`s *immediately* after you have finished
-using them, as not doing so may result in the app not closing properly. They will automatically be released and destroyed by Unity,
+using them, as not doing so may result in the app not closing quickly. They will automatically be released and destroyed by Unity,
 like when a new scene is loaded, but do not rely on it!
 
 ## Example Script
@@ -176,12 +185,12 @@ public class CameraTest : MonoBehaviour
             Debug.LogError("Could not open camera!");
 
             // Very important, this frees up any resources held by the camera.
-            Destroy(camera.gameObject);
+            camera.Destroy();
             yield break;
         }
 
         // Create a capture session with the camera, at the chosen resolution.
-        CameraDevice.CaptureSessionObject sessionObject = camera.CreateCaptureSession(highestResolution);
+        CaptureSessionObject<ContinuousCaptureSession> sessionObject = camera.CreateContinuousCaptureSession(highestResolution);
         yield return sessionObject.CaptureSession.WaitForInitialization();
 
         // Check if it opened successfully
@@ -190,8 +199,8 @@ public class CameraTest : MonoBehaviour
             Debug.LogError("Could not open camera session!");
 
             // Both of these are important for releasing the camera and session resources.
-            Destroy(sessionObject.GameObject);
-            Destroy(camera.gameObject);
+            sessionObject.Destroy();
+            camera.Destroy();
             yield break;
         }
 

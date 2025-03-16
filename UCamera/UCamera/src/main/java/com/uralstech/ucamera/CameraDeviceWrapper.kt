@@ -110,24 +110,46 @@ class CameraDeviceWrapper(
     }
 
     /**
-     * Creates a new capture session and a wrapper for it.
+     * Creates a new capture session with a repeating capture request and a wrapper for it.
      */
-    fun createCaptureSession(
+    fun createContinuousCaptureSession(
         unityListener: String,
         frameCallback: CameraFrameCallback,
         width: Int, height: Int,
-        captureTemplate: Int, isRepeating: Boolean): CaptureSessionWrapper? {
+        captureTemplate: Int): RepeatingCaptureSessionWrapper? {
 
         val cameraDevice = this.cameraDevice
         if (!isActiveAndUsable || cameraDevice == null) {
-            Log.e(TAG, "Tried to call createCaptureSession on unusable CameraDeviceWrapper!")
+            Log.e(TAG, "Tried to call createContinuousCaptureSession on unusable CameraDeviceWrapper!")
             return null
         }
 
-        Log.i(TAG, "Creating new camera session for camera with ID \"$id\".")
+        Log.i(TAG, "Creating new repeating camera session for camera with ID \"$id\".")
 
-        val wrapper = CaptureSessionWrapper(unityListener, frameCallback, width, height)
-        wrapper.startCaptureSession(cameraDevice, captureTemplate, isRepeating)
+        val wrapper = RepeatingCaptureSessionWrapper(unityListener, frameCallback, width, height)
+        wrapper.startCaptureSession(cameraDevice, captureTemplate)
+
+        return wrapper
+    }
+
+    /**
+     * Creates a new on-demand capture session and a wrapper for it.
+     */
+    fun createOnDemandCaptureSession(
+        unityListener: String,
+        frameCallback: CameraFrameCallback,
+        width: Int, height: Int): OnDemandCaptureSessionWrapper? {
+
+        val cameraDevice = this.cameraDevice
+        if (!isActiveAndUsable || cameraDevice == null) {
+            Log.e(TAG, "Tried to call createOnDemandCaptureSession on unusable CameraDeviceWrapper!")
+            return null
+        }
+
+        Log.i(TAG, "Creating new on-demand camera session for camera with ID \"$id\".")
+
+        val wrapper = OnDemandCaptureSessionWrapper(unityListener, frameCallback, width, height)
+        wrapper.startCaptureSession(cameraDevice, CameraDevice.TEMPLATE_PREVIEW)
 
         return wrapper
     }
@@ -145,6 +167,9 @@ class CameraDeviceWrapper(
         isActiveAndUsable = false
 
         cameraDevice?.close()
+        cameraDevice = null
+
         cameraThread.quitSafely()
+        Log.i(TAG, "Camera device closed.")
     }
 }

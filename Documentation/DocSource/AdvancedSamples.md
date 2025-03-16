@@ -76,7 +76,7 @@ post-processing effect:
 
 ```csharp
 // Create a capture session with the camera, at the chosen resolution.
-CameraDevice.CaptureSessionObject sessionObject = camera.CreateCaptureSession(resolution);
+CaptureSessionObject<ContinuousCaptureSession> sessionObject = camera.CreateContinuousCaptureSession(highestResolution);
 yield return sessionObject.CaptureSession.WaitForInitialization();
 
 // Check if it opened successfully.
@@ -92,7 +92,7 @@ YUVToRGBAConverter secondary = gameObject.AddComponent<YUVToRGBAConverter>();
 secondary.Shader = _postProcessShader;
 
 // Setup the camera forwarder, which will forward the camera frames in native memory to the converter.
-secondary.SetupCameraFrameForwarder(sessionObject.TextureConverter.CameraFrameForwarder, resolution);
+secondary.SetupCameraFrameForwarder(sessionObject.CameraFrameForwarder, resolution);
 
 // Set the second image to the post processed RenderTexture.
 _rawImagePostProcessed.texture = secondary.FrameRenderTexture;
