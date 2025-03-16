@@ -5,6 +5,7 @@ A Unity package to use the new Meta Quest Passthrough Camera API.
 [![openupm](https://img.shields.io/npm/v/com.uralstech.uxr.questcamera?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 [![openupm](https://img.shields.io/badge/dynamic/json?color=brightgreen&label=downloads&query=%24.downloads&suffix=%2Fmonth&url=https%3A%2F%2Fpackage.openupm.com%2Fdownloads%2Fpoint%2Flast-month%2Fcom.uralstech.uxr.questcamera)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 
+> Meta Quest 3 Passthrough Camera API in hAI! MR
 [![Camera API in hAI! MR](https://img.youtube.com/vi/7Fq__tlaXSU/0.jpg)](https://www.youtube.com/watch?v=7Fq__tlaXSU)
 
 ## Installation
