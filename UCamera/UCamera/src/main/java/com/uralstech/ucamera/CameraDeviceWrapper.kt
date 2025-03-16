@@ -167,6 +167,9 @@ class CameraDeviceWrapper(
         isActiveAndUsable = false
 
         cameraDevice?.close()
+        cameraDevice = null
+
         cameraThread.quitSafely()
+        Log.i(TAG, "Camera device closed.")
     }
 }

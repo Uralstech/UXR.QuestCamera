@@ -178,9 +178,6 @@ namespace Uralstech.UXR.QuestCamera
             int uvRowStride,
             int uvPixelStride)
         {
-            if (_isReleased)
-                return;
-
             Task.Run(async () =>
             {
 #if UNITY_6000_0_OR_NEWER
@@ -188,6 +185,8 @@ namespace Uralstech.UXR.QuestCamera
 #elif UTILITIES_ASYNC
                 await Awaiters.UnityMainThread;
 #endif
+                if (_isReleased)
+                    return;
 
                 CopyNativeDataToComputeBuffer(ref _yComputeBuffer, yBuffer, ySize);
                 CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
@@ -210,6 +209,8 @@ namespace Uralstech.UXR.QuestCamera
 #elif UTILITIES_ASYNC
             await Awaiters.UnityMainThread;
 #endif
+            if (_isReleased)
+                return;
 
             int kernelHandle = Shader.FindKernel("CSMain");
 

@@ -125,6 +125,11 @@ abstract class CaptureSessionWrapper(
 
                         close()
                     }
+
+                    override fun onClosed(session: CameraCaptureSession) {
+                        captureSessionExecutor.shutdown()
+                        Log.i(TAG, "Capture session executor shut down.")
+                    }
                 }
             ))
         } catch (exp: CameraAccessException) {
@@ -184,6 +189,6 @@ abstract class CaptureSessionWrapper(
         imageReader.setOnImageAvailableListener(null, null)
         imageReaderThread.quitSafely()
 
-        captureSessionExecutor.shutdown()
+        Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }
 }

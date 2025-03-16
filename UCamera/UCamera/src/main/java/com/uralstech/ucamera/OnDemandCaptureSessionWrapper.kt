@@ -40,6 +40,9 @@ class OnDemandCaptureSessionWrapper(
     /** Dummy surface texture for preview capture request. */
     private lateinit var dummySurfaceTexture: SurfaceTexture
 
+    /** Dummy surface for preview capture request. */
+    private lateinit var dummySurface: Surface
+
     /**
      * Creates a new capture session and sets the repeating capture request.
      */
@@ -47,7 +50,9 @@ class OnDemandCaptureSessionWrapper(
         Log.i(TAG, "Setting up capture session for single-capture request.")
 
         dummySurfaceTexture = SurfaceTexture(1)
-        super.startRepeatingCaptureSession(camera, captureTemplate, Surface(dummySurfaceTexture), imageReader.surface)
+        dummySurface = Surface(dummySurfaceTexture)
+
+        super.startRepeatingCaptureSession(camera, captureTemplate, dummySurface, imageReader.surface)
     }
 
     /**
@@ -84,9 +89,14 @@ class OnDemandCaptureSessionWrapper(
      * Same as [CaptureSessionWrapper.close], but also releases [dummySurfaceTexture].
      */
     override fun close() {
-        dummySurfaceTexture.release()
-        Log.i(TAG, "Dummy texture released.")
+        if (!isActiveAndUsable) {
+            return
+        }
 
         super.close()
+
+        dummySurface.release()
+        dummySurfaceTexture.release()
+        Log.i(TAG, "Dummy texture released.")
     }
 }
