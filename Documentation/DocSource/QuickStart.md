@@ -119,6 +119,9 @@ Once started successfully, you will receive the frames from the camera in an ARG
 `CaptureSessionObject.TextureConverter.FrameRenderTexture`. For `OnDemandCaptureSession`s, the `RenderTexture` will remain
 black until you call `CaptureSessionObject.CaptureSession.RequestCapture()`, which can be called any number of times.
 
+The first few frames after the session has been started will be black. I've found that waiting around 0.1 seconds after the session has started
+and then requesting the capture or accessing the image works.
+
 See the documentation for `RenderTexture` on how to get its pixel data to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html>
 
 #### Capture Templates
