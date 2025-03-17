@@ -61,6 +61,8 @@ class Camera2Wrapper {
      */
     fun getCameraDevices(): Array<CameraCharacteristicsWrapper>? {
         return try {
+            Log.i(TAG, "Getting camera intrinsics.")
+
             val characteristicsWrappers = mutableListOf<CameraCharacteristicsWrapper>()
             for (cameraId in cameraManager.cameraIdList) {
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId)

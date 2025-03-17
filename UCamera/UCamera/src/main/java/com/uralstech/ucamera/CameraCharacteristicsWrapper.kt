@@ -16,8 +16,7 @@ package com.uralstech.ucamera
 
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCharacteristics
-import android.os.Build
-import androidx.annotation.RequiresApi
+import android.util.Size
 
 /**
  * Wrapper for [CameraCharacteristics].
@@ -27,24 +26,19 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
         private const val META_CAMERA_SOURCE_METADATA = "com.meta.extra_metadata.camera_source"
         private const val META_CAMERA_POSITION_METADATA = "com.meta.extra_metadata.position"
 
-        @RequiresApi(Build.VERSION_CODES.Q)
         private val metaCameraSourceMetadata = CameraCharacteristics.Key(META_CAMERA_SOURCE_METADATA, IntArray::class.java)
-
-        @RequiresApi(Build.VERSION_CODES.Q)
         private val metaCameraPositionMetadata = CameraCharacteristics.Key(META_CAMERA_POSITION_METADATA, IntArray::class.java)
     }
 
     /**
      * (Meta Quest) The source of the camera feed.
      */
-    @RequiresApi(Build.VERSION_CODES.Q)
-    val metaQuestCameraSource = if (characteristics.keys.contains(metaCameraSourceMetadata)) characteristics.get(metaCameraSourceMetadata)!![0] else -1
+    val metaQuestCameraSource: Int
 
     /**
      * (Meta Quest) The eye which the camera is closest to.
      */
-    @RequiresApi(Build.VERSION_CODES.Q)
-    val metaQuestCameraEye = if (characteristics.keys.contains(metaCameraPositionMetadata)) characteristics.get(metaCameraPositionMetadata)!![0] else -1
+    val metaQuestCameraEye: Int
 
     /**
      * The position of the camera optical center.
@@ -59,12 +53,7 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     /**
      * The resolutions supported by this device.
      */
-    val supportedResolutions = {
-        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-        configMap.getOutputSizes(ImageFormat.YUV_420_888).map { size ->
-            intArrayOf(size.width, size.height)
-        }.toTypedArray()
-    }
+    val supportedResolutions: Array<Size>
 
     /**
      * The resolution, in pixels, for which intrinsics are provided.
@@ -87,6 +76,23 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     val intrinsicsSkew: Float
 
     init {
+        var metaQuestCameraSource = -1
+        var metaQuestCameraEye = -1
+
+        for (key in characteristics.keys) {
+            if (key.name == META_CAMERA_SOURCE_METADATA) {
+                metaQuestCameraSource = characteristics.get(metaCameraSourceMetadata)!![0]
+            } else if (key.name == META_CAMERA_POSITION_METADATA) {
+                metaQuestCameraEye = characteristics.get(metaCameraPositionMetadata)!![0]
+            }
+        }
+
+        this.metaQuestCameraSource = metaQuestCameraSource
+        this.metaQuestCameraEye = metaQuestCameraEye
+
+        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+        supportedResolutions = configMap.getOutputSizes(ImageFormat.YUV_420_888)!!
+
         val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)!!
         intrinsicsResolution = intArrayOf(sensorSize.right, sensorSize.bottom)
 

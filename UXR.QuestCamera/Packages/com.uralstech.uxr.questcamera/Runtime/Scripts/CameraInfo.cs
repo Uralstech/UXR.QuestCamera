@@ -29,13 +29,13 @@ namespace Uralstech.UXR.QuestCamera
         public enum CameraEye
         {
             /// <summary>Unknown.</summary>
-            Unknown = -1,
+            Unknown = 0,
 
             /// <summary>The leftmost camera.</summary>
-            Left = 0,
+            Left = 1,
 
             /// <summary>The rightmost camera.</summary>
-            Right = 1,
+            Right = 2,
         }
 
         /// <summary>
@@ -44,10 +44,10 @@ namespace Uralstech.UXR.QuestCamera
         public enum CameraSource
         {
             /// <summary>Unknown.</summary>
-            Unknown = -1,
+            Unknown = 0,
 
             /// <summary>Meta Quest Passthrough RGB cameras.</summary>
-            PassthroughRGB = 0,
+            PassthroughRGB = 1,
         }
 
         /// <summary>
@@ -103,13 +103,13 @@ namespace Uralstech.UXR.QuestCamera
         /// (Meta Quest) The source of the camera feed.
         /// </summary>
         public CameraSource Source =>
-            _cameraInfo?.Get<int>("metaQuestCameraSource") is int value ? (CameraSource)value : throw new ObjectDisposedException(nameof(CameraInfo));
+            _cameraInfo?.Get<int>("metaQuestCameraSource") is int value ? (CameraSource)(value + 1) : throw new ObjectDisposedException(nameof(CameraInfo));
 
         /// <summary>
         /// (Meta Quest) The eye which the camera is closest to.
         /// </summary>
         public CameraEye Eye =>
-            _cameraInfo?.Get<int>("metaQuestCameraEye") is int value ? (CameraEye)value : throw new ObjectDisposedException(nameof(CameraInfo));
+            _cameraInfo?.Get<int>("metaQuestCameraEye") is int value ? (CameraEye)(value + 1) : throw new ObjectDisposedException(nameof(CameraInfo));
 
         /// <summary>
         /// The position of the camera optical center.
@@ -130,20 +130,22 @@ namespace Uralstech.UXR.QuestCamera
         {
             get
             {
-                if (_cameraInfo?.Get<int[][]>("supportedResolutions") is not int[][] value)
+                if (_cameraInfo?.Get<AndroidJavaObject[]>("supportedResolutions") is not AndroidJavaObject[] value)
                     throw new ObjectDisposedException(nameof(CameraInfo));
 
                 int resolutionsCount = value.Length;
-                
+
                 Resolution[] resolutions = new Resolution[resolutionsCount];
                 for (int i = 0; i < resolutionsCount; i++)
                 {
-                    int[] nativeValues = value[i];
+                    AndroidJavaObject nativeSize = value[i];
                     resolutions[i] = new Resolution()
                     {
-                        width = nativeValues[0],
-                        height = nativeValues[1]
+                        width = nativeSize.Call<int>("getWidth"),
+                        height = nativeSize.Call<int>("getHeight")
                     };
+
+                    nativeSize.Dispose();
                 }
 
                 return resolutions;
@@ -157,7 +159,7 @@ namespace Uralstech.UXR.QuestCamera
         {
             get
             {
-                float[] resolution = _cameraInfo?.Get<float[]>("intrinsicsResolution");
+                int[] resolution = _cameraInfo?.Get<int[]>("intrinsicsResolution");
                 float[] focalLength = _cameraInfo?.Get<float[]>("intrinsicsFocalLength");
                 float[] principalPoint = _cameraInfo?.Get<float[]>("intrinsicsPrincipalPoint");
                 float? skew = _cameraInfo?.Get<float>("intrinsicsSkew");

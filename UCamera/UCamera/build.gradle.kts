@@ -8,7 +8,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        minSdk = 28
+        minSdk = 29
 
         setProperty("archivesBaseName", "$namespace")
     }
