@@ -35,10 +35,30 @@ namespace Uralstech.UXR.QuestCamera
         public ComputeShader YUVToRGBAComputeShader;
 
         /// <summary>
-        /// Gets the available camera devices. May be null.
+        /// Returns all available cameras and their characteristics. This is a cached value.
         /// </summary>
-        public string[] CameraDevices => _camera2Wrapper?.Call<string[]>("getCameraDevices");
+        public CameraInfo[] Cameras
+        {
+            get
+            {
+                if (_cameraInfosCached is not null)
+                    return _cameraInfosCached;
 
+                AndroidJavaObject[] nativeCameraInfos = _camera2Wrapper?.Call<AndroidJavaObject[]>("getCameraDevices");
+                if (nativeCameraInfos is null)
+                    return null;
+
+                int cameraInfoCount = nativeCameraInfos.Length;
+
+                _cameraInfosCached = new CameraInfo[cameraInfoCount];
+                for (int i = 0; i < cameraInfoCount; i++)
+                    _cameraInfosCached[i] = new CameraInfo(nativeCameraInfos[i]);
+
+                return _cameraInfosCached;
+            }
+        }
+
+        private CameraInfo[] _cameraInfosCached = null;
         private AndroidJavaObject _camera2Wrapper;
 
         protected override void Awake()
@@ -52,34 +72,33 @@ namespace Uralstech.UXR.QuestCamera
 
         protected void OnDestroy()
         {
+            if (_cameraInfosCached is not null)
+            {
+                int cameraInfoCount = _cameraInfosCached.Length;
+                for (int i = 0; i < cameraInfoCount; i++)
+                    _cameraInfosCached[i].Dispose();
+
+                _cameraInfosCached = null;
+            }
+
             _camera2Wrapper?.Dispose();
             _camera2Wrapper = null;
         }
 
         /// <summary>
-        /// Gets the supported resolutions for the specified camera.
+        /// Gets a camera device by the eye it is closest to.
         /// </summary>
-        /// <param name="camera">The ID of the camera. You can get it from <see cref="CameraDevices"/>.</param>
-        public Resolution[] GetSupportedResolutions(string camera)
+        /// <param name="eye">The eye.</param>
+        /// <returns>The camera's <see cref="CameraInfo"/>, <see langword="null"/> if not found.</returns>
+        public CameraInfo GetCamera(CameraInfo.CameraEye eye)
         {
-            string[] rawResolutions = _camera2Wrapper?.Call<string[]>("getSupportedResolutionsForCamera", camera);
-            if (rawResolutions is null)
-                return null;
-
-            int totalResolutions = rawResolutions.Length;
-            Resolution[] resolutions = new Resolution[totalResolutions];
-
-            for (int i = 0; i < totalResolutions; i++)
+            foreach (CameraInfo cameraInfo in Cameras)
             {
-                string[] resolutionWidthHeight = rawResolutions[i].Split('x');
-                resolutions[i] = new Resolution
-                {
-                    width = int.Parse(resolutionWidthHeight[0]),
-                    height = int.Parse(resolutionWidthHeight[1])
-                };
+                if (cameraInfo.Eye == eye)
+                    return cameraInfo;
             }
 
-            return resolutions;
+            return null;
         }
 
         /// <summary>
@@ -94,6 +113,7 @@ namespace Uralstech.UXR.QuestCamera
         public CameraDevice OpenCamera(string camera)
         {
             GameObject wrapperGO = new($"{nameof(CameraDevice)} ({camera}, {DateTime.UtcNow.Ticks})");
+            
             AndroidJavaObject nativeObject = _camera2Wrapper?.Call<AndroidJavaObject>("openCameraDevice", camera, wrapperGO.name);
             if (nativeObject is null)
             {

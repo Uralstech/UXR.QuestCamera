@@ -37,12 +37,13 @@ To install UXR.QuestCamera:
 
 ### AndroidManifest.xml
 
-Add the following permission to your project's `AndroidManifest.xml` file:
+Add the following to your project's `AndroidManifest.xml` file:
 ```xml
+<uses-feature android:name="android.hardware.camera2.any" android:required="true"/>
 <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" android:required="true"/>
 ```
 
-This permission is required by Horizon OS for apps to be able to access the headset cameras.
+The `HEADSET_CAMERA` permission is required by Horizon OS for apps to be able to access the headset cameras.
 You will have to request it at runtime, like so:
 ```csharp
 if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))

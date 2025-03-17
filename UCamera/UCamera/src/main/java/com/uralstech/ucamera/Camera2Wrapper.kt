@@ -16,9 +16,7 @@ package com.uralstech.ucamera
 
 import android.Manifest
 import android.content.Context
-import android.graphics.ImageFormat
 import android.hardware.camera2.CameraAccessException
-import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.util.Log
 import androidx.annotation.RequiresPermission
@@ -59,45 +57,23 @@ class Camera2Wrapper {
     }
 
     /**
-     * Gets the IDs of the available camera devices.
+     * Gets all available camera devices and their characteristics.
      */
-    fun getCameraDevices(): Array<String>? {
+    fun getCameraDevices(): Array<CameraCharacteristicsWrapper>? {
         return try {
-            Log.i(TAG, "Getting list of cameras.")
-            cameraManager.cameraIdList
-        } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Could not get camera IDs due to a camera access exception.", exp)
-            null
-        } catch (exp: SecurityException) {
-            Log.e(TAG, "Could not get camera IDs due to a security exception.", exp)
-            null
-        }
-    }
-
-    /**
-     * Gets the resolutions supported by the camera for the YAV 4:2:0 format.
-     */
-    fun getSupportedResolutionsForCamera(camera: String): Array<String>? {
-        try {
-            Log.i(TAG, "Getting supported resolutions for camera with ID \"$camera\".")
-
-            val characteristics = cameraManager.getCameraCharacteristics(camera)
-            val outputResolutions = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-                .getOutputSizes(ImageFormat.YUV_420_888)
-
-            val resolutions = mutableListOf<String>()
-            for (size in outputResolutions) {
-                resolutions.add("${size.width}x${size.height}")
+            val characteristicsWrappers = mutableListOf<CameraCharacteristicsWrapper>()
+            for (cameraId in cameraManager.cameraIdList) {
+                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+                characteristicsWrappers.add(CameraCharacteristicsWrapper(cameraId, characteristics))
             }
 
-            Log.i(TAG, "Got supported resolutions.")
-            return resolutions.toTypedArray()
+            characteristicsWrappers.toTypedArray()
         } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Could not get characteristics of camera with ID \"${camera}\" due to a camera access exception.", exp)
-            return null
+            Log.e(TAG, "Could not get camera characteristics due to a camera access exception.", exp)
+            null
         } catch (exp: SecurityException) {
-            Log.e(TAG, "Could not get characteristics of camera with ID \"${camera}\" due to a security exception.", exp)
-            return null
+            Log.e(TAG, "Could not get camera characteristics due to a security exception.", exp)
+            null
         }
     }
 
