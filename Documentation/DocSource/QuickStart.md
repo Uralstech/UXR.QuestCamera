@@ -26,14 +26,13 @@ of Unity. You can see the installation steps here: <https://github.com/RageAgain
 To install UXR.QuestCamera:
 
 - Go to `Project Settings` in your Unity project
-- Under `Package Manager`, in `Advanced Settings`, check `Show Pre-release Package Versions`
-- Under `Scoped Registries`, create a new registry with the following settings:
+- Under `Package Manager`, in `Scoped Registries`, create a new registry with the following settings:
     - Name: `OpenUPM`
     - URL: `https://package.openupm.com`
     - Scope(s): `com.uralstech`
 - Click `Apply`
 - Open the package manager and go to `My Registries` -> `OpenUPM`
-- Install UXR.QuestCamera >= `2.1.0-preview.1`
+- Install UXR.QuestCamera >= `2.2.0`
 
 ### AndroidManifest.xml
 
@@ -67,17 +66,17 @@ You can add the `QuestCameraManager` prefab, which contains an instance of `UCam
 RGBA conversion compute shader, by right clicking on the Hierarchy and clicking on `Quest Camera Manager`, under `Quest Camera`.
 
 To start getting images, you first have to open the camera device. You can have multiple cameras open at the same time, as
-long as the system allows it. To do so, you first have to get the list of camera device IDs.
+long as the system allows it.
 
-`UCameraManager` provides the IDs of all camera devices through the `CameraDevices` property, which returns a `string[]`.
-There will be two devices, one for the left eye and the other for the right eye. This exact order is not guaranteed, though.
+You can get an array of all available cameras in `UCameraManager.Cameras`, or you can request the camera nearest to the left or
+right eye of the user by calling `UCameraManager.GetCamera(CameraInfo.CameraEye)`. The information for each camera, like supported
+resolutions, position and rotation relative to the headset, focal length, and more are stored in `CameraInfo` objects.
 
-Once you've selected a camera ID, you can get the resolutions supported by the camera by calling `UCameraManager`'s
-`GetSupportedResolutions(cameraId)` method. It returns an array of `Resolution` objects. For example, to select the highest
-available resolution, you can do something like this:
+Once you've chosen a camera, you have to select a resolution for the images. You can get them from `CameraInfo.SupportedResolutions`.
+For example, you can get the highest supported resolution with the following code:
 ```csharp
 Resolution highestResolution = default;
-foreach (Resolution resolution in UCameraManager.Instance.GetSupportedResolutions(cameraId))
+foreach (Resolution resolution in cameraInfo.SupportedResolutions)
 {
     if (resolution.width * resolution.height > highestResolution.width * highestResolution.height)
         highestResolution = resolution;
@@ -88,9 +87,12 @@ Now you're ready to open the camera and start a capture session!
 
 ### Opening the Camera
 
-You can open the camera by calling `UCameraManager.OpenCamera(cameraId)`. This returns a `CameraDevice` object, which is a
-wrapper for the native Camera2 `CameraDevice` class. You should then wait for the camera to open. To do so, yield
-`CameraDevice.WaitForInitialization()`, or on Unity 6 and above, await `CameraDevice.WaitForInitializationAsync()`.
+You can open the camera by calling `UCameraManager.OpenCamera(cameraId)`. You can pass the previous `CameraInfo`
+object into this function, as `CameraInfo` will implicitly return its camera's ID as a string.
+
+The function returns a `CameraDevice` object, which is a wrapper for the native Camera2 `CameraDevice` class.
+You should then wait for the camera to open. To do so, yield `CameraDevice.WaitForInitialization()`, or on
+Unity 6 and above, await `CameraDevice.WaitForInitializationAsync()`.
 
 After this, you can check the state of the camera by accessing its `CurrentState` property. If it is
 `NativeWrapperState.Opened`, the camera is ready for use. Otherwise, it means the camera could not be opened successfully.
@@ -168,19 +170,19 @@ public class CameraTest : MonoBehaviour
             yield break;
         }
 
-        // Get a camera device ID.
-        string currentDevice = UCameraManager.Instance.CameraDevices[0];
+        // Get a camera device.
+        CameraInfo currentCamera = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
 
         // Get the supported resolutions of the camera and choose the highest resolution.
         Resolution highestResolution = default;
-        foreach (Resolution resolution in UCameraManager.Instance.GetSupportedResolutions(currentDevice))
+        foreach (Resolution resolution in currentCamera.SupportedResolutions)
         {
             if (resolution.width * resolution.height > highestResolution.width * highestResolution.height)
                 highestResolution = resolution;
         }
 
         // Open the camera.
-        CameraDevice camera = UCameraManager.Instance.OpenCamera(currentDevice);
+        CameraDevice camera = UCameraManager.Instance.OpenCamera(currentCamera);
         yield return camera.WaitForInitialization();
 
         // Check if it opened successfully
