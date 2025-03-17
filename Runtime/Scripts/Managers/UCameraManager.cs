@@ -108,7 +108,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Once you have finished using the camera, either destroy its GameObject or call <see cref="CameraDevice.Release"/>
         /// to close the camera and free up native resources.
         /// </remarks>
-        /// <param name="camera">The ID of the camera. You can get it from <see cref="CameraDevices"/>.</param>
+        /// <param name="camera">The ID of the camera. You can get it from <see cref="Cameras"/> or <see cref="GetCamera(CameraInfo.CameraEye)"/>.</param>
         /// <returns>A new camera device wrapper. May be null if the current object is disposed/unusable.</returns>
         public CameraDevice OpenCamera(string camera)
         {
