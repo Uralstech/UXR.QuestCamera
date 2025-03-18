@@ -155,6 +155,14 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// </summary>
         private async void StartCamera()
         {
+            // Check for camera permission.
+            if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
+            {
+                // If not given, request it, then return.
+                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
+                return;
+            }
+            
             // If already open, return.
             if (_cameraDevice != null || _captureSession != null)
             {
