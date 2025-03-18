@@ -1,0 +1,18 @@
+{
+    "name": "UXR.QuestCamera.Samples.DigitRecognition",
+    "rootNamespace": "",
+    "references": [
+        "GUID:c98377141161c7746a178fb5cb1af075",
+        "GUID:799d6a9cc351a8b4ea6bb0fcbeb86427",
+        "GUID:2281fe9ed9abb88469162fc481fcc7a1"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

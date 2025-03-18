@@ -1,0 +1,10 @@
+fileFormatVersion: 2
+guid: bea3df236e6caba4f87e4d9ee236498c
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: mnist-12
+  assetBundleVariant: uxr-questcamera-samples-digitrecognition
+  script: {fileID: 11500000, guid: fbac7b160becb464595912d0eaee98cb, type: 3}
