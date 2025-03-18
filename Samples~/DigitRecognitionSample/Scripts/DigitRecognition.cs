@@ -15,6 +15,7 @@
 using System.IO;
 using Unity.Sentis;
 using UnityEngine;
+using UnityEngine.Android;
 using UnityEngine.Networking;
 using UnityEngine.UI;
 
@@ -46,11 +47,13 @@ namespace Uralstech.UXR.QuestCamera.Samples
         private CameraInfo _cameraInfo; // Camera metadata.
         private CameraDevice _cameraDevice; // Camera device.
         private CaptureSessionObject<ContinuousCaptureSession> _captureSession; // Camera capture session data.
-        
+
         private Worker _digitRecognitionWorker; // The model inference worker.
         private Tensor<float> _inputTensors; // The model input.
         private Texture2D _imageTexture; // The input texture.
         private bool _isModelBusy; // Busy flag.
+
+        private bool _wasPermissionRequested = false; // Flag for permission checking.
 
         // Start is called on the frame when a script is enabled for the first time.
         protected async void Start()
@@ -72,13 +75,25 @@ namespace Uralstech.UXR.QuestCamera.Samples
             // Set that as the _modelInputPreview image.
             _modelInputPreview.texture = _imageTexture;
 
-            // Get the left eye camera.
-            _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
-            Debug.Log($"Got camera info: {_cameraInfo}");
-
             // Add button listeners.
             _startButton.onClick.AddListener(StartCamera);
             _stopButton.onClick.AddListener(StopCamera);
+
+            // Check if the camera permission has been given.
+            if (Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
+            {
+                // Get the left eye camera.
+                _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
+                Debug.Log($"Got camera info: {_cameraInfo}");
+            }
+            else
+            {
+                // Request the permission and set the flag to true.
+                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
+                _wasPermissionRequested = true;
+
+                Debug.Log("Camera permission requested.");
+            }
         }
 
         // Destroying the attached Behaviour will result in the game or Scene receiving OnDestroy.
@@ -155,14 +170,27 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// </summary>
         private async void StartCamera()
         {
-            // Check for camera permission.
+            // Check for the camera permission.
             if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
             {
                 // If not given, request it, then return.
                 Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
+                _wasPermissionRequested = true; // Set the flag.
+
+                Debug.Log("Camera permission requested.");
                 return;
             }
-            
+
+            // Check if the flag was set.
+            if (_wasPermissionRequested)
+            {
+                // Since the permission has been granted, get the camera info again.
+                _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
+                Debug.Log($"Got new camera info: {_cameraInfo}");
+
+                _wasPermissionRequested = false; // Unset the flag.
+            }
+
             // If already open, return.
             if (_cameraDevice != null || _captureSession != null)
             {
@@ -205,7 +233,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
 
             // Set _cameraPreview to the texture.
             _cameraPreview.texture = _captureSession.TextureConverter.FrameRenderTexture;
-            
+
             // Set a callback for when each frame is ready for the AI.
             _captureSession.TextureConverter.OnFrameProcessed.AddListener(OnFrameReady);
             Debug.Log("Capture session opened.");
