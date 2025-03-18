@@ -31,12 +31,12 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// The native camera frame forwarder.
         /// </summary>
-        public CameraFrameForwarder CameraFrameForwarder { get; private set; }
+        public CameraFrameForwarder CameraFrameForwarder { get; protected set; }
 
         /// <summary>
         /// The RenderTexture which will contain the RGBA camera frames.
         /// </summary>
-        public RenderTexture FrameRenderTexture { get; private set; }
+        public RenderTexture FrameRenderTexture { get; protected set; }
 
         /// <summary>
         /// The shader used to convert YUV 4:2:0 to an RGBA RenderTexture.
@@ -67,7 +67,9 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Have the converter's resources been released?
         /// </summary>
-        private bool _isReleased = false;
+#pragma warning disable IDE1006 // Naming Styles
+        protected bool _isReleased { get; private set; } = false;
+#pragma warning restore IDE1006 // Naming Styles
 
         /// <summary>
         /// Copies native (unmanaged) byte data to a compute buffer.
