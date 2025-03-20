@@ -53,8 +53,6 @@ namespace Uralstech.UXR.QuestCamera.Samples
         private Texture2D _imageTexture; // The input texture.
         private bool _isModelBusy; // Busy flag.
 
-        private bool _wasPermissionRequested = false; // Flag for permission checking.
-
         // Start is called on the frame when a script is enabled for the first time.
         protected async void Start()
         {
@@ -88,10 +86,16 @@ namespace Uralstech.UXR.QuestCamera.Samples
             }
             else
             {
-                // Request the permission and set the flag to true.
-                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
-                _wasPermissionRequested = true;
+                // Callback to set _cameraInfo when the permission is granted.
+                PermissionCallbacks callbacks = new();
+                callbacks.PermissionGranted += _ =>
+                {
+                    _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
+                    Debug.Log($"Got new camera info after camera permission was granted: {_cameraInfo}");
+                };
 
+                // Request the permission and set the flag to true.
+                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission, callbacks);
                 Debug.Log("Camera permission requested.");
             }
         }
@@ -170,25 +174,12 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// </summary>
         private async void StartCamera()
         {
-            // Check for the camera permission.
-            if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
+            // Check if _cameraInfo is null.
+            if (_cameraInfo == null)
             {
-                // If not given, request it, then return.
-                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
-                _wasPermissionRequested = true; // Set the flag.
-
-                Debug.Log("Camera permission requested.");
+                // if null, log an error, as the camera permission was not given.
+                Debug.LogError("Camera permission was not given.");
                 return;
-            }
-
-            // Check if the flag was set.
-            if (_wasPermissionRequested)
-            {
-                // Since the permission has been granted, get the camera info again.
-                _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
-                Debug.Log($"Got new camera info: {_cameraInfo}");
-
-                _wasPermissionRequested = false; // Unset the flag.
             }
 
             // If already open, return.
