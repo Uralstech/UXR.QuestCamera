@@ -202,6 +202,29 @@ namespace Uralstech.UXR.QuestCamera
             return new CaptureSessionObject<OnDemandCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
         }
 
+        public SurfaceTextureCaptureSession CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        {
+            if (!IsActiveAndUsable)
+                return null;
+
+            long timeStamp = DateTime.Now.Ticks;
+            GameObject wrapperGO = new($"{nameof(SurfaceTextureCaptureSession)} ({CameraId}, {timeStamp})");
+
+            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession",
+                timeStamp, wrapperGO.name, resolution.width, resolution.height, (int)captureTemplate);
+            if (nativeObject is null)
+            {
+                Destroy(wrapperGO);
+                return null;
+            }
+
+            SurfaceTextureCaptureSession wrapper = wrapperGO.AddComponent<SurfaceTextureCaptureSession>();
+            wrapper.SetCaptureSession(nativeObject);
+            wrapper.CreateNativeTexture(timeStamp);
+
+            return wrapper;
+        }
+
         /// <summary>
         /// Releases the CameraDevice's native resources, and makes it unusable.
         /// </summary>
