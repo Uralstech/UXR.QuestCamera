@@ -11,6 +11,11 @@ android {
         minSdk = 29
 
         setProperty("archivesBaseName", "$namespace")
+
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -28,6 +33,12 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     packaging {

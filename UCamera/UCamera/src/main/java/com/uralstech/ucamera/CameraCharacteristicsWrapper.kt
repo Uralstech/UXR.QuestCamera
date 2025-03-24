@@ -43,32 +43,32 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     /**
      * The position of the camera optical center.
      */
-    val lensPoseTranslation = characteristics.get(CameraCharacteristics.LENS_POSE_TRANSLATION)!!
+    val lensPoseTranslation = characteristics.get(CameraCharacteristics.LENS_POSE_TRANSLATION)
 
     /**
      * The orientation of the camera relative to the sensor coordinate system.
      */
-    val lensPoseRotation = characteristics.get(CameraCharacteristics.LENS_POSE_ROTATION)!!
+    val lensPoseRotation = characteristics.get(CameraCharacteristics.LENS_POSE_ROTATION)
 
     /**
      * The resolutions supported by this device.
      */
-    val supportedResolutions: Array<Size>
+    val supportedResolutions: Array<Size>?
 
     /**
      * The resolution, in pixels, for which intrinsics are provided.
      */
-    val intrinsicsResolution: IntArray
+    val intrinsicsResolution: IntArray?
 
     /**
      * The horizontal and vertical focal lengths, in pixels.
      */
-    val intrinsicsFocalLength: FloatArray
+    val intrinsicsFocalLength: FloatArray?
 
     /**
      * Principal point in pixels from the image's top-left corner.
      */
-    val intrinsicsPrincipalPoint: FloatArray
+    val intrinsicsPrincipalPoint: FloatArray?
 
     /**
      * Skew coefficient for axis misalignment.
@@ -90,15 +90,25 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
         this.metaQuestCameraSource = metaQuestCameraSource
         this.metaQuestCameraEye = metaQuestCameraEye
 
-        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-        supportedResolutions = configMap.getOutputSizes(ImageFormat.YUV_420_888)!!
+        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+        supportedResolutions = configMap?.getOutputSizes(ImageFormat.YUV_420_888)
 
-        val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)!!
-        intrinsicsResolution = intArrayOf(sensorSize.right, sensorSize.bottom)
+        val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
+        intrinsicsResolution = if (sensorSize != null) {
+            intArrayOf(sensorSize.right, sensorSize.bottom)
+        } else {
+            null
+        }
 
-        val lensCalibration = characteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)!!
-        intrinsicsFocalLength = floatArrayOf(lensCalibration[0], lensCalibration[1])
-        intrinsicsPrincipalPoint = floatArrayOf(lensCalibration[2], lensCalibration[3])
-        intrinsicsSkew = lensCalibration[4]
+        val lensCalibration = characteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
+        if (lensCalibration != null) {
+            intrinsicsFocalLength = floatArrayOf(lensCalibration[0], lensCalibration[1])
+            intrinsicsPrincipalPoint = floatArrayOf(lensCalibration[2], lensCalibration[3])
+            intrinsicsSkew = lensCalibration[4]
+        } else {
+            intrinsicsFocalLength = null
+            intrinsicsPrincipalPoint = null
+            intrinsicsSkew = Float.NEGATIVE_INFINITY
+        }
     }
 }
