@@ -34,8 +34,8 @@ class SurfaceTextureCaptureSession(
     timeStamp: Long,
     private val unityListener: String,
     private val cameraDevice: CameraDevice,
-    val width: Int,
-    val height: Int,
+    private val width: Int,
+    private val height: Int,
     private val captureTemplate: Int) {
 
     companion object {
@@ -101,7 +101,7 @@ class SurfaceTextureCaptureSession(
             val surface = Surface(surfaceTexture)
             this.surface = surface
 
-            UnityPlayer.UnitySendMessage(unityListener, ON_TEXTURE_CREATED, textureId.toString())
+            UnityPlayer.UnitySendMessage(unityListener, ON_TEXTURE_CREATED, "")
             cameraDevice.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 listOf(OutputConfiguration(surface)),

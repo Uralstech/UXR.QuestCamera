@@ -17,15 +17,16 @@
 #include <android/log.h>
 #include <android/surface_texture.h>
 #include <android/surface_texture_jni.h>
-#include <GLES3/gl3.h>
+#include <GLES3/gl32.h>
 #include <GLES2/gl2ext.h>
 #include <mutex>
 #include <map>
 #include "jni.h"
 
 #define LOG_TAG "UCameraNativeGraphics"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,    LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,   LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,     LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,     LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,    LOG_TAG, __VA_ARGS__)
 
 #define CREATE_GL_TEXTURE_EVENT         1
 #define DESTROY_GL_TEXTURE_EVENT        2
@@ -41,6 +42,9 @@ struct NativeAndJavaSurfaceTexture
 {
     ASurfaceTexture* nativeSurfaceTexture;
     jobject jniSurfaceTexture;
+
+    GLuint cameraFrameBuffer;
+    GLuint unityFrameBuffer;
 };
 
 static std::map<jint, NativeAndJavaSurfaceTexture> g_registeredSurfaceTextureMap;
@@ -101,6 +105,8 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void* /* reserved */) {
     for (auto const& [key, val] : g_registeredSurfaceTextureMap) {
         ASurfaceTexture_release(val.nativeSurfaceTexture);
         env->DeleteGlobalRef(val.jniSurfaceTexture);
+
+        LOGW("Could not dispose FrameBuffers with IDs \"%i\" and \"%i\" due to being on the JNI thread.", val.cameraFrameBuffer, val.unityFrameBuffer);
     }
 
     g_registeredSurfaceTextureMap.clear();
@@ -227,29 +233,120 @@ extern "C" JNIEXPORT void JNICALL
 
     ASurfaceTexture_release(it->second.nativeSurfaceTexture);
     env->DeleteGlobalRef(it->second.jniSurfaceTexture);
-    g_registeredSurfaceTextureMap.erase(it);
+
+    it->second.nativeSurfaceTexture = nullptr;
+    it->second.jniSurfaceTexture = nullptr;
 
     LOGI("Deregistered SurfaceTexture successfully.");
 }
 
-void updateSurfaceTextureNative(jint textureId) {
-    LOGI("Updating SurfaceTexture from native code.");
+struct TextureUpdateData {
+    GLuint unityTextureId;
+    jint cameraTextureId;
+    GLint width;
+    GLint height;
+};
+
+void updateSurfaceTextureNative(TextureUpdateData data) {
+    LOGI("Updating SurfaceTexture from native code. (camTex: %i, unityTex: %i)", data.cameraTextureId, data.unityTextureId);
     std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
 
-    auto it = g_registeredSurfaceTextureMap.find(textureId);
+    auto it = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
     if (it == g_registeredSurfaceTextureMap.end()) {
-        LOGE("Could not find any registered SurfaceTextures for textureId: %i", textureId);
+        LOGE("Could not find any registered SurfaceTextures for textureId: %i", data.cameraTextureId);
         return;
     }
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureId);
-
     ASurfaceTexture_updateTexImage(it->second.nativeSurfaceTexture);
-
     LOGI("Successfully updated SurfaceTexture from native code.");
 
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+    GLuint* cameraFrameBuffer = &it->second.cameraFrameBuffer;
+    if (*cameraFrameBuffer == 0) {
+        glGenFramebuffers(1, cameraFrameBuffer);
+        LOGI("Created new cameraFrameBuffer.");
+    }
+
+    GLuint* unityFrameBuffer = &it->second.unityFrameBuffer;
+    if (*unityFrameBuffer == 0) {
+        glGenFramebuffers(1, unityFrameBuffer);
+        LOGI("Created new unityFrameBuffer.");
+    }
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, *cameraFrameBuffer);
+    glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_EXTERNAL_OES, data.cameraTextureId, 0);
+
+    GLenum status = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        LOGE("CameraFrameBuffer not complete, with status: %i", status);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        return;
+    }
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, *unityFrameBuffer);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, data.unityTextureId, 0);
+
+    status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        LOGE("UnityFrameBuffer not complete, with status: %i", status);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        return;
+    }
+
+    glBlitFramebuffer(0, 0, data.width, data.height, 0, 0, data.width, data.height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glFinish();
+
+    LOGI("Successfully updated and copied SurfaceTexture to Unity.");
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
+void deleteTextureNative(GLuint textureId) {
+    glDeleteTextures(1, &textureId);
+    LOGI("OpenGL texture with ID \"%u\" deleted", textureId);
+
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
+
+    auto it = g_registeredSurfaceTextureMap.find((jint)textureId);
+    if (it != g_registeredSurfaceTextureMap.end()) {
+        if (it->second.cameraFrameBuffer > 0) {
+            glDeleteFramebuffers(1, &it->second.cameraFrameBuffer);
+            it->second.cameraFrameBuffer = 0;
+            LOGI("cameraFrameBuffer deleted.");
+        }
+
+        if (it->second.unityFrameBuffer > 0) {
+            glDeleteFramebuffers(1, &it->second.unityFrameBuffer);
+            it->second.unityFrameBuffer = 0;
+            LOGI("unityFrameBuffer deleted.");
+        }
+
+        if (it->second.nativeSurfaceTexture != nullptr) {
+            ASurfaceTexture_release(it->second.nativeSurfaceTexture);
+            it->second.nativeSurfaceTexture = nullptr;
+            LOGI("ASurfaceTexture* deleted.");
+        }
+
+        if (it->second.jniSurfaceTexture != nullptr) {
+
+            bool shouldDetach;
+            JNIEnv* env = AttachEnv(&shouldDetach);
+            if (env == nullptr) {
+                LOGE("Could not delete global reference to SurfaceTexture due to not being able to attach to a JNIEnv.");
+                return;
+            }
+
+            env->DeleteGlobalRef(it->second.jniSurfaceTexture);
+            it->second.jniSurfaceTexture = nullptr;
+            LOGI("SurfaceTexture Global Reference deleted.");
+
+            if (shouldDetach) {
+                DetachJNIEnv();
+            }
+        }
+
+        g_registeredSurfaceTextureMap.erase(it);
+    }
 }
 
 void sendTextureIdToCaptureSession(GLuint textureId, jlong timeStamp) {
@@ -290,59 +387,43 @@ void sendTextureIdToCaptureSession(GLuint textureId, jlong timeStamp) {
 }
 
 static void UNITY_INTERFACE_API OnRenderEvent(int eventId, void* data) {
+    if (data == nullptr) {
+        LOGE("OnRenderEvent got nullptr as data.");
+        return;
+    }
+
     switch (eventId) {
         case CREATE_GL_TEXTURE_EVENT:
             LOGI("Creating new OpenGL texture.");
 
-            if (data == nullptr) {
-                LOGE("Could not create OpenGL texture as data is a nullptr.");
-                break;
-            }
+            jlong timeStamp;
+            timeStamp = *reinterpret_cast<jlong*>(data);
 
-            GLuint textureIds[1];
-            glGenTextures(1, textureIds);
-            LOGI("Created new OpenGL texture with ID: %u", textureIds[0]);
+            GLuint textureId;
+            glGenTextures(1, &textureId);
+            LOGI("Created new OpenGL texture with ID: %u", textureId);
 
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureIds[0]);
-            glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-            glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
-
-            LOGI("Set parameters for OpenGL texture.");
-
-            sendTextureIdToCaptureSession(textureIds[0], *reinterpret_cast<jlong *>(data));
+            sendTextureIdToCaptureSession(textureId, timeStamp);
             break;
 
         case DESTROY_GL_TEXTURE_EVENT:
             LOGI("Destroying OpenGL texture.");
 
-            GLuint* textureToDelete;
-            textureToDelete = reinterpret_cast<GLuint*>(data);
+            GLuint textureToDelete;
+            textureToDelete = *reinterpret_cast<GLuint*>(data);
 
-            if (textureToDelete == nullptr || (*textureToDelete) == 0) {
-                LOGE("Could not destroy OpenGL texture as textureToDelete is a nullptr or is zero.");
-                break;
+            if (textureToDelete == 0) {
+                LOGE("DESTROY_GL_TEXTURE_EVENT failed due to textureToDelete being 0.");
+                return;
             }
 
-            glDeleteTextures(1, textureToDelete);
-            LOGI("OpenGL texture with ID \"%u\" deleted", *textureToDelete);
+            deleteTextureNative(textureToDelete);
             break;
 
         case UPDATE_SURFACE_TEXTURE_EVENT:
             LOGI("Updating SurfaceTexture.");
 
-            jint* surfaceTextureToUpdate;
-            surfaceTextureToUpdate = reinterpret_cast<jint*>(data);
-
-            if (surfaceTextureToUpdate == nullptr || (*surfaceTextureToUpdate) == 0) {
-                LOGE("Could not update SurfaceTexture as surfaceTextureToUpdate is a nullptr or is zero.");
-                break;
-            }
-
-            updateSurfaceTextureNative(*surfaceTextureToUpdate);
+            updateSurfaceTextureNative(*reinterpret_cast<TextureUpdateData*>(data));
             break;
 
         default:
