@@ -15,7 +15,6 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.Rendering;
 
 namespace Uralstech.UXR.QuestCamera
@@ -29,19 +28,28 @@ namespace Uralstech.UXR.QuestCamera
 
         [DllImport("NativeTextureHelper")]
         private static extern IntPtr GetRenderEventFunction();
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TextureUpdateData
+        {
+            public uint UnityTextureId;
+            public int CameraTextureId;
+            public int Width;
+            public int Height;
+        };
         #endregion
 
-        public int Width => _captureSession?.Get<int>("width") ?? throw new ObjectDisposedException(nameof(SurfaceTextureCaptureSession));
-
-        public int Height => _captureSession?.Get<int>("height") ?? throw new ObjectDisposedException(nameof(SurfaceTextureCaptureSession));
+        public Resolution Resolution { get; private set; }
 
         public Texture2D Texture { get; private set; }
 
-        public UnityEvent<Texture2D> OnTextureCreated = new();
-        public UnityEvent OnTextureDestroyed = new();
+        public NativeWrapperState NativeTextureState { get; private set; }
 
-        internal void CreateNativeTexture(long timeStamp)
+        internal async void CreateNativeTexture(Resolution resolution, long timeStamp)
         {
+            Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.RGBA32, false);
+            Resolution = resolution;
+
             IntPtr timeStampPtr = Marshal.AllocHGlobal(sizeof(long));
             Marshal.WriteInt64(timeStampPtr, timeStamp);
 
@@ -49,6 +57,9 @@ namespace Uralstech.UXR.QuestCamera
 
             commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, timeStampPtr);
             Graphics.ExecuteCommandBuffer(commandBuffer);
+
+            while (NativeTextureState == NativeWrapperState.Initializing)
+                await Awaitable.NextFrameAsync();
 
             Debug.Log("Releasing timeStampPtr.");
             Marshal.FreeHGlobal(timeStampPtr);
@@ -70,28 +81,27 @@ namespace Uralstech.UXR.QuestCamera
                 return;
             }
 
-            IntPtr dataPtr = Marshal.AllocHGlobal(sizeof(int));
-            Marshal.WriteInt32(dataPtr, texId);
+            TextureUpdateData data = new()
+            {
+                CameraTextureId = texId,
+                UnityTextureId = (uint)Texture.GetNativeTexturePtr(),
+                Width = Resolution.width,
+                Height = Resolution.height,
+            };
+
+            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
+            Marshal.StructureToPtr(data, dataPtr, false);
 
             using CommandBuffer commandBuffer = new();
             commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
 
             Graphics.ExecuteCommandBuffer(commandBuffer);
             Marshal.FreeHGlobal(dataPtr);
-
-            GL.InvalidateState();
         }
 
-        public void _onTextureCreated(string textureId)
+        public void _onTextureCreated(string _)
         {
-            if (!int.TryParse(textureId, out int texId))
-            {
-                Debug.LogError($"Could not get texture ID for {nameof(SurfaceTextureCaptureSession)}.{nameof(_onTextureCreated)}.");
-                return;
-            }
-
-            Texture = Texture2D.CreateExternalTexture(Width, Height, TextureFormat.RGBA32, false, true, (IntPtr)texId);
-            OnTextureCreated?.Invoke(Texture);
+            NativeTextureState = NativeWrapperState.Opened;
         }
 
         public void _destroyNativeTexture(string textureId)
@@ -102,6 +112,7 @@ namespace Uralstech.UXR.QuestCamera
                 return;
             }
 
+            NativeTextureState = NativeWrapperState.Closed;
             if (Texture != null)
                 Destroy(Texture);
 
@@ -113,8 +124,6 @@ namespace Uralstech.UXR.QuestCamera
 
             Graphics.ExecuteCommandBuffer(commandBuffer);
             Marshal.FreeHGlobal(dataPtr);
-
-            OnTextureDestroyed?.Invoke();
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion

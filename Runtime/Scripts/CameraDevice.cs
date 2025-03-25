@@ -220,8 +220,8 @@ namespace Uralstech.UXR.QuestCamera
 
             SurfaceTextureCaptureSession wrapper = wrapperGO.AddComponent<SurfaceTextureCaptureSession>();
             wrapper.SetCaptureSession(nativeObject);
-            wrapper.CreateNativeTexture(timeStamp);
-
+            
+            wrapper.CreateNativeTexture(resolution, timeStamp);
             return wrapper;
         }
 
