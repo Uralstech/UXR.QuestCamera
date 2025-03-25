@@ -30,6 +30,11 @@ namespace Uralstech.UXR.QuestCamera
         public const string HeadsetCameraPermission = "horizonos.permission.HEADSET_CAMERA";
 
         /// <summary>
+        /// The permission required to access the Meta Quest Avatar Camera.
+        /// </summary>
+        public const string AvatarCameraPermission = "android.permission.CAMERA";
+
+        /// <summary>
         /// The compute shader to use to convert the camera's YUV 4:2:0 images to RGBA.
         /// </summary>
         public ComputeShader YUVToRGBAComputeShader;
