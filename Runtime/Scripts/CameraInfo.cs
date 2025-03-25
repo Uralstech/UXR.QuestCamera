@@ -115,13 +115,13 @@ namespace Uralstech.UXR.QuestCamera
         /// The position of the camera optical center.
         /// </summary>
         public Vector3 LensPoseTranslation =>
-            _cameraInfo?.Get<float[]>("lensPoseTranslation") is float[] value ? new Vector3(value[0], value[1], -value[2]) : throw new ObjectDisposedException(nameof(CameraInfo));
+            _cameraInfo?.Get<float[]>("lensPoseTranslation") is float[] value ? new Vector3(value[0], value[1], -value[2]) : Vector3.zero;
 
         /// <summary>
         /// The orientation of the camera relative to the sensor coordinate system.
         /// </summary>
         public Quaternion LensPoseRotation =>
-            _cameraInfo?.Get<float[]>("lensPoseRotation") is float[] value ? new Quaternion(-value[0], -value[1], value[2], value[3]) : throw new ObjectDisposedException(nameof(CameraInfo));
+            _cameraInfo?.Get<float[]>("lensPoseRotation") is float[] value ? new Quaternion(-value[0], -value[1], value[2], value[3]) : Quaternion.identity;
 
         /// <summary>
         /// The resolutions supported by this camera.
@@ -164,13 +164,13 @@ namespace Uralstech.UXR.QuestCamera
                 float[] principalPoint = _cameraInfo?.Get<float[]>("intrinsicsPrincipalPoint");
                 float? skew = _cameraInfo?.Get<float>("intrinsicsSkew");
 
-                return resolution is not null && focalLength is not null && principalPoint is not null && skew is not null
+                return resolution is not null && focalLength is not null && principalPoint is not null && (skew is not null || skew == float.NegativeInfinity)
                     ? new CameraIntrinsics(
                         new Vector2(resolution[0], resolution[1]),
                         new Vector2(focalLength[0], focalLength[1]),
                         new Vector2(principalPoint[0], principalPoint[1]),
                         skew.Value
-                    ) : throw new ObjectDisposedException(nameof(CameraInfo));
+                    ) : default;
             }
         }
 
