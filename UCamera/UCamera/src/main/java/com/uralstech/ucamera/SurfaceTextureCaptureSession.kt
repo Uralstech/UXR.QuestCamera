@@ -50,6 +50,8 @@ class SurfaceTextureCaptureSession(
         private const val ON_SESSION_REQUEST_SET    = "_onSessionRequestSet"
         private const val ON_SESSION_REQUEST_FAILED = "_onSessionRequestFailed"
 
+        private const val ON_CAPTURE_COMPLETED      = "_onCaptureCompleted"
+
         init {
             System.loadLibrary("NativeTextureHelper")
         }
@@ -71,7 +73,7 @@ class SurfaceTextureCaptureSession(
     private var surfaceTexture: SurfaceTexture? = null
 
     /** OpenGL ES 3.0 texture ID for [surfaceTexture]. */
-    var surfaceTextureId: Int? = null
+    private var surfaceTextureId: Int = 0
 
     init {
         queueSurfaceTextureCaptureSession(timeStamp);
@@ -92,13 +94,14 @@ class SurfaceTextureCaptureSession(
 
             val surfaceTexture = SurfaceTexture(textureId)
             surfaceTexture.setDefaultBufferSize(width, height)
-
-            UnityPlayer.UnitySendMessage(unityListener, ON_TEXTURE_CREATED, textureId.toString())
             this.surfaceTexture = surfaceTexture
+
+            registerSurfaceTextureForUpdates(surfaceTexture, textureId)
 
             val surface = Surface(surfaceTexture)
             this.surface = surface
 
+            UnityPlayer.UnitySendMessage(unityListener, ON_TEXTURE_CREATED, textureId.toString())
             cameraDevice.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 listOf(OutputConfiguration(surface)),
@@ -153,8 +156,10 @@ class SurfaceTextureCaptureSession(
                     request: CaptureRequest,
                     result: TotalCaptureResult
                 ) {
-                    Log.i(TAG, "Updating capture texture.")
-                    UnityPlayer.UnitySendMessage(unityListener, "_textureReadyForUpdate", "")
+                    val textureId = surfaceTextureId
+                    if (textureId > 0) {
+                        UnityPlayer.UnitySendMessage(unityListener, ON_CAPTURE_COMPLETED, textureId.toString())
+                    }
                 }
             })
 
@@ -191,16 +196,19 @@ class SurfaceTextureCaptureSession(
         surface?.release()
         surface = null
 
+        val textureId = surfaceTextureId
+        if (textureId > 0) {
+            deregisterSurfaceTextureForUpdates(textureId)
+            UnityPlayer.UnitySendMessage(unityListener, DESTROY_NATIVE_TEXTURE, textureId.toString())
+        }
+
         surfaceTexture?.release()
         surfaceTexture = null
-
-        val texId = surfaceTextureId
-        if (texId != null && texId > 0) {
-            UnityPlayer.UnitySendMessage(unityListener, DESTROY_NATIVE_TEXTURE, texId.toString())
-        }
 
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }
 
     private external fun queueSurfaceTextureCaptureSession(timeStamp: Long);
+    private external fun registerSurfaceTextureForUpdates(surfaceTexture: SurfaceTexture, textureId: Int);
+    private external fun deregisterSurfaceTextureForUpdates(textureId: Int);
 }

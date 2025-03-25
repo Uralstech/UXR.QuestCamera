@@ -12,4 +12,4 @@ target_include_directories(
         UnityInterfaces
 )
 
-target_link_libraries(NativeTextureHelper log GLESv3)
+target_link_libraries(NativeTextureHelper android GLESv3 log)

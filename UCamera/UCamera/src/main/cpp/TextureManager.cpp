@@ -1,7 +1,10 @@
 #include "IUnityInterface.h"
 #include "IUnityGraphics.h"
 #include <android/log.h>
+#include <android/surface_texture.h>
+#include <android/surface_texture_jni.h>
 #include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
 #include <mutex>
 #include <map>
 #include "jni.h"
@@ -10,14 +13,24 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,    LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,   LOG_TAG, __VA_ARGS__)
 
-#define CREATE_GL_TEXTURE_EVENT 1
-#define DESTROY_GL_TEXTURE_EVENT 2
+#define CREATE_GL_TEXTURE_EVENT         1
+#define DESTROY_GL_TEXTURE_EVENT        2
+#define UPDATE_SURFACE_TEXTURE_EVENT    3
 
 static JavaVM* g_javaVm = nullptr;
 static jmethodID g_startCaptureSessionMethodId = nullptr;
 
-static std::map<jlong, jobject> g_uninitializedSurfaceTextureMap;
-static std::mutex g_mapMutex;
+static std::map<jlong, jobject> g_uninitializedSTCaptureSessionMap;
+static std::mutex g_uninitializedSTCaptureSessionMapMutex;
+
+struct NativeAndJavaSurfaceTexture
+{
+    ASurfaceTexture* nativeSurfaceTexture;
+    jobject jniSurfaceTexture;
+};
+
+static std::map<jint, NativeAndJavaSurfaceTexture> g_registeredSurfaceTextureMap;
+static std::mutex g_registeredSurfaceTextureMapMutex;
 
 bool CheckAndLogJNIException(JNIEnv* env);
 
@@ -58,25 +71,36 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void* /* reserved */) {
 
     JNIEnv* env;
     if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) {
-        LOGE("Could not properly dispose g_uninitializedSurfaceTextureMap as JNIEnv could not be retrieved.");
+        LOGE("Could not properly dispose g_uninitializedSTCaptureSessionMap as JNIEnv could not be retrieved.");
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_mapMutex);
-    for (auto const& [key, val] : g_uninitializedSurfaceTextureMap) {
+    std::lock_guard<std::mutex> lock1(g_uninitializedSTCaptureSessionMapMutex);
+    for (auto const& [key, val] : g_uninitializedSTCaptureSessionMap) {
         env->DeleteGlobalRef(val);
     }
 
-    g_uninitializedSurfaceTextureMap.clear();
-    LOGI("Successfully disposed g_uninitializedSurfaceTextureMap.");
+    g_uninitializedSTCaptureSessionMap.clear();
+    LOGI("Successfully disposed g_uninitializedSTCaptureSessionMap.");
+
+    std::lock_guard<std::mutex> lock2(g_registeredSurfaceTextureMapMutex);
+    for (auto const& [key, val] : g_registeredSurfaceTextureMap) {
+        ASurfaceTexture_release(val.nativeSurfaceTexture);
+        env->DeleteGlobalRef(val.jniSurfaceTexture);
+    }
+
+    g_registeredSurfaceTextureMap.clear();
+    LOGI("Successfully disposed g_registeredSurfaceTextureMap.");
 }
 
-JNIEnv* AttachEnv() {
+JNIEnv* AttachEnv(bool* shouldDetach) {
     JavaVM* javaVm = g_javaVm;
     if (javaVm == nullptr) {
         LOGE("Failed to get JNIEnv as javaVM is a nullptr!");
         return nullptr;
     }
+
+    *shouldDetach = false;
 
     JNIEnv* env;
     jint result = javaVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
@@ -89,6 +113,8 @@ JNIEnv* AttachEnv() {
             LOGE("Failed to attach to JNI thread, result: %i", result);
             return nullptr;
         }
+
+        *shouldDetach = true;
     } else if (result != JNI_OK) {
         LOGE("Failed to get JNIEnv, result: %i", result);
         return nullptr;
@@ -124,7 +150,7 @@ bool CheckAndLogJNIException(JNIEnv* env) {
 
 extern "C" JNIEXPORT void JNICALL
     Java_com_uralstech_ucamera_SurfaceTextureCaptureSession_queueSurfaceTextureCaptureSession(JNIEnv* env, jobject current, jlong timeStamp) {
-    std::lock_guard<std::mutex> lock(g_mapMutex);
+    std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
 
     jobject globalRef = env->NewGlobalRef(current);
     if (globalRef == nullptr) {
@@ -132,35 +158,103 @@ extern "C" JNIEXPORT void JNICALL
         return;
     }
 
-    auto it = g_uninitializedSurfaceTextureMap.find(timeStamp);
-    if (it != g_uninitializedSurfaceTextureMap.end()) {
+    auto it = g_uninitializedSTCaptureSessionMap.find(timeStamp);
+    if (it != g_uninitializedSTCaptureSessionMap.end()) {
         env->DeleteGlobalRef(it->second);
         it->second = globalRef;
 
         LOGI("Replaced existing STCaptureSession in map with new GlobalRef (timeStamp: %li).", timeStamp);
     } else {
-        g_uninitializedSurfaceTextureMap[timeStamp] = globalRef;
+        g_uninitializedSTCaptureSessionMap[timeStamp] = globalRef;
         LOGI("Added new STCaptureSession GlobalRef to map, with timeStamp: %li.", timeStamp);
     }
 }
 
-void SendTextureIdToCaptureSession(GLuint textureId, jlong timeStamp)
-{
+extern "C" JNIEXPORT void JNICALL
+    Java_com_uralstech_ucamera_SurfaceTextureCaptureSession_registerSurfaceTextureForUpdates(JNIEnv* env, jobject /* current */, jobject surfaceTexture, jint textureId) {
+    LOGI("Registering SurfaceTexture for updates.");
+
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
+
+    jobject globalRef = env->NewGlobalRef(surfaceTexture);
+    if (globalRef == nullptr) {
+        LOGE("Could not create global reference for SurfaceTexture.");
+        return;
+    }
+
+    auto it = g_registeredSurfaceTextureMap.find(textureId);
+    if (it != g_registeredSurfaceTextureMap.end()) {
+        ASurfaceTexture_release(it->second.nativeSurfaceTexture);
+        env->DeleteGlobalRef(it->second.jniSurfaceTexture);
+
+        it->second.jniSurfaceTexture = globalRef;
+        it->second.nativeSurfaceTexture = ASurfaceTexture_fromSurfaceTexture(env, globalRef);
+
+        LOGI("Replaced existing SurfaceTexture in map with new GlobalRef (textureId: %i).", textureId);
+    } else {
+        NativeAndJavaSurfaceTexture data = { ASurfaceTexture_fromSurfaceTexture(env, globalRef), globalRef };
+        g_registeredSurfaceTextureMap[textureId] = data;
+
+        LOGI("Added new SurfaceTexture GlobalRef to map, with textureId: %i.", textureId);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+    Java_com_uralstech_ucamera_SurfaceTextureCaptureSession_deregisterSurfaceTextureForUpdates(JNIEnv* env, jobject /* current */, jint textureId) {
+    LOGI("Unregistering SurfaceTexture from updates.");
+
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
+
+    auto it = g_registeredSurfaceTextureMap.find(textureId);
+    if (it == g_registeredSurfaceTextureMap.end()) {
+        LOGE("Can't deregister a SurfaceTexture that was never registered in the first place!");
+        return;
+    }
+
+    ASurfaceTexture_release(it->second.nativeSurfaceTexture);
+    env->DeleteGlobalRef(it->second.jniSurfaceTexture);
+    g_registeredSurfaceTextureMap.erase(it);
+
+    LOGI("Deregistered SurfaceTexture successfully.");
+}
+
+void updateSurfaceTextureNative(jint textureId) {
+    LOGI("Updating SurfaceTexture from native code.");
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
+
+    auto it = g_registeredSurfaceTextureMap.find(textureId);
+    if (it == g_registeredSurfaceTextureMap.end()) {
+        LOGE("Could not find any registered SurfaceTextures for textureId: %i", textureId);
+        return;
+    }
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureId);
+
+    ASurfaceTexture_updateTexImage(it->second.nativeSurfaceTexture);
+
+    LOGI("Successfully updated SurfaceTexture from native code.");
+
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+}
+
+void sendTextureIdToCaptureSession(GLuint textureId, jlong timeStamp) {
     LOGI("Sending initialization signal to STCaptureSession associated with timeStamp: %li", timeStamp);
     if (g_startCaptureSessionMethodId == nullptr) {
         LOGE("Could not initialize STCaptureSession due to missing methodId.");
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_mapMutex);
+    std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
 
-    auto it = g_uninitializedSurfaceTextureMap.find(timeStamp);
-    if (it == g_uninitializedSurfaceTextureMap.end()) {
+    auto it = g_uninitializedSTCaptureSessionMap.find(timeStamp);
+    if (it == g_uninitializedSTCaptureSessionMap.end()) {
         LOGE("Could not find any uninitialized STCaptureSessions for the given timeStamp: %li", timeStamp);
         return;
     }
 
-    JNIEnv* jniEnv = AttachEnv();
+    bool shouldDetach;
+    JNIEnv* jniEnv = AttachEnv(&shouldDetach);
     if (jniEnv == nullptr) {
         LOGE("Could not initialize STCaptureSession due to JNIEnv being null.");
         return;
@@ -172,10 +266,13 @@ void SendTextureIdToCaptureSession(GLuint textureId, jlong timeStamp)
     } else {
         LOGI("Successfully called STCaptureSession initialization method.");
         jniEnv->DeleteGlobalRef(it->second);
-        g_uninitializedSurfaceTextureMap.erase(it);
+        g_uninitializedSTCaptureSessionMap.erase(it);
     }
 
-    DetachJNIEnv();
+    if (shouldDetach) {
+        DetachJNIEnv();
+        LOGI("JNIEnv detached.");
+    }
 }
 
 static void UNITY_INTERFACE_API OnRenderEvent(int eventId, void* data) {
@@ -192,22 +289,46 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventId, void* data) {
             glGenTextures(1, textureIds);
             LOGI("Created new OpenGL texture with ID: %u", textureIds[0]);
 
-            SendTextureIdToCaptureSession(textureIds[0], *reinterpret_cast<jlong*>(data));
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, textureIds[0]);
+            glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameterf(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+
+            LOGI("Set parameters for OpenGL texture.");
+
+            sendTextureIdToCaptureSession(textureIds[0], *reinterpret_cast<jlong *>(data));
             break;
 
         case DESTROY_GL_TEXTURE_EVENT:
             LOGI("Destroying OpenGL texture.");
 
             GLuint* textureToDelete;
-            textureToDelete = reinterpret_cast<GLuint *>(data);
+            textureToDelete = reinterpret_cast<GLuint*>(data);
 
-            if (data == nullptr || (*textureToDelete) == 0) {
+            if (textureToDelete == nullptr || (*textureToDelete) == 0) {
                 LOGE("Could not destroy OpenGL texture as textureToDelete is a nullptr or is zero.");
                 break;
             }
 
             glDeleteTextures(1, textureToDelete);
             LOGI("OpenGL texture with ID \"%u\" deleted", *textureToDelete);
+            break;
+
+        case UPDATE_SURFACE_TEXTURE_EVENT:
+            LOGI("Updating SurfaceTexture.");
+
+            jint* surfaceTextureToUpdate;
+            surfaceTextureToUpdate = reinterpret_cast<jint*>(data);
+
+            if (surfaceTextureToUpdate == nullptr || (*surfaceTextureToUpdate) == 0) {
+                LOGE("Could not update SurfaceTexture as surfaceTextureToUpdate is a nullptr or is zero.");
+                break;
+            }
+
+            updateSurfaceTextureNative(*surfaceTextureToUpdate);
             break;
 
         default:

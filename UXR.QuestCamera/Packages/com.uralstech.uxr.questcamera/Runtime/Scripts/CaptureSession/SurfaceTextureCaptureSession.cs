@@ -25,7 +25,7 @@ namespace Uralstech.UXR.QuestCamera
         #region Native Stuff
         private const int CreateGlTextureEvent = 1;
         private const int DestroyGlTextureEvent = 2;
-        private const int UpdateGlTextureEvent = 3;
+        private const int UpdateSurfaceTextureEvent = 3;
 
         [DllImport("NativeTextureHelper")]
         private static extern IntPtr GetRenderEventFunction();
@@ -62,8 +62,24 @@ namespace Uralstech.UXR.QuestCamera
 
         #region Native Callbacks
 #pragma warning disable IDE1006 // Naming Styles
-        public void _textureReadyForUpdate()
+        public void _onCaptureCompleted(string textureId)
         {
+            if (!int.TryParse(textureId, out int texId))
+            {
+                Debug.LogError($"Could not get texture ID for {nameof(SurfaceTextureCaptureSession)}.{nameof(_onCaptureCompleted)}.");
+                return;
+            }
+
+            IntPtr dataPtr = Marshal.AllocHGlobal(sizeof(int));
+            Marshal.WriteInt32(dataPtr, texId);
+
+            using CommandBuffer commandBuffer = new();
+            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
+
+            Graphics.ExecuteCommandBuffer(commandBuffer);
+            Marshal.FreeHGlobal(dataPtr);
+
+            GL.InvalidateState();
         }
 
         public void _onTextureCreated(string textureId)
@@ -74,7 +90,7 @@ namespace Uralstech.UXR.QuestCamera
                 return;
             }
 
-            Texture = Texture2D.CreateExternalTexture(Width, Height, TextureFormat.ARGB32, false, false, (IntPtr)texId);
+            Texture = Texture2D.CreateExternalTexture(Width, Height, TextureFormat.RGBA32, false, true, (IntPtr)texId);
             OnTextureCreated?.Invoke(Texture);
         }
 
