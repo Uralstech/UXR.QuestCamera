@@ -31,8 +31,7 @@ namespace ShaderManager {
         GLuint vao = 0;
         GLuint fbo = 0;
 
-        GLint timeUniformLocation = -1;
-        std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+        GLint textureUniformLocation = -1;
     };
 
     /**
@@ -47,19 +46,22 @@ namespace ShaderManager {
     bool setupGraphics(RenderInfo* output);
 
     /**
-     * @brief Renders the scrolling texture effect into a caller-provided texture.
+     * @brief Renders (copies) the sourceTextureId into the targetTextureId using an FBO.
      *
-     * Binds an FBO, attaches the targetTextureId, sets viewport,
-     * uses the shader program, updates time, binds the source texture
-     * for sampling, draws the quad, and unbinds the FBO.
+     * Binds the FBO, attaches the targetTextureId, sets viewport,
+     * uses the shader program, binds the sourceTextureId (external)
+     * for sampling, draws the quad, and unbinds resources.
      *
      * @param renderInfo Pointer to the RenderInfo struct.
-     * @param targetTextureId The OpenGL texture ID of the destination texture.
+     * @param sourceTextureId The OpenGL texture ID of the source EXTERNAL texture.
+     *                        This texture is typically managed externally (e.g., from SurfaceTexture).
+     * @param targetTextureId The OpenGL texture ID of the destination texture (GL_TEXTURE_2D).
      *                        This texture MUST be properly allocated (e.g., via glTexImage2D)
      *                        by the caller beforehand.
      * @param targetWidth The width of the target texture.
      * @param targetHeight The height of the target texture.
-     */void renderFrame(RenderInfo *renderInfo, GLuint targetTextureId, int targetWidth, int targetHeight);
+     */
+    void renderFrame(RenderInfo *renderInfo, GLuint sourceTextureId, GLuint targetTextureId, int targetWidth, int targetHeight);
 
     /**
      * @brief Cleans up OpenGL resources.

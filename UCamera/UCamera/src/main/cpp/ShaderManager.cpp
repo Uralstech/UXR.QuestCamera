@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ShaderManager.h"
+#include <GLES2/gl2ext.h>
 #include <android/log.h>
 #include <vector>
 
@@ -24,7 +25,7 @@
 GLuint compileShader(GLenum type, const char* shaderSource) {
     GLuint shader = glCreateShader(type);
     if (shader == 0) {
-        LOGE("Could not create shader of type \"%i\".", type);
+        LOGE("Could not create shader of type \"%i\". Error: 0x%x", type, glGetError());
         return 0;
     }
 
@@ -42,6 +43,8 @@ GLuint compileShader(GLenum type, const char* shaderSource) {
 
             LOGE("Could not compile shader of type \"%i\" due to error:\n%s", type, infoLog);
             free(infoLog);
+        } else {
+            LOGE("Could not compile shader of type \"%i\". Unknown error.", type);
         }
 
         glDeleteShader(shader);
@@ -59,22 +62,32 @@ void checkGlError(const char* operation) {
 
 const char* VERTEX_SHADER_SOURCE = R"glsl(
 #version 300 es
-layout(location = 0) in vec2 a_position;
+layout(location = 0) in vec2 a_position; // Vertex position
+layout(location = 1) in vec2 a_texCoord; // Texture coordinate input
+
+out vec2 v_texCoord; // Pass texture coordinate to fragment shader
 
 void main() {
-    gl_Position = vec4(a_position.xy, 0.0, 1.0);
+    gl_Position = vec4(a_position.xy, 0.0, 1.0); // Output clip space position
+    v_texCoord = a_texCoord;                     // Pass tex coord
 }
 )glsl";
 
 const char* FRAGMENT_SHADER_SOURCE = R"glsl(
 #version 300 es
+#extension GL_OES_EGL_image_external_essl3 : require // Enable external texture extension for GLSL 300 es
+
 precision mediump float; // Default precision
 
-uniform float u_time; // Time uniform
+uniform samplerExternalOES u_texture; // Input external texture sampler
+
+in vec2 v_texCoord; // Texture coordinate from vertex shader
+
 out vec4 outColor; // Output color
 
 void main() {
-    outColor = vec4(0.0f, sin(u_time) / 2.0f + 0.5f, 0.0f, 1.0f);
+    // Sample the external texture at the interpolated coordinate
+    outColor = texture(u_texture, v_texCoord);
 }
 )glsl";
 
@@ -120,7 +133,11 @@ namespace ShaderManager {
         glAttachShader(output->program, fragmentShader);
         checkGlError("glAttachShader Fragment");
 
+        glBindAttribLocation(output->program, 0, "a_position");
+        glBindAttribLocation(output->program, 1, "a_texCoord");
+
         glLinkProgram(output->program);
+        checkGlError("glLinkProgram");
 
         GLint linkStatus;
         glGetProgramiv(output->program, GL_LINK_STATUS, &linkStatus);
@@ -133,6 +150,8 @@ namespace ShaderManager {
 
                 LOGE("Error linking shader program:\n%s", infoLog);
                 free(infoLog);
+            } else {
+                LOGE("Error linking shader program. Unknown error.");
             }
 
             glDeleteShader(vertexShader);
@@ -144,25 +163,31 @@ namespace ShaderManager {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
 
-        // --- Time Uniform Location ---
-        output->timeUniformLocation = glGetUniformLocation(output->program, "u_time");
-        if (output->timeUniformLocation == -1) {
-            LOGW("Could not find uniform location for u_time. Time animation will not work.");
+        // --- Texture Uniform Location ---
+        output->textureUniformLocation = glGetUniformLocation(output->program, "u_texture");
+        checkGlError("glGetUniformLocation u_texture");
+        if (output->textureUniformLocation == -1) {
+            LOGE("Could not find uniform location for u_texture. Texture copying will fail.");
+            cleanupGraphics(output);
+            return false;
         }
 
-        // --- Element Buffer and Array Objects ---
+        // --- Vertex Data (Position + Texture Coordinates) ---
+        // Format: PosX, PosY, TexCoordX, TexCoordY
         const GLfloat vertices[] = {
-            1.0f, 1.0f,     // Top right
-            1.0f, -1.0f,    // Bottom right
-            -1.0f, -1.0f,   // Bottom left
-            -1.0f, 1.0f,    // Top right
+                // Position      // Tex Coords
+                1.0f,  1.0f,    1.0f, 1.0f, // Top Right
+                1.0f, -1.0f,    1.0f, 0.0f, // Bottom Right
+                -1.0f, -1.0f,    0.0f, 0.0f, // Bottom Left
+                -1.0f,  1.0f,    0.0f, 1.0f  // Top Left
         };
 
         const GLuint indices[] = {
-            0, 1, 3,
-            1, 2, 3
+                0, 1, 3,  // First Triangle (TR, BR, TL)
+                1, 2, 3   // Second Triangle (BR, BL, TL)
         };
 
+        // --- Vertex Buffer Object (VBO), Element Buffer Object (EBO), Vertex Array Object (VAO) ---
         glGenBuffers(1, &output->vbo);
         checkGlError("glGenBuffers (VBO)");
         if (output->vbo == 0) {
@@ -187,23 +212,45 @@ namespace ShaderManager {
             return false;
         }
 
+        // --- Configure VAO ---
         glBindVertexArray(output->vao);
+        checkGlError("glBindVertexArray");
+
+        // Bind and load VBO data
         glBindBuffer(GL_ARRAY_BUFFER, output->vbo);
+        checkGlError("glBindBuffer VBO");
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        checkGlError("glBufferData VBO");
 
+        // Bind and load EBO data
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, output->ebo);
+        checkGlError("glBindBuffer EBO");
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+        checkGlError("glBufferData EBO");
 
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), nullptr);
+        // --- Configure Vertex Attributes ---
+        GLsizei stride = 4 * sizeof(GLfloat); // Stride for position (vec2) + texCoord (vec2)
+
+        // Position attribute (location = 0)
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, nullptr);
+        checkGlError("glVertexAttribPointer Pos");
         glEnableVertexAttribArray(0);
+        checkGlError("glEnableVertexAttribArray Pos");
 
+        // Texture coordinate attribute (location = 1)
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(2 * sizeof(GLfloat))); // Offset by 2 floats
+        checkGlError("glVertexAttribPointer TexCoord");
+        glEnableVertexAttribArray(1);
+        checkGlError("glEnableVertexAttribArray TexCoord");
+
+        // Unbind VAO, VBO, EBO (VAO binding already captures EBO binding)
         glBindVertexArray(0);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); // Unbind EBO after VAO unbind
 
-        checkGlError("setup VBO, EBO and VAO");
+        checkGlError("setup VBO, EBO and VAO attributes");
 
-        // --- Frame Buffer Object ---
+        // --- Frame Buffer Object (FBO) ---
         glGenFramebuffers(1, &output->fbo);
         checkGlError("glGenFramebuffers FBO");
 
@@ -213,25 +260,34 @@ namespace ShaderManager {
             return false;
         }
 
-        // -- Record Start Time ---
-        output->startTime = std::chrono::high_resolution_clock::now();
-
         LOGI("setupGraphics completed successfully.");
         return true;
     }
 
-    void renderFrame(RenderInfo *renderInfo, GLuint targetTextureId, int targetWidth, int targetHeight) {
-        LOGI("renderFrame called.");
-        if (!renderInfo || renderInfo->program == 0 || renderInfo->fbo == 0) {
-            LOGE("renderFrame error: Invalid RenderInfo provided or not setup.");
+    void renderFrame(RenderInfo *renderInfo, GLuint sourceTextureId, GLuint targetTextureId, int targetWidth, int targetHeight) {
+        // Basic validation
+        if (!renderInfo || renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->fbo == 0 || renderInfo->textureUniformLocation == -1) {
+            LOGE("renderFrame error: Invalid RenderInfo or setup incomplete.");
             return;
         }
+
+        if (sourceTextureId == 0 || targetTextureId == 0) {
+            LOGE("renderFrame error: Invalid source or target texture ID.");
+            return;
+        }
+
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            LOGE("renderFrame error: Invalid target dimensions (%dx%d).", targetWidth, targetHeight);
+            return;
+        }
+
+        // LOGI("renderFrame called. SourceTex: %u, TargetTex: %u, Size: %dx%d", sourceTextureId, targetTextureId, targetWidth, targetHeight);
 
         // 1. Bind the FBO
         glBindFramebuffer(GL_FRAMEBUFFER, renderInfo->fbo);
         checkGlError("glBindFramebuffer");
 
-        // 2. Attach the caller's texture as color attachment
+        // 2. Attach the caller's target texture as color attachment
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureId, 0);
         checkGlError("glFramebufferTexture2D");
 
@@ -252,39 +308,40 @@ namespace ShaderManager {
         glUseProgram(renderInfo->program);
         checkGlError("glUseProgram");
 
-        // 6. Update time uniform
-        if (renderInfo->timeUniformLocation != -1) {
-            auto now = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<float> elapsed = now - renderInfo->startTime;
+        // 6. Bind the source EXTERNAL texture
+        glActiveTexture(GL_TEXTURE0); // Activate texture unit 0
+        checkGlError("glActiveTexture");
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, sourceTextureId); // Bind the external texture
+        checkGlError("glBindTexture GL_TEXTURE_EXTERNAL_OES");
 
-            glUniform1f(renderInfo->timeUniformLocation, elapsed.count());
-            checkGlError("glUniform1f u_time");
-        }
+        // 7. Set the sampler uniform to use texture unit 0
+        glUniform1i(renderInfo->textureUniformLocation, 0);
+        checkGlError("glUniform1i u_texture");
 
-        // 7. Bind VAO
+        // 8. Bind VAO (contains VBO+EBO configuration)
         glBindVertexArray(renderInfo->vao);
         checkGlError("glBindVertexArray");
 
-        // 8. Draw the quad (output goes to the FBO's attached texture)
+        // 9. Draw the quad (output goes to the FBO's attached texture)
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr);
         checkGlError("glDrawElements");
 
-        // 9. Unbind resources
+        // 10. Unbind resources (good practice)
         glBindVertexArray(0);
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); // Unbind external texture from unit 0
         glUseProgram(0);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0); // Unbind the FBO, reverting to default framebuffer
 
-        glFinish();
-        LOGI("renderFrame completed.");
+        // LOGI("renderFrame completed.");
     }
 
     void cleanupGraphics(RenderInfo *renderInfo) {
         if (!renderInfo) return;
         LOGI("cleanupGraphics called");
 
-        if (renderInfo->program) {
-            glDeleteProgram(renderInfo->program);
-            renderInfo->program = 0;
+        if (renderInfo->fbo) {
+            glDeleteFramebuffers(1, &renderInfo->fbo);
+            renderInfo->fbo = 0;
         }
 
         if (renderInfo->vao) {
@@ -302,12 +359,15 @@ namespace ShaderManager {
             renderInfo->ebo = 0;
         }
 
-        if (renderInfo->fbo) {
-            glDeleteFramebuffers(1, &renderInfo->fbo);
-            renderInfo->fbo = 0;
+        if (renderInfo->program) {
+            glDeleteProgram(renderInfo->program);
+            renderInfo->program = 0;
         }
 
-        renderInfo->timeUniformLocation = -1;
+        // Reset other members
+        renderInfo->textureUniformLocation = -1;
+
+        LOGI("cleanupGraphics finished.");
     }
 
-}
+} // namespace ShaderManager

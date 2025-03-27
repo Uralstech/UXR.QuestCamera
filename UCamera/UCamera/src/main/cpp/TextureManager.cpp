@@ -265,20 +265,20 @@ struct TextureDeletionData {
 static ShaderManager::RenderInfo g_renderInfo;
 
 void updateSurfaceTextureNative(TextureUpdateData data) {
-    // LOGI("Updating SurfaceTexture from native code. (camTex: %i, unityTex: %i)", data.cameraTextureId, data.unityTextureId);
-    // std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
+    LOGI("Updating SurfaceTexture from native code. (camTex: %i, unityTex: %i)", data.cameraTextureId, data.unityTextureId);
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
 
-    // auto it = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
-    // if (it == g_registeredSurfaceTextureMap.end()) {
-    //     LOGE("Could not find any registered SurfaceTextures for textureId: %i", data.cameraTextureId);
-    //     return;
-    // }
+    auto it = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
+    if (it == g_registeredSurfaceTextureMap.end()) {
+        LOGE("Could not find any registered SurfaceTextures for textureId: %i", data.cameraTextureId);
+        return;
+    }
 
-    ShaderManager::renderFrame(&g_renderInfo, data.unityTextureId, data.width, data.height);
+    ASurfaceTexture_updateTexImage(it->second.nativeSurfaceTexture);
+    LOGI("Successfully updated SurfaceTexture from native code.");
+
+    ShaderManager::renderFrame(&g_renderInfo, data.cameraTextureId, data.unityTextureId, data.width, data.height);
     data.onDoneCallback(data.unityTextureId);
-
-    // ASurfaceTexture_updateTexImage(it->second.nativeSurfaceTexture);
-    // LOGI("Successfully updated SurfaceTexture from native code.");
 }
 
 void deleteTextureNative(TextureDeletionData data) {
