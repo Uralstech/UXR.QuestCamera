@@ -77,6 +77,9 @@ const char* FRAGMENT_SHADER_SOURCE = R"glsl(
 #version 300 es
 #extension GL_EXT_YUV_target : require
 
+precision mediump float;
+precision mediump __samplerExternal2DY2YEXT;
+
 uniform __samplerExternal2DY2YEXT u_texture;
 
 in vec2 v_texCoord;
@@ -88,7 +91,7 @@ void main() {
     vec4 yuv = texture(u_texture, flippedTexCoord);
 
     vec3 converted = yuv_2_rgb(yuv.xyz, itu_601);
-    outColor = vec4(converted.xyz, 1.0);
+    outColor = vec4(converted, 1.0);
 }
 )glsl";
 
