@@ -81,7 +81,7 @@ namespace Uralstech.UXR.QuestCamera
 
         internal void CreateNativeTexture(Resolution resolution, long timeStamp)
         {
-            Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.RGBA32, false, true);
+            Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.ARGB32, false);
             Resolution = resolution;
 
             TextureSetupData data = new()
