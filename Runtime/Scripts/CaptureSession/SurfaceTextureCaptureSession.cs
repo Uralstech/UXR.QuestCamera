@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using AOT;
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -29,6 +31,17 @@ namespace Uralstech.UXR.QuestCamera
         [DllImport("NativeTextureHelper")]
         private static extern IntPtr GetRenderEventFunction();
 
+        private delegate void TextureEventCallback(uint textureId);
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct TextureSetupData
+        {
+            public uint UnityTextureId;
+            
+            public long TimeStamp;
+            public IntPtr OnDoneCallback;
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         private struct TextureUpdateData
         {
@@ -36,39 +49,65 @@ namespace Uralstech.UXR.QuestCamera
             public int CameraTextureId;
             public int Width;
             public int Height;
-        };
+
+            public IntPtr OnDoneCallback;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TextureDeletionData
+        {
+            public uint TextureId;
+            public IntPtr OnDoneCallback;
+        }
+        #endregion
+
+        #region Static
+        private static readonly Dictionary<uint, Action> s_nativeTextureCallbacks = new();
+
+        [MonoPInvokeCallback(typeof(Action<uint>))]
+        private static void NativeTextureCallback(uint textureId)
+        {
+            lock (s_nativeTextureCallbacks)
+            {
+                if (s_nativeTextureCallbacks.Remove(textureId, out Action action))
+                    action?.Invoke();
+            }
+        }
         #endregion
 
         public Resolution Resolution { get; private set; }
 
         public Texture2D Texture { get; private set; }
 
-        public NativeWrapperState NativeTextureState { get; private set; }
-
-        internal async void CreateNativeTexture(Resolution resolution, long timeStamp)
+        internal void CreateNativeTexture(Resolution resolution, long timeStamp)
         {
-            Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.RGBA32, false);
+            Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.RGBA32, false, true);
             Resolution = resolution;
 
-            IntPtr timeStampPtr = Marshal.AllocHGlobal(sizeof(long));
-            Marshal.WriteInt64(timeStampPtr, timeStamp);
+            TextureSetupData data = new()
+            {
+                UnityTextureId = (uint)Texture.GetNativeTexturePtr(),
+
+                TimeStamp = timeStamp,
+                OnDoneCallback = Marshal.GetFunctionPointerForDelegate<TextureEventCallback>(NativeTextureCallback)
+            };
+
+            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
+            Marshal.StructureToPtr(data, dataPtr, false);
+
+            lock (s_nativeTextureCallbacks)
+            {
+                s_nativeTextureCallbacks.Add(data.UnityTextureId, () =>
+                {
+                    Debug.Log("Native texture setup completed.");
+                    Marshal.FreeHGlobal(dataPtr);
+                });
+            }
 
             using CommandBuffer commandBuffer = new();
 
-            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, timeStampPtr);
+            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, dataPtr);
             Graphics.ExecuteCommandBuffer(commandBuffer);
-
-            while (NativeTextureState == NativeWrapperState.Initializing)
-                await Awaitable.NextFrameAsync();
-
-            Debug.Log("Releasing timeStampPtr.");
-            Marshal.FreeHGlobal(timeStampPtr);
-        }
-
-        public void Destroy()
-        {
-            base.Release();
-            Destroy(gameObject);
         }
 
         #region Native Callbacks
@@ -83,47 +122,68 @@ namespace Uralstech.UXR.QuestCamera
 
             TextureUpdateData data = new()
             {
-                CameraTextureId = texId,
                 UnityTextureId = (uint)Texture.GetNativeTexturePtr(),
+                CameraTextureId = texId,
                 Width = Resolution.width,
                 Height = Resolution.height,
+
+                OnDoneCallback = Marshal.GetFunctionPointerForDelegate<TextureEventCallback>(NativeTextureCallback)
             };
 
             IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
             Marshal.StructureToPtr(data, dataPtr, false);
 
+            lock (s_nativeTextureCallbacks)
+            {
+                s_nativeTextureCallbacks.Add(data.UnityTextureId, () =>
+                {
+                    Debug.Log("Updating texture in Unity.");
+                    Marshal.FreeHGlobal(dataPtr);
+                    GL.InvalidateState();
+                });
+            }
+
             using CommandBuffer commandBuffer = new();
             commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
 
             Graphics.ExecuteCommandBuffer(commandBuffer);
-            Marshal.FreeHGlobal(dataPtr);
-        }
-
-        public void _onTextureCreated(string _)
-        {
-            NativeTextureState = NativeWrapperState.Opened;
         }
 
         public void _destroyNativeTexture(string textureId)
         {
-            if (!int.TryParse(textureId, out int texId))
+            if (!uint.TryParse(textureId, out uint texId))
             {
                 Debug.LogError($"Could not get texture ID for {nameof(SurfaceTextureCaptureSession)}.{nameof(_destroyNativeTexture)}.");
                 return;
             }
 
-            NativeTextureState = NativeWrapperState.Closed;
-            if (Texture != null)
-                Destroy(Texture);
+            TextureDeletionData data = new()
+            {
+                TextureId = texId,
+                OnDoneCallback = Marshal.GetFunctionPointerForDelegate<TextureEventCallback>(NativeTextureCallback)
+            };
 
-            IntPtr dataPtr = Marshal.AllocHGlobal(sizeof(int));
-            Marshal.WriteInt32(dataPtr, texId);
+            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
+            Marshal.StructureToPtr(data, dataPtr, false);
+
+            lock (s_nativeTextureCallbacks)
+            {
+                s_nativeTextureCallbacks.Add(data.TextureId, async () =>
+                {
+                    Debug.Log("Native rendering data destroyed.");
+                    Marshal.FreeHGlobal(dataPtr);
+
+                    await Awaitable.MainThreadAsync();
+                    
+                    base.Release();
+                    Destroy(gameObject);
+                });
+            }
 
             using CommandBuffer commandBuffer = new();
             commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), DestroyGlTextureEvent, dataPtr);
 
             Graphics.ExecuteCommandBuffer(commandBuffer);
-            Marshal.FreeHGlobal(dataPtr);
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion
