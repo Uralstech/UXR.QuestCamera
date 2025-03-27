@@ -62,14 +62,12 @@ void checkGlError(const char* operation) {
 
 const char* VERTEX_SHADER_SOURCE = R"glsl(
 #version 300 es
-layout(location = 0) in vec2 a_position; // Vertex position
-layout(location = 1) in vec2 a_texCoord; // Texture coordinate input
+layout(location = 0) in vec2 a_position; // Vertex position ONLY
 
-out vec2 v_texCoord; // Pass texture coordinate to fragment shader
+// No texture coordinate input or output needed
 
 void main() {
     gl_Position = vec4(a_position.xy, 0.0, 1.0); // Output clip space position
-    v_texCoord = a_texCoord;                     // Pass tex coord
 }
 )glsl";
 
@@ -81,14 +79,14 @@ precision mediump float;
 precision mediump __samplerExternal2DY2YEXT;
 
 uniform __samplerExternal2DY2YEXT u_texture;
+uniform vec2 u_resolution;
 
-in vec2 v_texCoord;
 out vec4 outColor;
 
 void main() {
     // Sample the external texture at the interpolated coordinate
-    vec2 flippedTexCoord = vec2(v_texCoord.x, 1.0 - v_texCoord.y);
-    vec4 yuv = texture(u_texture, flippedTexCoord);
+    vec2 texCoord = vec2(gl_FragCoord.x / u_resolution.x, 1.0 - (gl_FragCoord.y / u_resolution.y));
+    vec4 yuv = texture(u_texture, texCoord);
 
     vec3 converted = yuv_2_rgb(yuv.xyz, itu_601);
     outColor = vec4(converted, 1.0);
@@ -138,7 +136,6 @@ namespace ShaderManager {
         checkGlError("glAttachShader Fragment");
 
         glBindAttribLocation(output->program, 0, "a_position");
-        glBindAttribLocation(output->program, 1, "a_texCoord");
 
         glLinkProgram(output->program);
         checkGlError("glLinkProgram");
@@ -176,14 +173,23 @@ namespace ShaderManager {
             return false;
         }
 
+        // --- Resolution Uniform Location ---
+        output->resolutionUniformLocation = glGetUniformLocation(output->program, "u_resolution");
+        checkGlError("glGetUniformLocation u_resolution");
+        if (output->resolutionUniformLocation == -1) {
+            LOGE("Could not find uniform location for u_resolution. Texture copying will fail.");
+            cleanupGraphics(output);
+            return false;
+        }
+
         // --- Vertex Data (Position + Texture Coordinates) ---
         // Format: PosX, PosY, TexCoordX, TexCoordY
         const GLfloat vertices[] = {
-                // Position      // Tex Coords
-                1.0f,  1.0f,    1.0f, 1.0f, // Top Right
-                1.0f, -1.0f,    1.0f, 0.0f, // Bottom Right
-                -1.0f, -1.0f,    0.0f, 0.0f, // Bottom Left
-                -1.0f,  1.0f,    0.0f, 1.0f  // Top Left
+                // Position
+                1.0f,  1.0f, // Top Right
+                1.0f, -1.0f, // Bottom Right
+                -1.0f, -1.0f, // Bottom Left
+                -1.0f,  1.0f // Top Left
         };
 
         const GLuint indices[] = {
@@ -233,19 +239,11 @@ namespace ShaderManager {
         checkGlError("glBufferData EBO");
 
         // --- Configure Vertex Attributes ---
-        GLsizei stride = 4 * sizeof(GLfloat); // Stride for position (vec2) + texCoord (vec2)
-
         // Position attribute (location = 0)
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, stride, nullptr);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat), nullptr);
         checkGlError("glVertexAttribPointer Pos");
         glEnableVertexAttribArray(0);
         checkGlError("glEnableVertexAttribArray Pos");
-
-        // Texture coordinate attribute (location = 1)
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, (void*)(2 * sizeof(GLfloat))); // Offset by 2 floats
-        checkGlError("glVertexAttribPointer TexCoord");
-        glEnableVertexAttribArray(1);
-        checkGlError("glEnableVertexAttribArray TexCoord");
 
         // Unbind VAO, VBO, EBO (VAO binding already captures EBO binding)
         glBindVertexArray(0);
@@ -270,7 +268,7 @@ namespace ShaderManager {
 
     void renderFrame(RenderInfo *renderInfo, GLuint sourceTextureId, GLuint targetTextureId, int targetWidth, int targetHeight) {
         // Basic validation
-        if (!renderInfo || renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->fbo == 0 || renderInfo->textureUniformLocation == -1) {
+        if (!renderInfo || renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->fbo == 0 || renderInfo->textureUniformLocation == -1 || renderInfo->resolutionUniformLocation == -1) {
             LOGE("renderFrame error: Invalid RenderInfo or setup incomplete.");
             return;
         }
@@ -322,6 +320,9 @@ namespace ShaderManager {
         glUniform1i(renderInfo->textureUniformLocation, 0);
         checkGlError("glUniform1i u_texture");
 
+        glUniform2f(renderInfo->resolutionUniformLocation, (GLfloat)targetWidth, (GLfloat)targetHeight);
+        checkGlError("glUniform2i u_resolution");
+
         // 8. Bind VAO (contains VBO+EBO configuration)
         glBindVertexArray(renderInfo->vao);
         checkGlError("glBindVertexArray");
@@ -370,6 +371,7 @@ namespace ShaderManager {
 
         // Reset other members
         renderInfo->textureUniformLocation = -1;
+        renderInfo->resolutionUniformLocation = -1;
 
         LOGI("cleanupGraphics finished.");
     }

@@ -32,6 +32,7 @@ namespace ShaderManager {
         GLuint fbo = 0;
 
         GLint textureUniformLocation = -1;
+        GLint resolutionUniformLocation = -1;
     };
 
     /**
