@@ -41,7 +41,6 @@ class SurfaceTextureCaptureSession(
     companion object {
         private const val TAG = "STCaptureSessionWrapper"
 
-        private const val ON_TEXTURE_CREATED        = "_onTextureCreated"
         private const val DESTROY_NATIVE_TEXTURE    = "_destroyNativeTexture"
 
         private const val ON_SESSION_CONFIGURED     = "_onSessionConfigured"
@@ -101,7 +100,6 @@ class SurfaceTextureCaptureSession(
             val surface = Surface(surfaceTexture)
             this.surface = surface
 
-            UnityPlayer.UnitySendMessage(unityListener, ON_TEXTURE_CREATED, "")
             cameraDevice.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 listOf(OutputConfiguration(surface)),

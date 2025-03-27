@@ -4,6 +4,8 @@ add_library(
         NativeTextureHelper
         SHARED
         TextureManager.cpp
+        ShaderManager.h
+        ShaderManager.cpp
 )
 
 target_include_directories(
