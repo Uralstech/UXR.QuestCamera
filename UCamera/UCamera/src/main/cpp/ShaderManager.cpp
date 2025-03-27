@@ -75,20 +75,20 @@ void main() {
 
 const char* FRAGMENT_SHADER_SOURCE = R"glsl(
 #version 300 es
-#extension GL_OES_EGL_image_external_essl3 : require // Enable external texture extension for GLSL 300 es
+#extension GL_EXT_YUV_target : require
 
-precision mediump float; // Default precision
+uniform __samplerExternal2DY2YEXT u_texture;
 
-uniform samplerExternalOES u_texture; // Input external texture sampler
-
-in vec2 v_texCoord; // Texture coordinate from vertex shader
-
-out vec4 outColor; // Output color
+in vec2 v_texCoord;
+out vec4 outColor;
 
 void main() {
     // Sample the external texture at the interpolated coordinate
     vec2 flippedTexCoord = vec2(v_texCoord.x, 1.0 - v_texCoord.y);
-    outColor = texture(u_texture, flippedTexCoord);
+    vec4 yuv = texture(u_texture, flippedTexCoord);
+
+    vec3 converted = yuv_2_rgb(yuv.xyz, itu_601);
+    outColor = vec4(converted.xyz, 1.0);
 }
 )glsl";
 
