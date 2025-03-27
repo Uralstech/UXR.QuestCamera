@@ -87,7 +87,8 @@ out vec4 outColor; // Output color
 
 void main() {
     // Sample the external texture at the interpolated coordinate
-    outColor = texture(u_texture, v_texCoord);
+    vec2 flippedTexCoord = vec2(v_texCoord.x, 1.0 - v_texCoord.y);
+    outColor = texture(u_texture, flippedTexCoord);
 }
 )glsl";
 
