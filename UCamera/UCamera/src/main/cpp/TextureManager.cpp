@@ -47,6 +47,11 @@ struct NativeAndJavaSurfaceTexture
 static std::map<jint, NativeAndJavaSurfaceTexture> g_registeredSurfaceTextureMap;
 static std::mutex g_registeredSurfaceTextureMapMutex;
 
+static std::map<GLuint, ShaderManager::DrawInfo> g_drawInfosMap;
+static std::mutex g_drawInfosMapMutex;
+
+static ShaderManager::GlobalRenderInfo g_renderInfo;
+
 bool CheckAndLogJNIException(JNIEnv* env);
 
 JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* /* reserved */) {
@@ -233,16 +238,16 @@ extern "C" JNIEXPORT void JNICALL
 }
 
 struct TextureSetupData {
+    GLuint unityTextureId;
+    GLint width;
+    GLint height;
+
     jlong timeStamp;
     void (*onDoneCallback)();
 };
 
 struct TextureUpdateData {
-    GLuint unityTextureId;
     jint cameraTextureId;
-    GLint width;
-    GLint height;
-
     void (*onDoneCallback)();
 };
 
@@ -251,30 +256,47 @@ struct TextureDeletionData {
     void (*onDoneCallback)();
 };
 
-static ShaderManager::RenderInfo g_renderInfo;
-
 void updateSurfaceTextureNative(TextureUpdateData data) {
-    LOGI("Updating SurfaceTexture from native code. (camTex: %i, unityTex: %i)", data.cameraTextureId, data.unityTextureId);
+    LOGI("Updating SurfaceTexture from native code. (camTex: %i)", data.cameraTextureId);
 
-    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
-    auto it = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
-    if (it == g_registeredSurfaceTextureMap.end()) {
+    std::lock_guard<std::mutex> lock1(g_registeredSurfaceTextureMapMutex);
+    auto itSurfaceTexture = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
+    if (itSurfaceTexture == g_registeredSurfaceTextureMap.end()) {
         LOGE("Could not find any registered SurfaceTextures for textureId: %i", data.cameraTextureId);
         data.onDoneCallback();
         return;
     }
 
-    ASurfaceTexture_updateTexImage(it->second.nativeSurfaceTexture);
-    LOGI("Successfully updated SurfaceTexture from native code.");
+    ASurfaceTexture_updateTexImage(itSurfaceTexture->second.nativeSurfaceTexture);
+    LOGI("Native SurfaceTexture updated, updating Unity texture.");
 
-    ShaderManager::renderFrame(&g_renderInfo, data.cameraTextureId, data.unityTextureId, data.width, data.height);
+    std::lock_guard<std::mutex> lock2(g_drawInfosMapMutex);
+    auto itDrawInfo = g_drawInfosMap.find(data.cameraTextureId);
+    if (itDrawInfo == g_drawInfosMap.end()) {
+        LOGE("Could not find DrawInfo for camera texture: %i.", data.cameraTextureId);
+        data.onDoneCallback();
+        return;
+    }
+
+    ShaderManager::renderFrame(&g_renderInfo, &itDrawInfo->second);
+
+    LOGI("Rendering completed.");
     data.onDoneCallback();
 }
 
 void deleteTextureNative(TextureDeletionData data) {
-    ShaderManager::cleanupGraphics(&g_renderInfo);
-    glDeleteTextures(1, &data.textureId);
-    LOGI("Rendering data released.");
+
+    std::lock_guard<std::mutex> lock(g_drawInfosMapMutex);
+    auto it = g_drawInfosMap.find(data.textureId);
+    if (it != g_drawInfosMap.end()) {
+        ShaderManager::cleanupFrameBuffer(it->second.fbo);
+        glDeleteTextures(1, &it->second.sourceTextureId);
+        g_drawInfosMap.erase(it);
+
+        LOGI("Rendering data released.");
+    } else {
+        LOGE("Could not release rendering data as associated DrawInfo was not found.");
+    }
 
     data.onDoneCallback();
 }
@@ -286,21 +308,60 @@ void setupTextureNative(TextureSetupData data) {
         return;
     }
 
-    GLuint textureId;
-    glGenTextures(1, &textureId);
-    LOGI("Created new OpenGL texture with ID: %u, sending to STCaptureSession with timeStamp: %li", textureId, data.timeStamp);
-
-    bool result = ShaderManager::setupGraphics(&g_renderInfo);
-    if (!result) {
-        LOGE("Could not setup rendering!");
+    if (!ShaderManager::checkGlobalRenderInfo(&g_renderInfo)) {
+        LOGE("Could not initialize STCaptureSession due to failed setup of g_renderInfo.");
         data.onDoneCallback();
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
-    auto it = g_uninitializedSTCaptureSessionMap.find(data.timeStamp);
-    if (it == g_uninitializedSTCaptureSessionMap.end()) {
+    GLuint newTextureId;
+    glGenTextures(1, &newTextureId);
+    if (newTextureId == 0) {
+        LOGE("Could not initialize STCaptureSession as the texture could not be generated.");
+        data.onDoneCallback();
+        return;
+    }
+
+    ShaderManager::DrawInfo drawInfo = {};
+    drawInfo.sourceTextureId = newTextureId;
+    drawInfo.targetTextureId = data.unityTextureId;
+    drawInfo.fbo = ShaderManager::createFrameBuffer();
+
+    drawInfo.viewportWidth = data.width;
+    drawInfo.viewportHeight = data.height;
+
+    if (drawInfo.fbo == 0) {
+        LOGE("Could not initialize STCaptureSession as the FrameBuffer object could not be generated.");
+        glDeleteTextures(1, &newTextureId);
+        data.onDoneCallback();
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock1(g_drawInfosMapMutex);
+    auto itDrawInfos = g_drawInfosMap.find(newTextureId);
+    if (itDrawInfos != g_drawInfosMap.end()) {
+        ShaderManager::cleanupFrameBuffer(itDrawInfos->second.fbo);
+
+        if (itDrawInfos->second.sourceTextureId != 0) {
+            glDeleteTextures(1, &itDrawInfos->second.sourceTextureId);
+        }
+
+        itDrawInfos->second = drawInfo;
+        LOGI("Released old DrawInfo and set new one.");
+    } else {
+        g_drawInfosMap[newTextureId] = drawInfo;
+        LOGI("Set new DrawInfo.");
+    }
+
+    std::lock_guard<std::mutex> lock2(g_uninitializedSTCaptureSessionMapMutex);
+    auto itSTCSessions = g_uninitializedSTCaptureSessionMap.find(data.timeStamp);
+    if (itSTCSessions == g_uninitializedSTCaptureSessionMap.end()) {
         LOGE("Could not find any uninitialized STCaptureSessions for the given timeStamp: %li", data.timeStamp);
+
+        g_drawInfosMap.erase(newTextureId);
+        glDeleteTextures(1, &newTextureId);
+        ShaderManager::cleanupFrameBuffer(drawInfo.fbo);
+
         data.onDoneCallback();
         return;
     }
@@ -309,17 +370,22 @@ void setupTextureNative(TextureSetupData data) {
     JNIEnv* jniEnv = AttachEnv(&shouldDetach);
     if (jniEnv == nullptr) {
         LOGE("Could not initialize STCaptureSession due to JNIEnv being null.");
+
+        g_drawInfosMap.erase(newTextureId);
+        glDeleteTextures(1, &newTextureId);
+        ShaderManager::cleanupFrameBuffer(drawInfo.fbo);
+
         data.onDoneCallback();
         return;
     }
 
-    jniEnv->CallVoidMethod(it->second, g_startCaptureSessionMethodId, (jint)textureId);
+    jniEnv->CallVoidMethod(itSTCSessions->second, g_startCaptureSessionMethodId, (jint)newTextureId);
     if (CheckAndLogJNIException(jniEnv)) {
         LOGE("Could not initialize STCaptureSession due to error.");
     } else {
         LOGI("Successfully called STCaptureSession initialization method.");
-        jniEnv->DeleteGlobalRef(it->second);
-        g_uninitializedSTCaptureSessionMap.erase(it);
+        jniEnv->DeleteGlobalRef(itSTCSessions->second);
+        g_uninitializedSTCaptureSessionMap.erase(itSTCSessions);
     }
 
     if (shouldDetach) {

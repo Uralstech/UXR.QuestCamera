@@ -94,10 +94,6 @@ class SurfaceTextureCaptureSession(
             val surfaceTexture = SurfaceTexture(textureId)
             surfaceTexture.setDefaultBufferSize(width, height)
 
-            surfaceTexture.setOnFrameAvailableListener {
-                UnityPlayer.UnitySendMessage(unityListener, ON_CAPTURE_COMPLETED, textureId.toString())
-            }
-
             this.surfaceTexture = surfaceTexture
 
             registerSurfaceTextureForUpdates(surfaceTexture, textureId)
@@ -153,7 +149,15 @@ class SurfaceTextureCaptureSession(
                 addTarget(surface)
             }.build()
 
-            captureSession.setSingleRepeatingRequest(captureRequest, captureSessionExecutor, object : CameraCaptureSession.CaptureCallback() { })
+            captureSession.setSingleRepeatingRequest(captureRequest, captureSessionExecutor, object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult
+                ) {
+                    UnityPlayer.UnitySendMessage(unityListener, ON_CAPTURE_COMPLETED, surfaceTextureId.toString())
+                }
+            })
 
             Log.i(TAG, "Session request set for camera session of camera with ID \"${captureSession.device.id}\".")
             UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_SET, "")

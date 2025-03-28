@@ -93,10 +93,17 @@ void main() {
 )glsl";
 
 namespace ShaderManager {
-    bool setupGraphics(RenderInfo *output) {
-        LOGI("setupGraphics called.");
+    bool checkGlobalRenderInfo(GlobalRenderInfo *renderInfo) {
+        if (renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->ebo == 0 || renderInfo->vbo == 0 || renderInfo->resolutionUniformLocation == -1 || renderInfo->textureUniformLocation == -1) {
+            return setupGlobals(renderInfo);
+        }
+
+        return true;
+    }
+
+    bool setupGlobals(GlobalRenderInfo *output) {
         if (output == nullptr) {
-            LOGE("setupGraphics failed: output RenderInfo pointer is null.");
+            LOGE("setupGlobals failed: output GlobalRenderInfo pointer is null.");
             return false;
         }
 
@@ -105,14 +112,14 @@ namespace ShaderManager {
         // --- Vertex Shader ---
         GLuint vertexShader = compileShader(GL_VERTEX_SHADER, VERTEX_SHADER_SOURCE);
         if (!vertexShader) {
-            LOGE("setupGraphics failed: vertex shader compilation failed.");
+            LOGE("setupGlobals failed: vertex shader compilation failed.");
             return false;
         }
 
         // --- Fragment Shader ---
         GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, FRAGMENT_SHADER_SOURCE);
         if (!fragmentShader) {
-            LOGE("setupGraphics failed: fragment shader compilation failed.");
+            LOGE("setupGlobals failed: fragment shader compilation failed.");
             glDeleteShader(vertexShader);
             return false;
         }
@@ -122,7 +129,7 @@ namespace ShaderManager {
         checkGlError("glCreateProgram");
 
         if (output->program == 0) {
-            LOGE("setupGraphics failed: shader program creation failed.");
+            LOGE("setupGlobals failed: shader program creation failed.");
             glDeleteShader(vertexShader);
             glDeleteShader(fragmentShader);
             return false;
@@ -148,15 +155,15 @@ namespace ShaderManager {
                 char *infoLog = (char*)malloc(sizeof(char) * infoLen);
                 glGetProgramInfoLog(output->program, infoLen, nullptr, infoLog);
 
-                LOGE("Error linking shader program:\n%s", infoLog);
+                LOGE("setupGlobals failed: error linking shader program:\n%s", infoLog);
                 free(infoLog);
             } else {
-                LOGE("Error linking shader program. Unknown error.");
+                LOGE("setupGlobals failed: unknown error linking shader program.");
             }
 
             glDeleteShader(vertexShader);
             glDeleteShader(fragmentShader);
-            cleanupGraphics(output);
+            cleanupGlobals(output);
             return false;
         }
 
@@ -167,8 +174,8 @@ namespace ShaderManager {
         output->textureUniformLocation = glGetUniformLocation(output->program, "u_texture");
         checkGlError("glGetUniformLocation u_texture");
         if (output->textureUniformLocation == -1) {
-            LOGE("Could not find uniform location for u_texture. Texture copying will fail.");
-            cleanupGraphics(output);
+            LOGE("setupGlobals failed: could not find uniform location for u_texture.");
+            cleanupGlobals(output);
             return false;
         }
 
@@ -176,13 +183,13 @@ namespace ShaderManager {
         output->resolutionUniformLocation = glGetUniformLocation(output->program, "u_resolution");
         checkGlError("glGetUniformLocation u_resolution");
         if (output->resolutionUniformLocation == -1) {
-            LOGE("Could not find uniform location for u_resolution. Texture copying will fail.");
-            cleanupGraphics(output);
+            LOGE("setupGlobals failed: could not find uniform location for u_resolution.");
+            cleanupGlobals(output);
             return false;
         }
 
-        // --- Vertex Data (Position + Texture Coordinates) ---
-        // Format: PosX, PosY, TexCoordX, TexCoordY
+        // --- Vertex Data ---
+        // Format: PosX, PosY
         const GLfloat vertices[] = {
                 // Position
                 1.0f,  1.0f, // Top Right
@@ -200,24 +207,24 @@ namespace ShaderManager {
         glGenBuffers(1, &output->vbo);
         checkGlError("glGenBuffers (VBO)");
         if (output->vbo == 0) {
-            LOGE("Graphics setup failed as the VBO could not be created.");
-            cleanupGraphics(output);
+            LOGE("setupGlobals failed: VBO could not be created.");
+            cleanupGlobals(output);
             return false;
         }
 
         glGenBuffers(1, &output->ebo);
         checkGlError("glGenBuffers (EBO)");
         if (output->ebo == 0) {
-            LOGE("Graphics setup failed as the EBO could not be created.");
-            cleanupGraphics(output);
+            LOGE("setupGlobals failed: EBO could not be created.");
+            cleanupGlobals(output);
             return false;
         }
 
         glGenVertexArrays(1, &output->vao);
         checkGlError("glGenVertexArrays (VAO)");
         if (output->vao == 0) {
-            LOGE("Graphics setup failed as VAO could not be created.");
-            cleanupGraphics(output);
+            LOGE("setupGlobals failed: VAO could not be created.");
+            cleanupGlobals(output);
             return false;
         }
 
@@ -251,58 +258,103 @@ namespace ShaderManager {
 
         checkGlError("setup VBO, EBO and VAO attributes");
 
-        // --- Frame Buffer Object (FBO) ---
-        glGenFramebuffers(1, &output->fbo);
-        checkGlError("glGenFramebuffers FBO");
-
-        if (output->fbo == 0) {
-            LOGE("Graphics setup failed as FrameBuffer could not be created.");
-            cleanupGraphics(output);
-            return false;
-        }
-
-        LOGI("setupGraphics completed successfully.");
+        LOGI("setupGlobals completed successfully.");
         return true;
     }
 
-    void renderFrame(RenderInfo *renderInfo, GLuint sourceTextureId, GLuint targetTextureId, int targetWidth, int targetHeight) {
+    void cleanupGlobals(GlobalRenderInfo *renderInfo) {
+        if (renderInfo == nullptr) {
+            return;
+        }
+
+        LOGI("cleanupGlobals called");
+
+        if (renderInfo->vao) {
+            glDeleteVertexArrays(1, &renderInfo->vao);
+            renderInfo->vao = 0;
+        }
+
+        if (renderInfo->ebo) {
+            glDeleteBuffers(1, &renderInfo->ebo);
+            renderInfo->ebo = 0;
+        }
+
+        if (renderInfo->vbo) {
+            glDeleteBuffers(1, &renderInfo->vbo);
+            renderInfo->vbo = 0;
+        }
+
+        if (renderInfo->program) {
+            glDeleteProgram(renderInfo->program);
+            renderInfo->program = 0;
+        }
+
+        // Reset other members
+        renderInfo->textureUniformLocation = -1;
+        renderInfo->resolutionUniformLocation = -1;
+
+        LOGI("cleanupGlobals finished.");
+    }
+
+    GLuint createFrameBuffer() {
+        // --- Frame Buffer Object (FBO) ---
+        GLuint frameBuffer;
+
+        glGenFramebuffers(1, &frameBuffer);
+        checkGlError("glGenFramebuffers");
+        if (frameBuffer == 0) {
+            LOGE("createFrameBuffer: FrameBuffer could not be created.");
+            return 0;
+        }
+
+        LOGI("createFrameBuffer completed successfully.");
+        return frameBuffer;
+    }
+
+    void cleanupFrameBuffer(GLuint frameBufferId) {
+        if (frameBufferId == 0) {
+            return;
+        }
+
+        glDeleteFramebuffers(1, &frameBufferId);
+        LOGI("cleanupFrameBuffer finished.");
+    }
+
+    void renderFrame(GlobalRenderInfo* renderInfo, DrawInfo* drawInfo) {
         // Basic validation
-        if (!renderInfo || renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->fbo == 0 || renderInfo->textureUniformLocation == -1 || renderInfo->resolutionUniformLocation == -1) {
+        if (!renderInfo || renderInfo->program == 0 || renderInfo->vao == 0 || renderInfo->textureUniformLocation == -1 || renderInfo->resolutionUniformLocation == -1) {
             LOGE("renderFrame error: Invalid RenderInfo or setup incomplete.");
             return;
         }
 
-        if (sourceTextureId == 0 || targetTextureId == 0) {
-            LOGE("renderFrame error: Invalid source or target texture ID.");
+        if (!drawInfo || drawInfo->fbo == 0 || drawInfo->sourceTextureId == 0 || drawInfo->targetTextureId == 0) {
+            LOGE("renderFrame error: Invalid DrawInfo.");
             return;
         }
 
-        if (targetWidth <= 0 || targetHeight <= 0) {
-            LOGE("renderFrame error: Invalid target dimensions (%dx%d).", targetWidth, targetHeight);
+        if (drawInfo->viewportWidth <= 0 || drawInfo->viewportHeight <= 0) {
+            LOGE("renderFrame error: Invalid target dimensions (%dx%d).", drawInfo->viewportWidth, drawInfo->viewportHeight);
             return;
         }
-
-        // LOGI("renderFrame called. SourceTex: %u, TargetTex: %u, Size: %dx%d", sourceTextureId, targetTextureId, targetWidth, targetHeight);
 
         // 1. Bind the FBO
-        glBindFramebuffer(GL_FRAMEBUFFER, renderInfo->fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, drawInfo->fbo);
         checkGlError("glBindFramebuffer");
 
         // 2. Attach the caller's target texture as color attachment
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, targetTextureId, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, drawInfo->targetTextureId, 0);
         checkGlError("glFramebufferTexture2D");
 
         // 3. Check FBO status
         GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             LOGE("FrameBuffer is not complete! Status: 0x%x", status);
-
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             return;
         }
 
         // 4. Set Viewport to target texture size
-        glViewport(0, 0, targetWidth, targetHeight);
+        glViewport(0, 0, drawInfo->viewportWidth, drawInfo->viewportHeight);
         checkGlError("glViewport (FBO)");
 
         // 5. Use the shader program
@@ -312,14 +364,14 @@ namespace ShaderManager {
         // 6. Bind the source EXTERNAL texture
         glActiveTexture(GL_TEXTURE0); // Activate texture unit 0
         checkGlError("glActiveTexture");
-        glBindTexture(GL_TEXTURE_EXTERNAL_OES, sourceTextureId); // Bind the external texture
+        glBindTexture(GL_TEXTURE_EXTERNAL_OES, drawInfo->sourceTextureId); // Bind the external texture
         checkGlError("glBindTexture GL_TEXTURE_EXTERNAL_OES");
 
         // 7. Set the sampler uniform to use texture unit 0
         glUniform1i(renderInfo->textureUniformLocation, 0);
         checkGlError("glUniform1i u_texture");
 
-        glUniform2f(renderInfo->resolutionUniformLocation, (GLfloat)targetWidth, (GLfloat)targetHeight);
+        glUniform2f(renderInfo->resolutionUniformLocation, (GLfloat)drawInfo->viewportWidth, (GLfloat)drawInfo->viewportHeight);
         checkGlError("glUniform2i u_resolution");
 
         // 8. Bind VAO (contains VBO+EBO configuration)
@@ -335,44 +387,6 @@ namespace ShaderManager {
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); // Unbind external texture from unit 0
         glUseProgram(0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0); // Unbind the FBO, reverting to default framebuffer
-
-        // LOGI("renderFrame completed.");
-    }
-
-    void cleanupGraphics(RenderInfo *renderInfo) {
-        if (!renderInfo) return;
-        LOGI("cleanupGraphics called");
-
-        if (renderInfo->fbo) {
-            glDeleteFramebuffers(1, &renderInfo->fbo);
-            renderInfo->fbo = 0;
-        }
-
-        if (renderInfo->vao) {
-            glDeleteVertexArrays(1, &renderInfo->vao);
-            renderInfo->vao = 0;
-        }
-
-        if (renderInfo->vbo) {
-            glDeleteBuffers(1, &renderInfo->vbo);
-            renderInfo->vbo = 0;
-        }
-
-        if (renderInfo->ebo) {
-            glDeleteBuffers(1, &renderInfo->ebo);
-            renderInfo->ebo = 0;
-        }
-
-        if (renderInfo->program) {
-            glDeleteProgram(renderInfo->program);
-            renderInfo->program = 0;
-        }
-
-        // Reset other members
-        renderInfo->textureUniformLocation = -1;
-        renderInfo->resolutionUniformLocation = -1;
-
-        LOGI("cleanupGraphics finished.");
     }
 
 } // namespace ShaderManager

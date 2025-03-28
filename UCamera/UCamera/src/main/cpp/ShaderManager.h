@@ -22,56 +22,79 @@
 namespace ShaderManager {
 
     /**
-     * @brief Holds the necessary OpenGL object IDs and state for rendering.
+     * @brief Global information for rendering.
      */
-    struct RenderInfo {
+    struct GlobalRenderInfo {
         GLuint program = 0;
         GLuint vbo = 0;
         GLuint ebo = 0;
         GLuint vao = 0;
-        GLuint fbo = 0;
 
         GLint textureUniformLocation = -1;
         GLint resolutionUniformLocation = -1;
     };
 
     /**
-     * @brief Sets up the OpenGL rendering pipeline, including an FBO.
-     *
-     * Compiles shaders, links program, creates geometry (VBO/VAO),
-     * generates a source texture, finds uniforms, and creates an FBO.
-     *
-     * @param output Pointer to a RenderInfo struct to be populated.
-     * @return True if setup was successful, false otherwise.
+     * @brief Information for draw calls for a pair of source and target textures.
      */
-    bool setupGraphics(RenderInfo* output);
+    struct DrawInfo {
+        GLuint sourceTextureId;
+        GLuint targetTextureId;
+        GLuint fbo;
+
+        GLint viewportWidth;
+        GLint viewportHeight;
+    };
 
     /**
-     * @brief Renders (copies) the sourceTextureId into the targetTextureId using an FBO.
+     * @brief Checks if a GlobalRenderInfo struct contains valid data. If not, releases it and creates a new one.
+     * @param renderInfo Pointer to a GlobalRenderInfo struct to be checked.
+     * @return True if the struct is valid or creation was successful, false otherwise.
+     */
+    bool checkGlobalRenderInfo(GlobalRenderInfo* renderInfo);
+
+    /**
+     * @brief Sets up global OpenGL resources.
+     *
+     * Compiles shaders, links program, finds uniforms and creates geometry (VBO/EBO/VAO).
+     *
+     * @param output Pointer to a GlobalRenderInfo struct to be populated.
+     * @return True if setup was successful, false otherwise.
+     */
+    bool setupGlobals(GlobalRenderInfo* output);
+
+    /**
+     * @brief Cleans up global OpenGL resources.
+     *
+     * Deletes the shader program, VBO, EBO and VAO.
+     *
+     * @param renderInfo Pointer to the GlobalRenderInfo struct whose resources should be cleaned up.
+     */
+    void cleanupGlobals(GlobalRenderInfo* renderInfo);
+
+    /**
+     * @brief Creates a new FrameBuffer object.
+     * @return The ID of the FrameBuffer object, 0 if creation failed.
+     */
+    GLuint createFrameBuffer();
+
+    /**
+     * @brief Cleans up a FrameBuffer object.
+     * @param frameBufferId The ID of the FrameBuffer object to delete.
+     */
+    void cleanupFrameBuffer(GLuint frameBufferId);
+
+    /**
+     * @brief Renders (with conversion) a source Texture into a target Texture using an FBO.
      *
      * Binds the FBO, attaches the targetTextureId, sets viewport,
      * uses the shader program, binds the sourceTextureId (external)
-     * for sampling, draws the quad, and unbinds resources.
+     * for sampling, draws the quad with conversion, and unbinds resources.
      *
-     * @param renderInfo Pointer to the RenderInfo struct.
-     * @param sourceTextureId The OpenGL texture ID of the source EXTERNAL texture.
-     *                        This texture is typically managed externally (e.g., from SurfaceTexture).
-     * @param targetTextureId The OpenGL texture ID of the destination texture (GL_TEXTURE_2D).
-     *                        This texture MUST be properly allocated (e.g., via glTexImage2D)
-     *                        by the caller beforehand.
-     * @param targetWidth The width of the target texture.
-     * @param targetHeight The height of the target texture.
+     * @param renderInfo Global OpenGL rendering info for the call.
+     * @param drawInfo OpenGL info for this call.
      */
-    void renderFrame(RenderInfo *renderInfo, GLuint sourceTextureId, GLuint targetTextureId, int targetWidth, int targetHeight);
-
-    /**
-     * @brief Cleans up OpenGL resources.
-     *
-     * Deletes the shader program, VBO, VAO, source texture, and FBO.
-     *
-     * @param renderInfo Pointer to the RenderInfo struct whose resources should be cleaned up.
-     */
-    void cleanupGraphics(RenderInfo* renderInfo);
+    void renderFrame(GlobalRenderInfo* renderInfo, DrawInfo* drawInfo);
 
 } // namespace ShaderManager
 
