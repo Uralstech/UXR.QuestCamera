@@ -202,6 +202,19 @@ namespace Uralstech.UXR.QuestCamera
             return new CaptureSessionObject<OnDemandCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
         }
 
+        /// <summary>
+        /// Creates a new OpenGL and SurfaceTexture based capture session for use.
+        /// </summary>
+        /// <remarks>
+        /// This is an experimental capture session type that uses a native OpenGL texture to capture images.
+        /// 
+        /// It should ideally be faster, but I haven't tested it yet.
+        /// The results of this capture session may also be more noisy.
+        /// Requires OpenGL ES 3.0 or higher. Works with single and multi-threaded rendering.
+        /// </remarks>
+        /// <param name="resolution">The resolution of the capture.</param>
+        /// <param name="captureTemplate">The capture template to use for the capture</param>
+        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
         public SurfaceTextureCaptureSession CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             if (!IsActiveAndUsable)
