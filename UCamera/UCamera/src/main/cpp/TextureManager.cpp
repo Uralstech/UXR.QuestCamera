@@ -26,7 +26,6 @@
 
 #define LOG_TAG "UCameraNativeGraphics"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,     LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,     LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,    LOG_TAG, __VA_ARGS__)
 
 #define CREATE_GL_TEXTURE_EVENT         1
@@ -43,9 +42,6 @@ struct NativeAndJavaSurfaceTexture
 {
     ASurfaceTexture* nativeSurfaceTexture;
     jobject jniSurfaceTexture;
-
-    GLuint cameraFrameBuffer;
-    GLuint unityFrameBuffer;
 };
 
 static std::map<jint, NativeAndJavaSurfaceTexture> g_registeredSurfaceTextureMap;
@@ -106,8 +102,6 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void* /* reserved */) {
     for (auto const& [key, val] : g_registeredSurfaceTextureMap) {
         ASurfaceTexture_release(val.nativeSurfaceTexture);
         env->DeleteGlobalRef(val.jniSurfaceTexture);
-
-        LOGW("Could not dispose FrameBuffers with IDs \"%i\" and \"%i\" due to being on the JNI thread.", val.cameraFrameBuffer, val.unityFrameBuffer);
     }
 
     g_registeredSurfaceTextureMap.clear();
@@ -171,7 +165,7 @@ bool CheckAndLogJNIException(JNIEnv* env) {
 
 extern "C" JNIEXPORT void JNICALL
     Java_com_uralstech_ucamera_SurfaceTextureCaptureSession_queueSurfaceTextureCaptureSession(JNIEnv* env, jobject current, jlong timeStamp) {
-    std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
+    LOGI("Enqueuing STCaptureSession for setup.");
 
     jobject globalRef = env->NewGlobalRef(current);
     if (globalRef == nullptr) {
@@ -179,6 +173,7 @@ extern "C" JNIEXPORT void JNICALL
         return;
     }
 
+    std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
     auto it = g_uninitializedSTCaptureSessionMap.find(timeStamp);
     if (it != g_uninitializedSTCaptureSessionMap.end()) {
         env->DeleteGlobalRef(it->second);
@@ -195,14 +190,13 @@ extern "C" JNIEXPORT void JNICALL
     Java_com_uralstech_ucamera_SurfaceTextureCaptureSession_registerSurfaceTextureForUpdates(JNIEnv* env, jobject /* current */, jobject surfaceTexture, jint textureId) {
     LOGI("Registering SurfaceTexture for updates.");
 
-    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
-
     jobject globalRef = env->NewGlobalRef(surfaceTexture);
     if (globalRef == nullptr) {
         LOGE("Could not create global reference for SurfaceTexture.");
         return;
     }
 
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
     auto it = g_registeredSurfaceTextureMap.find(textureId);
     if (it != g_registeredSurfaceTextureMap.end()) {
         ASurfaceTexture_release(it->second.nativeSurfaceTexture);
@@ -225,7 +219,6 @@ extern "C" JNIEXPORT void JNICALL
     LOGI("Unregistering SurfaceTexture from updates.");
 
     std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
-
     auto it = g_registeredSurfaceTextureMap.find(textureId);
     if (it == g_registeredSurfaceTextureMap.end()) {
         LOGE("Can't deregister a SurfaceTexture that was never registered in the first place!");
@@ -234,18 +227,14 @@ extern "C" JNIEXPORT void JNICALL
 
     ASurfaceTexture_release(it->second.nativeSurfaceTexture);
     env->DeleteGlobalRef(it->second.jniSurfaceTexture);
-
-    it->second.nativeSurfaceTexture = nullptr;
-    it->second.jniSurfaceTexture = nullptr;
+    g_registeredSurfaceTextureMap.erase(it);
 
     LOGI("Deregistered SurfaceTexture successfully.");
 }
 
 struct TextureSetupData {
-    GLuint unityTextureId;
-
     jlong timeStamp;
-    void (*onDoneCallback)(GLuint);
+    void (*onDoneCallback)();
 };
 
 struct TextureUpdateData {
@@ -254,23 +243,24 @@ struct TextureUpdateData {
     GLint width;
     GLint height;
 
-    void (*onDoneCallback)(GLuint);
+    void (*onDoneCallback)();
 };
 
 struct TextureDeletionData {
     GLuint textureId;
-    void (*onDoneCallback)(GLuint);
+    void (*onDoneCallback)();
 };
 
 static ShaderManager::RenderInfo g_renderInfo;
 
 void updateSurfaceTextureNative(TextureUpdateData data) {
     LOGI("Updating SurfaceTexture from native code. (camTex: %i, unityTex: %i)", data.cameraTextureId, data.unityTextureId);
-    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
 
+    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
     auto it = g_registeredSurfaceTextureMap.find(data.cameraTextureId);
     if (it == g_registeredSurfaceTextureMap.end()) {
         LOGE("Could not find any registered SurfaceTextures for textureId: %i", data.cameraTextureId);
+        data.onDoneCallback();
         return;
     }
 
@@ -278,64 +268,21 @@ void updateSurfaceTextureNative(TextureUpdateData data) {
     LOGI("Successfully updated SurfaceTexture from native code.");
 
     ShaderManager::renderFrame(&g_renderInfo, data.cameraTextureId, data.unityTextureId, data.width, data.height);
-    data.onDoneCallback(data.unityTextureId);
+    data.onDoneCallback();
 }
 
 void deleteTextureNative(TextureDeletionData data) {
     ShaderManager::cleanupGraphics(&g_renderInfo);
-
     glDeleteTextures(1, &data.textureId);
     LOGI("Rendering data released.");
 
-    std::lock_guard<std::mutex> lock(g_registeredSurfaceTextureMapMutex);
-
-    auto it = g_registeredSurfaceTextureMap.find((jint)data.textureId);
-    if (it != g_registeredSurfaceTextureMap.end()) {
-        if (it->second.cameraFrameBuffer > 0) {
-            glDeleteFramebuffers(1, &it->second.cameraFrameBuffer);
-            it->second.cameraFrameBuffer = 0;
-            LOGI("cameraFrameBuffer deleted.");
-        }
-
-        if (it->second.unityFrameBuffer > 0) {
-            glDeleteFramebuffers(1, &it->second.unityFrameBuffer);
-            it->second.unityFrameBuffer = 0;
-            LOGI("unityFrameBuffer deleted.");
-        }
-
-        if (it->second.nativeSurfaceTexture != nullptr) {
-            ASurfaceTexture_release(it->second.nativeSurfaceTexture);
-            it->second.nativeSurfaceTexture = nullptr;
-            LOGI("ASurfaceTexture* deleted.");
-        }
-
-        if (it->second.jniSurfaceTexture != nullptr) {
-
-            bool shouldDetach;
-            JNIEnv* env = AttachEnv(&shouldDetach);
-            if (env == nullptr) {
-                LOGE("Could not delete global reference to SurfaceTexture due to not being able to attach to a JNIEnv.");
-                return;
-            }
-
-            env->DeleteGlobalRef(it->second.jniSurfaceTexture);
-            it->second.jniSurfaceTexture = nullptr;
-            LOGI("SurfaceTexture Global Reference deleted.");
-
-            if (shouldDetach) {
-                DetachJNIEnv();
-            }
-        }
-
-        g_registeredSurfaceTextureMap.erase(it);
-    }
-
-    data.onDoneCallback(data.textureId);
+    data.onDoneCallback();
 }
 
 void setupTextureNative(TextureSetupData data) {
     if (g_startCaptureSessionMethodId == nullptr) {
         LOGE("Could not initialize STCaptureSession due to missing methodId.");
+        data.onDoneCallback();
         return;
     }
 
@@ -346,14 +293,15 @@ void setupTextureNative(TextureSetupData data) {
     bool result = ShaderManager::setupGraphics(&g_renderInfo);
     if (!result) {
         LOGE("Could not setup rendering!");
+        data.onDoneCallback();
         return;
     }
 
     std::lock_guard<std::mutex> lock(g_uninitializedSTCaptureSessionMapMutex);
-
     auto it = g_uninitializedSTCaptureSessionMap.find(data.timeStamp);
     if (it == g_uninitializedSTCaptureSessionMap.end()) {
         LOGE("Could not find any uninitialized STCaptureSessions for the given timeStamp: %li", data.timeStamp);
+        data.onDoneCallback();
         return;
     }
 
@@ -361,6 +309,7 @@ void setupTextureNative(TextureSetupData data) {
     JNIEnv* jniEnv = AttachEnv(&shouldDetach);
     if (jniEnv == nullptr) {
         LOGE("Could not initialize STCaptureSession due to JNIEnv being null.");
+        data.onDoneCallback();
         return;
     }
 
@@ -378,7 +327,7 @@ void setupTextureNative(TextureSetupData data) {
         LOGI("JNIEnv detached.");
     }
 
-    data.onDoneCallback(data.unityTextureId);
+    data.onDoneCallback();
 }
 
 static void UNITY_INTERFACE_API OnRenderEvent(int eventId, void* data) {
