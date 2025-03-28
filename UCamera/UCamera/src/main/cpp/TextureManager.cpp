@@ -18,7 +18,6 @@
 #include <android/log.h>
 #include <android/surface_texture.h>
 #include <android/surface_texture_jni.h>
-#include <GLES3/gl32.h>
 #include <GLES2/gl2ext.h>
 #include <mutex>
 #include <map>

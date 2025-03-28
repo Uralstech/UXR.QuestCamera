@@ -19,47 +19,94 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.Rendering;
 
+#if !UNITY_6000_0_OR_NEWER && UTILITIES_ASYNC
+using Utilities.Async;
+#endif
+
 namespace Uralstech.UXR.QuestCamera
 {
+    /// <summary>
+    /// This is an experimental capture session type that uses a native OpenGL texture to capture images.
+    /// </summary>
+    /// <remarks>
+    /// It should ideally be faster, but I haven't tested it yet.
+    /// The results of this capture session may also be more noisy.
+    /// Requires OpenGL ES 3.0 or higher. Works with single and multi-threaded rendering.
+    /// </remarks>
     public class SurfaceTextureCaptureSession : ContinuousCaptureSession
     {
         #region Native Stuff
+        /// <summary>Native event to create the native texture.</summary>
         private const int CreateGlTextureEvent = 1;
+
+        /// <summary>Native event to destroy the native texture.</summary>
         private const int DestroyGlTextureEvent = 2;
+
+        /// <summary>Native event to update the native texture and convert it to the Unity texture.</summary>
         private const int UpdateSurfaceTextureEvent = 3;
 
+        /// <summary>
+        /// Gets the pointer to the native rendering function.
+        /// </summary>
         [DllImport("NativeTextureHelper")]
         private static extern IntPtr GetRenderEventFunction();
 
+        /// <summary>
+        /// Data structure to setup the native texture.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         struct TextureSetupData
         {
+            /// <summary>The Unity texture that the native texture will convert to.</summary>
             public uint UnityTextureId;
+
+            /// <summary>The width of the texture.</summary>
             public int Width;
+
+            /// <summary>The height of the texture.</summary>
             public int Height;
 
+            /// <summary>The time when this capture session was created.</summary>
             public long TimeStamp;
+
+            /// <summary>The callback to call when the setup is done.</summary>
             public IntPtr OnDoneCallback;
         }
 
+        /// <summary>
+        /// Data structure to update the native and Unity textures.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         private struct TextureUpdateData
         {
+            /// <summary>The ID of the native texture.</summary>
             public int CameraTextureId;
+
+            /// <summary>The callback to call when the update is done.</summary>
             public IntPtr OnDoneCallback;
         }
 
+        /// <summary>
+        /// Data structure to delete the native texture.
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         private struct TextureDeletionData
         {
+            /// <summary>The ID of the native texture.</summary>
             public uint TextureId;
+
+            /// <summary>The callback to call when the deletion is done.</summary>
             public IntPtr OnDoneCallback;
         }
         #endregion
 
         #region Static
+        /// <summary>Queue for native event callbacks.</summary>
         private static readonly ConcurrentQueue<Action> s_nativeTextureCallbacks = new();
 
+        /// <summary>
+        /// Callback for the native texture events. It will dequeue from <see cref="s_nativeTextureCallbacks"/> and call it.
+        /// </summary>
         [MonoPInvokeCallback(typeof(Action))]
         private static void NativeTextureCallback()
         {
@@ -68,10 +115,19 @@ namespace Uralstech.UXR.QuestCamera
         }
         #endregion
 
+        /// <summary>
+        /// The resolution of this capture session.
+        /// </summary>
         public Resolution Resolution { get; private set; }
 
+        /// <summary>
+        /// The texture that will be updated with the camera feed.
+        /// </summary>
         public Texture2D Texture { get; private set; }
 
+        /// <summary>
+        /// The command buffer to issue native events.
+        /// </summary>
         private CommandBuffer _commandBuffer;
 
         protected void Awake()
@@ -85,6 +141,36 @@ namespace Uralstech.UXR.QuestCamera
             _commandBuffer.Dispose();
         }
 
+        /// <summary>
+        /// Sends an event to the native plugin.
+        /// </summary>
+        /// <typeparam name="T">The type of the data to send.</typeparam>
+        /// <param name="data">The data to send.</param>
+        /// <param name="eventId">The unique ID of the event.</param>
+        /// <param name="additionalAction">Any additional action to be done after the event is completed.</param>
+        protected void CallNativeEvent<T>(T data, int eventId, Action additionalAction = null)
+            where T : struct
+        {
+            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
+            Marshal.StructureToPtr(data, dataPtr, false);
+
+            s_nativeTextureCallbacks.Enqueue(() =>
+            {
+                Debug.Log($"Native plugin event of ID \"{eventId}\" completed.");
+                Marshal.FreeHGlobal(dataPtr);
+                additionalAction?.Invoke();
+            });
+
+            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), eventId, dataPtr);
+            Graphics.ExecuteCommandBuffer(_commandBuffer);
+            _commandBuffer.Clear();
+        }
+
+        /// <summary>
+        /// Creates the native texture and sets up the OpenGL texture.
+        /// </summary>
+        /// <param name="resolution">The resolution of the capture session.</param>
+        /// <param name="timeStamp">The time at which this capture session was created.</param>
         internal void CreateNativeTexture(Resolution resolution, long timeStamp)
         {
             Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.ARGB32, false);
@@ -99,19 +185,8 @@ namespace Uralstech.UXR.QuestCamera
                 TimeStamp = timeStamp,
                 OnDoneCallback = Marshal.GetFunctionPointerForDelegate<Action>(NativeTextureCallback)
             };
-
-            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
-            Marshal.StructureToPtr(data, dataPtr, false);
-
-            s_nativeTextureCallbacks.Enqueue(() =>
-            {
-                Debug.Log("Native texture setup completed.");
-                Marshal.FreeHGlobal(dataPtr);
-            });
-
-            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, dataPtr);
-            Graphics.ExecuteCommandBuffer(_commandBuffer);
-            _commandBuffer.Clear();
+            
+            CallNativeEvent(data, CreateGlTextureEvent);
         }
 
         #region Native Callbacks
@@ -130,19 +205,7 @@ namespace Uralstech.UXR.QuestCamera
                 OnDoneCallback = Marshal.GetFunctionPointerForDelegate<Action>(NativeTextureCallback)
             };
 
-            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
-            Marshal.StructureToPtr(data, dataPtr, false);
-
-            s_nativeTextureCallbacks.Enqueue(() =>
-            {
-                Debug.Log("Updating texture in Unity.");
-                Marshal.FreeHGlobal(dataPtr);
-                GL.InvalidateState();
-            });
-
-            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
-            Graphics.ExecuteCommandBuffer(_commandBuffer);
-            _commandBuffer.Clear();
+            CallNativeEvent(data, UpdateSurfaceTextureEvent, GL.InvalidateState);
         }
 
         public void _destroyNativeTexture(string textureId)
@@ -159,23 +222,17 @@ namespace Uralstech.UXR.QuestCamera
                 OnDoneCallback = Marshal.GetFunctionPointerForDelegate<Action>(NativeTextureCallback)
             };
 
-            IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
-            Marshal.StructureToPtr(data, dataPtr, false);
-
-            s_nativeTextureCallbacks.Enqueue(async () =>
+            CallNativeEvent(data, DestroyGlTextureEvent, async () =>
             {
-                Debug.Log("Native rendering data destroyed.");
-                Marshal.FreeHGlobal(dataPtr);
-
+#if UNITY_6000_0_OR_NEWER
                 await Awaitable.MainThreadAsync();
-                
+#elif UTILITIES_ASYNC
+                await Awaiters.UnityMainThread;
+#endif
+
                 base.Release();
                 Destroy(gameObject);
             });
-
-            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), DestroyGlTextureEvent, dataPtr);
-            Graphics.ExecuteCommandBuffer(_commandBuffer);
-            _commandBuffer.Clear();
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion

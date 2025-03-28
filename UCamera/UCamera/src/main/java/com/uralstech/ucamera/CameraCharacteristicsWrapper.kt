@@ -53,7 +53,7 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     /**
      * The resolutions supported by this device.
      */
-    val supportedResolutions: Array<Size>?
+    val supportedResolutions: Array<Size>
 
     /**
      * The resolution, in pixels, for which intrinsics are provided.
@@ -90,8 +90,8 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
         this.metaQuestCameraSource = metaQuestCameraSource
         this.metaQuestCameraEye = metaQuestCameraEye
 
-        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-        supportedResolutions = configMap?.getOutputSizes(ImageFormat.YUV_420_888)
+        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
+        supportedResolutions = configMap.getOutputSizes(ImageFormat.YUV_420_888)!!
 
         val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
         intrinsicsResolution = if (sensorSize != null) {
