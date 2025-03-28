@@ -34,6 +34,10 @@ namespace Uralstech.UXR.QuestCamera
         [StructLayout(LayoutKind.Sequential)]
         struct TextureSetupData
         {
+            public uint UnityTextureId;
+            public int Width;
+            public int Height;
+
             public long TimeStamp;
             public IntPtr OnDoneCallback;
         }
@@ -41,11 +45,7 @@ namespace Uralstech.UXR.QuestCamera
         [StructLayout(LayoutKind.Sequential)]
         private struct TextureUpdateData
         {
-            public uint UnityTextureId;
             public int CameraTextureId;
-            public int Width;
-            public int Height;
-
             public IntPtr OnDoneCallback;
         }
 
@@ -92,6 +92,10 @@ namespace Uralstech.UXR.QuestCamera
 
             TextureSetupData data = new()
             {
+                UnityTextureId = (uint)Texture.GetNativeTexturePtr(),
+                Width = resolution.width,
+                Height = resolution.height,
+
                 TimeStamp = timeStamp,
                 OnDoneCallback = Marshal.GetFunctionPointerForDelegate<Action>(NativeTextureCallback)
             };
@@ -122,11 +126,7 @@ namespace Uralstech.UXR.QuestCamera
 
             TextureUpdateData data = new()
             {
-                UnityTextureId = (uint)Texture.GetNativeTexturePtr(),
                 CameraTextureId = texId,
-                Width = Resolution.width,
-                Height = Resolution.height,
-
                 OnDoneCallback = Marshal.GetFunctionPointerForDelegate<Action>(NativeTextureCallback)
             };
 
