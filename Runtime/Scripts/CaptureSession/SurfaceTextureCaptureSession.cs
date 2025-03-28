@@ -72,6 +72,19 @@ namespace Uralstech.UXR.QuestCamera
 
         public Texture2D Texture { get; private set; }
 
+        private CommandBuffer _commandBuffer;
+
+        protected void Awake()
+        {
+            _commandBuffer = new CommandBuffer();
+        }
+
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            _commandBuffer.Dispose();
+        }
+
         internal void CreateNativeTexture(Resolution resolution, long timeStamp)
         {
             Texture = new Texture2D(resolution.width, resolution.height, TextureFormat.ARGB32, false);
@@ -92,10 +105,9 @@ namespace Uralstech.UXR.QuestCamera
                 Marshal.FreeHGlobal(dataPtr);
             });
 
-            using CommandBuffer commandBuffer = new();
-
-            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, dataPtr);
-            Graphics.ExecuteCommandBuffer(commandBuffer);
+            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), CreateGlTextureEvent, dataPtr);
+            Graphics.ExecuteCommandBuffer(_commandBuffer);
+            _commandBuffer.Clear();
         }
 
         #region Native Callbacks
@@ -128,10 +140,9 @@ namespace Uralstech.UXR.QuestCamera
                 GL.InvalidateState();
             });
 
-            using CommandBuffer commandBuffer = new();
-            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
-
-            Graphics.ExecuteCommandBuffer(commandBuffer);
+            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), UpdateSurfaceTextureEvent, dataPtr);
+            Graphics.ExecuteCommandBuffer(_commandBuffer);
+            _commandBuffer.Clear();
         }
 
         public void _destroyNativeTexture(string textureId)
@@ -162,10 +173,9 @@ namespace Uralstech.UXR.QuestCamera
                 Destroy(gameObject);
             });
 
-            using CommandBuffer commandBuffer = new();
-            commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), DestroyGlTextureEvent, dataPtr);
-
-            Graphics.ExecuteCommandBuffer(commandBuffer);
+            _commandBuffer.IssuePluginEventAndData(GetRenderEventFunction(), DestroyGlTextureEvent, dataPtr);
+            Graphics.ExecuteCommandBuffer(_commandBuffer);
+            _commandBuffer.Clear();
         }
 #pragma warning restore IDE1006 // Naming Styles
         #endregion
