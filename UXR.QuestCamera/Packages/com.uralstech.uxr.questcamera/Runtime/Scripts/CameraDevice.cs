@@ -203,6 +203,42 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
+        /// Creates a new OpenGL and SurfaceTexture based capture session for use.
+        /// </summary>
+        /// <remarks>
+        /// This is an experimental capture session type that uses a native OpenGL texture to capture images.
+        /// 
+        /// It should ideally be faster, but I haven't tested it yet.
+        /// The results of this capture session may also be more noisy.
+        /// Requires OpenGL ES 3.0 or higher. Works with single and multi-threaded rendering.
+        /// </remarks>
+        /// <param name="resolution">The resolution of the capture.</param>
+        /// <param name="captureTemplate">The capture template to use for the capture</param>
+        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
+        public SurfaceTextureCaptureSession CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        {
+            if (!IsActiveAndUsable)
+                return null;
+
+            long timeStamp = DateTime.Now.Ticks;
+            GameObject wrapperGO = new($"{nameof(SurfaceTextureCaptureSession)} ({CameraId}, {timeStamp})");
+
+            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession",
+                timeStamp, wrapperGO.name, resolution.width, resolution.height, (int)captureTemplate);
+            if (nativeObject is null)
+            {
+                Destroy(wrapperGO);
+                return null;
+            }
+
+            SurfaceTextureCaptureSession wrapper = wrapperGO.AddComponent<SurfaceTextureCaptureSession>();
+            wrapper.SetCaptureSession(nativeObject);
+            
+            wrapper.CreateNativeTexture(resolution, timeStamp);
+            return wrapper;
+        }
+
+        /// <summary>
         /// Releases the CameraDevice's native resources, and makes it unusable.
         /// </summary>
         public void Release()

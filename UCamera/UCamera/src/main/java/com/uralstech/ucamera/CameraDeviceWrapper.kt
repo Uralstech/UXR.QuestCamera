@@ -155,6 +155,27 @@ class CameraDeviceWrapper(
     }
 
     /**
+     * Creates a new SurfaceTexture-based capture session and a wrapper for it.
+     */
+    fun createSurfaceTextureCaptureSession(
+        timeStamp: Long,
+        unityListener: String,
+        width: Int, height: Int,
+        captureTemplate: Int): SurfaceTextureCaptureSession? {
+
+        val cameraDevice = this.cameraDevice
+        if (!isActiveAndUsable || cameraDevice == null) {
+            Log.e(TAG, "Tried to call createSurfaceTextureCaptureSession on unusable CameraDeviceWrapper!")
+            return null
+        }
+
+        Log.i(TAG, "Creating new SurfaceTexture-based camera session for camera with ID \"$id\".")
+
+        val wrapper = SurfaceTextureCaptureSession(timeStamp, unityListener, cameraDevice, width, height, captureTemplate)
+        return wrapper
+    }
+
+    /**
      * Releases associated resources and closes the camera device.
      * This results in [isActiveAndUsable] being set to false.
      */

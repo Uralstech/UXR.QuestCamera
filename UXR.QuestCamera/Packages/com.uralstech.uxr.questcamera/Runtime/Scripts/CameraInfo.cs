@@ -164,7 +164,7 @@ namespace Uralstech.UXR.QuestCamera
                 float[] principalPoint = _cameraInfo?.Get<float[]>("intrinsicsPrincipalPoint");
                 float? skew = _cameraInfo?.Get<float>("intrinsicsSkew");
 
-                return resolution is not null && focalLength is not null && principalPoint is not null && (skew is not null || skew == float.NegativeInfinity)
+                return resolution is not null && focalLength is not null && principalPoint is not null && skew is not null && skew != float.NegativeInfinity
                     ? new CameraIntrinsics(
                         new Vector2(resolution[0], resolution[1]),
                         new Vector2(focalLength[0], focalLength[1]),

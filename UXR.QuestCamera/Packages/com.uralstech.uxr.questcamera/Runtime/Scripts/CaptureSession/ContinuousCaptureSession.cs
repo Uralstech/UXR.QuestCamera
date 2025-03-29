@@ -62,7 +62,7 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         protected AndroidJavaObject _captureSession;
 
-        protected void OnDestroy()
+        protected virtual void OnDestroy()
         {
             Release();
         }
