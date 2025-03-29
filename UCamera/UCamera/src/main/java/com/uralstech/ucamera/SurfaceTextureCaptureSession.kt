@@ -75,7 +75,7 @@ class SurfaceTextureCaptureSession(
     private var surfaceTextureId: Int = 0
 
     init {
-        queueSurfaceTextureCaptureSession(timeStamp);
+        queueSurfaceTextureCaptureSession(timeStamp)
     }
 
     /**
@@ -122,6 +122,11 @@ class SurfaceTextureCaptureSession(
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
+                        deregisterSurfaceTextureForUpdates(textureId)
+                        UnityPlayer.UnitySendMessage(unityListener, DESTROY_NATIVE_TEXTURE, textureId.toString())
+
+                        surface.release()
+                        surfaceTexture.release()
                         captureSessionExecutor.shutdown()
                         Log.i(TAG, "Capture session executor shut down.")
                     }
@@ -189,22 +194,10 @@ class SurfaceTextureCaptureSession(
         captureSession?.close()
         captureSession = null
 
-        surface?.release()
-        surface = null
-
-        val textureId = surfaceTextureId
-        if (textureId > 0) {
-            deregisterSurfaceTextureForUpdates(textureId)
-            UnityPlayer.UnitySendMessage(unityListener, DESTROY_NATIVE_TEXTURE, textureId.toString())
-        }
-
-        surfaceTexture?.release()
-        surfaceTexture = null
-
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }
 
-    private external fun queueSurfaceTextureCaptureSession(timeStamp: Long);
-    private external fun registerSurfaceTextureForUpdates(surfaceTexture: SurfaceTexture, textureId: Int);
-    private external fun deregisterSurfaceTextureForUpdates(textureId: Int);
+    private external fun queueSurfaceTextureCaptureSession(timeStamp: Long)
+    private external fun registerSurfaceTextureForUpdates(surfaceTexture: SurfaceTexture, textureId: Int)
+    private external fun deregisterSurfaceTextureForUpdates(textureId: Int)
 }
