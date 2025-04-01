@@ -140,6 +140,40 @@ It is highly recommended to release or destroy all `CameraDevice`s and `CaptureS
 using them, as not doing so may result in the app not closing quickly. They will automatically be released and destroyed by Unity,
 like when a new scene is loaded, but do not rely on it!
 
+### Better Performance in OpenGL
+
+If your app uses the OpenGL Graphics API, you can use `SurfaceTextureCaptureSession` and `OnDemandSurfaceTextureCaptureSession` instead of
+`ContinuousCaptureSession` and `OnDemandCaptureSession`, respectively. This can improve performance as the SurfaceTexture-based sessions use
+low-level OpenGL shaders to convert the camera image from YUV to RGBA. They are also much simpler to use as they do not have any other associated
+components, like texture converters, or frame forwarders. Unlike all other types in this package, **you must not destroy `SurfaceTextureCaptureSession`
+and `OnDemandSurfaceTextureCaptureSession`!** They manage their own lifetimes, so just call `Release()` on them when you're done. After they've
+released their native resources, like the OpenGL textures and Framebuffers, they will destroy their own GameObjects. Both have a Texture2D property,
+`Texture`, which will store the camera images.
+
+You can create them by calling `CameraDevice.CreateSurfaceTextureCaptureSession()` or `CameraDevice.CreateOnDemandSurfaceTextureCaptureSession()`, like:
+```csharp
+CameraDevice camera = ...;
+Resolution resolution = ...;
+
+// Create a capture session with the camera, at the chosen resolution.
+SurfaceTextureCaptureSession sessionObject = camera.CreateSurfaceTextureCaptureSession(resolution);
+yield return sessionObject.WaitForInitialization();
+
+// Check if it opened successfully
+if (sessionObject.CurrentState != NativeWrapperState.Opened)
+{
+    Debug.LogError("Could not open camera session!");
+
+    // Both of these are important for releasing the camera and session resources.
+    sessionObject.Release();
+    camera.Destroy();
+    yield break;
+}
+
+// Set the image texture.
+_rawImage.texture = sessionObject.Texture;
+```
+
 ## Example Script
 
 ```csharp

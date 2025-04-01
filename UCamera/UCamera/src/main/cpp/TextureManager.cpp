@@ -293,6 +293,10 @@ void deleteTextureNative(TextureDeletionData data) {
         g_drawInfosMap.erase(it);
 
         LOGI("Rendering data released.");
+        if (g_drawInfosMap.empty()) {
+            LOGI("Releasing globals since no other DrawInfos exist.");
+            ShaderManager::cleanupGlobals(&g_renderInfo);
+        }
     } else {
         LOGE("Could not release rendering data as associated DrawInfo was not found.");
     }

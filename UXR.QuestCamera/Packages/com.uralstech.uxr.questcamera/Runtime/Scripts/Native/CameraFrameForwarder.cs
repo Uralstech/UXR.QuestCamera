@@ -72,51 +72,32 @@ namespace Uralstech.UXR.QuestCamera
 
         public CameraFrameForwarder() : base("com.uralstech.ucamera.CameraFrameCallback") { }
 
-        /// <summary>
-        /// Gets the pointer to a native buffer from a Java ByteBuffer object.
-        /// </summary>
-        /// <param name="byteBuffer">The Java ByteBuffer object.</param>
-        /// <returns>A pointer to the native buffer.</returns>
-        protected static unsafe IntPtr GetBufferPointer(AndroidJavaObject byteBuffer)
+        /// <inheritdoc/>
+        public unsafe override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
-            IntPtr rawBuffer = byteBuffer.GetRawObject();
-            sbyte* data = AndroidJNI.GetDirectBufferAddress(rawBuffer);
+            if (methodName != "onFrameReady")
+                return base.Invoke(methodName, javaArgs);
 
-            return new IntPtr(data);
-        }
+            Debug.Log("Calling onFrameReady from Invoke.");
 
-#pragma warning disable IDE0051 // Remove unused private members
-#pragma warning disable IDE1006 // Naming Styles
-        /// <summary>
-        /// Called by the native Kotlin plugin when a new YUV 4:2:0 frame is ready.
-        /// </summary>
-        /// <remarks>
-        /// <paramref name="yBufferObj"/>, <paramref name="uBufferObj"/> and
-        /// <paramref name="vBufferObj"/> are Java ByteBuffer objects that are
-        /// guaranteed to be direct buffers.
-        /// </remarks>
-        private unsafe void onFrameReady(
-            AndroidJavaObject yBufferObj,
-            AndroidJavaObject uBufferObj,
-            AndroidJavaObject vBufferObj,
-            int ySize,
-            int uSize,
-            int vSize,
-            int yRowStride,
-            int uvRowStride,
-            int uvPixelStride)
-        {
-            IntPtr yBuffer = GetBufferPointer(yBufferObj);
-            IntPtr uBuffer = GetBufferPointer(uBufferObj);
-            IntPtr vBuffer = GetBufferPointer(vBufferObj);
+            sbyte* yBuffer = AndroidJNI.GetDirectBufferAddress(AndroidJNI.GetObjectArrayElement(javaArgs, 0));
+            sbyte* uBuffer = AndroidJNI.GetDirectBufferAddress(AndroidJNI.GetObjectArrayElement(javaArgs, 1));
+            sbyte* vBuffer = AndroidJNI.GetDirectBufferAddress(AndroidJNI.GetObjectArrayElement(javaArgs, 2));
+
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 3), out int ySize);
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 4), out int uSize);
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 5), out int vSize);
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 6), out int yRowStride);
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 7), out int uvRowStride);
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 8), out int uvPixelStride);
 
             OnFrameReady?.Invoke(
-                yBuffer, uBuffer, vBuffer,
+                (IntPtr)yBuffer, (IntPtr)uBuffer, (IntPtr)vBuffer,
                 ySize, uSize, vSize,
                 yRowStride, uvRowStride,
                 uvPixelStride);
+
+            return IntPtr.Zero;
         }
-#pragma warning restore IDE0051 // Remove unused private members
-#pragma warning restore IDE1006 // Naming Styles
     }
 }
