@@ -54,15 +54,16 @@ uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
 // Helper function to convert YUV to RGB.
 float3 YUVtoRGB(uint y, uint u, uint v)
 {
-    // https://stackoverflow.com/questions/36212904/yuv-420-888-interpretation-on-samsung-galaxy-s7-camera2
+    // ITU-R BT.601 standard convertion
     
+    float yf = float(y) +  16.0;
     float uf = float(u) - 128.0;
     float vf = float(v) - 128.0;
     
     float3 rgb = float3(
-        y + 1.140 * vf,
-        y - 0.395 * uf - 0.581 * vf,
-        y + 2.032 * uf
+        yf + 1.402 * vf,
+        yf - 0.344136 * uf - 0.714136 * vf,
+        yf + 1.772 * uf
     );
     
     return saturate(rgb / 255.0);
