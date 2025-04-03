@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace Uralstech.UXR.QuestCamera
@@ -68,7 +69,7 @@ namespace Uralstech.UXR.QuestCamera
         ///     </item>
         /// </list>
         /// </remarks>
-        public Action<IntPtr, IntPtr, IntPtr, int, int, int, int, int, int> OnFrameReady;
+        public Func<IntPtr, IntPtr, IntPtr, int, int, int, int, int, int, Task> OnFrameReady;
 
         public CameraFrameForwarder() : base("com.uralstech.ucamera.CameraFrameCallback") { }
 
@@ -77,8 +78,6 @@ namespace Uralstech.UXR.QuestCamera
         {
             if (methodName != "onFrameReady")
                 return base.Invoke(methodName, javaArgs);
-
-            Debug.Log("Calling onFrameReady from Invoke.");
 
             sbyte* yBuffer = AndroidJNI.GetDirectBufferAddress(AndroidJNI.GetObjectArrayElement(javaArgs, 0));
             sbyte* uBuffer = AndroidJNI.GetDirectBufferAddress(AndroidJNI.GetObjectArrayElement(javaArgs, 1));
@@ -95,7 +94,7 @@ namespace Uralstech.UXR.QuestCamera
                 (IntPtr)yBuffer, (IntPtr)uBuffer, (IntPtr)vBuffer,
                 ySize, uSize, vSize,
                 yRowStride, uvRowStride,
-                uvPixelStride);
+                uvPixelStride)?.Wait();
 
             return IntPtr.Zero;
         }
