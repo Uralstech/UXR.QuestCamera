@@ -169,7 +169,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="yRowStride">The size of each row of the image in <paramref name="yBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
-        protected virtual void OnFrameReady(
+        protected virtual async Task OnFrameReady(
             IntPtr yBuffer,
             IntPtr uBuffer,
             IntPtr vBuffer,
@@ -180,21 +180,17 @@ namespace Uralstech.UXR.QuestCamera
             int uvRowStride,
             int uvPixelStride)
         {
-            Task.Run(async () =>
-            {
 #if UNITY_6000_0_OR_NEWER
-                await Awaitable.MainThreadAsync();
+            await Awaitable.MainThreadAsync();
 #elif UTILITIES_ASYNC
-                await Awaiters.UnityMainThread;
+            await Awaiters.UnityMainThread;
 #endif
-                if (_isReleased)
-                    return;
+            if (_isReleased)
+                return;
 
-                CopyNativeDataToComputeBuffer(ref _yComputeBuffer, yBuffer, ySize);
-                CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
-                CopyNativeDataToComputeBuffer(ref _vComputeBuffer, vBuffer, vSize);
-            }).Wait();
-
+            CopyNativeDataToComputeBuffer(ref _yComputeBuffer, yBuffer, ySize);
+            CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
+            CopyNativeDataToComputeBuffer(ref _vComputeBuffer, vBuffer, vSize);
             SendFrameToComputeBuffer(yRowStride, uvRowStride, uvPixelStride);
         }
 
