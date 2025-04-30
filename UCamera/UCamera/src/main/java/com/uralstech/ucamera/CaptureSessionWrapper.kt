@@ -75,6 +75,8 @@ abstract class CaptureSessionWrapper(
             val uBuffer = uPlane.buffer
             val vBuffer = image.planes[2].buffer
 
+            val timestamp = image.timestamp
+
             frameCallback.onFrameReady(
                 yBuffer,
                 uBuffer,
@@ -84,7 +86,8 @@ abstract class CaptureSessionWrapper(
                 vBuffer.remaining(),
                 yPlane.rowStride,
                 uPlane.rowStride,
-                uPlane.pixelStride
+                uPlane.pixelStride,
+                timestamp
             )
 
             image.close()
