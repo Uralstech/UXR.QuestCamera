@@ -39,6 +39,11 @@ namespace Uralstech.UXR.QuestCamera
         public RenderTexture FrameRenderTexture { get; protected set; }
 
         /// <summary>
+        /// The timestamp the last frame processed was captured at in nanoseconds.
+        /// </summary>
+        public long FrameCaptureTimestamp { get; protected set; }
+
+        /// <summary>
         /// The shader used to convert YUV 4:2:0 to an RGBA RenderTexture.
         /// Uses <see cref="UCameraManager.YUVToRGBAComputeShader"/> if not specified here.
         /// </summary>
@@ -169,6 +174,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="yRowStride">The size of each row of the image in <paramref name="yBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
+        /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
         protected virtual async Task OnFrameReady(
             IntPtr yBuffer,
             IntPtr uBuffer,
@@ -178,7 +184,8 @@ namespace Uralstech.UXR.QuestCamera
             int vSize,
             int yRowStride,
             int uvRowStride,
-            int uvPixelStride)
+            int uvPixelStride,
+            long timestamp)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
@@ -192,6 +199,7 @@ namespace Uralstech.UXR.QuestCamera
             CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
             CopyNativeDataToComputeBuffer(ref _vComputeBuffer, vBuffer, vSize);
             SendFrameToComputeBuffer(yRowStride, uvRowStride, uvPixelStride);
+            FrameCaptureTimestamp = timestamp;
         }
 
         /// <summary>
