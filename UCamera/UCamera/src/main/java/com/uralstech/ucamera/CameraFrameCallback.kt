@@ -33,6 +33,7 @@ interface CameraFrameCallback {
         vSize: Int,
         yRowStride: Int,
         uvRowStride: Int,
-        uvPixelStride: Int
+        uvPixelStride: Int,
+        timestamp: Long
     )
 }

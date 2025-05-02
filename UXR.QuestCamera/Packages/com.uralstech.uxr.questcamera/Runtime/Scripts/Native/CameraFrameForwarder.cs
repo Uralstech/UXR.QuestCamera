@@ -67,9 +67,13 @@ namespace Uralstech.UXR.QuestCamera
         ///         <term>uvPixelStride (int)</term>
         ///         <description>The size of a pixel in a row of the image in uBuffer and vBuffer in bytes.</description>
         ///     </item>
+        ///     <item>
+        ///        <term>timestamp (long)</term>
+        ///        <description>The timestamp the frame was captured at in nanoseconds.</description>
+        ///    </item>
         /// </list>
         /// </remarks>
-        public Func<IntPtr, IntPtr, IntPtr, int, int, int, int, int, int, Task> OnFrameReady;
+        public Func<IntPtr, IntPtr, IntPtr, int, int, int, int, int, int, long, Task> OnFrameReady;
 
         public CameraFrameForwarder() : base("com.uralstech.ucamera.CameraFrameCallback") { }
 
@@ -90,11 +94,13 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 7), out int uvRowStride);
             AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 8), out int uvPixelStride);
 
+            AndroidJNIHelper.Unbox(AndroidJNI.GetObjectArrayElement(javaArgs, 9), out long timestampNs);
+
             OnFrameReady?.Invoke(
                 (IntPtr)yBuffer, (IntPtr)uBuffer, (IntPtr)vBuffer,
                 ySize, uSize, vSize,
                 yRowStride, uvRowStride,
-                uvPixelStride)?.Wait();
+                uvPixelStride, timestampNs)?.Wait();
 
             return IntPtr.Zero;
         }
