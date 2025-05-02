@@ -55,6 +55,12 @@ namespace Uralstech.UXR.QuestCamera
         public UnityEvent<RenderTexture> OnFrameProcessed = new();
 
         /// <summary>
+        /// Called when a frame has been converted from YUV 4:2:0 to RGBA.
+        /// Also includes the timestamp the frame was captured at in nanoseconds.
+        /// </summary>
+        public UnityEvent<RenderTexture, long> OnFrameProcessedWithTimestamp = new();
+
+        /// <summary>
         /// Pointer to the buffer containing Y (luminance) data of the frame being processed.
         /// </summary>
         protected ComputeBuffer _yComputeBuffer;
@@ -198,7 +204,7 @@ namespace Uralstech.UXR.QuestCamera
             CopyNativeDataToComputeBuffer(ref _yComputeBuffer, yBuffer, ySize);
             CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
             CopyNativeDataToComputeBuffer(ref _vComputeBuffer, vBuffer, vSize);
-            SendFrameToComputeBuffer(yRowStride, uvRowStride, uvPixelStride);
+            SendFrameToComputeBuffer(yRowStride, uvRowStride, uvPixelStride, timestamp);
             FrameCaptureTimestamp = timestamp;
         }
 
@@ -208,7 +214,8 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="yRowStride">The size of each row of the image in <see cref="_yComputeBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
-        protected virtual async void SendFrameToComputeBuffer(int yRowStride, int uvRowStride, int uvPixelStride)
+        /// <param name="timestampNs">The timestamp the frame was captured at in nanoseconds.</param>
+        protected virtual async void SendFrameToComputeBuffer(int yRowStride, int uvRowStride, int uvPixelStride, long timestampNs)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
@@ -238,6 +245,7 @@ namespace Uralstech.UXR.QuestCamera
             Shader.Dispatch(kernelHandle, threadGroupsX, threadGroupsY, 1);
 
             OnFrameProcessed?.Invoke(FrameRenderTexture);
+            OnFrameProcessedWithTimestamp?.Invoke(FrameRenderTexture, timestampNs);
         }
     }
 }
