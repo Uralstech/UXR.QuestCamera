@@ -28,6 +28,19 @@ namespace Uralstech.UXR.QuestCamera
     /// </summary>
     public class YUVToRGBAConverter : MonoBehaviour
     {
+        private static readonly int s_yBufferID = UnityEngine.Shader.PropertyToID("YBuffer");
+        private static readonly int s_uBufferID = UnityEngine.Shader.PropertyToID("UBuffer");
+        private static readonly int s_vBufferID = UnityEngine.Shader.PropertyToID("VBuffer");
+
+        private static readonly int s_yRowStrideID = UnityEngine.Shader.PropertyToID("YRowStride");
+        private static readonly int s_uvRowStrideID = UnityEngine.Shader.PropertyToID("UVRowStride");
+        private static readonly int s_uvPixelStrideID = UnityEngine.Shader.PropertyToID("UVPixelStride");
+
+        private static readonly int s_targetWidthID = UnityEngine.Shader.PropertyToID("TargetWidth");
+        private static readonly int s_targetHeightID = UnityEngine.Shader.PropertyToID("TargetHeight");
+
+        private static readonly int s_outputTextureID = UnityEngine.Shader.PropertyToID("OutputTexture");
+
         /// <summary>
         /// The native camera frame forwarder.
         /// </summary>
@@ -83,6 +96,11 @@ namespace Uralstech.UXR.QuestCamera
 #pragma warning restore IDE1006 // Naming Styles
 
         /// <summary>
+        /// The handle to the compute shader kernel that performs the YUV to RGBA conversion.
+        /// </summary>
+        private int _kernelHandle;
+
+        /// <summary>
         /// Copies native (unmanaged) byte data to a compute buffer.
         /// </summary>
         /// <param name="computeBuffer">The buffer to copy to.</param>
@@ -109,6 +127,8 @@ namespace Uralstech.UXR.QuestCamera
         {
             if (Shader == null)
                 Shader = UCameraManager.Instance.YUVToRGBAComputeShader;
+
+            _kernelHandle = Shader.FindKernel("CSMain");
         }
 
         protected void OnDestroy()
@@ -225,24 +245,22 @@ namespace Uralstech.UXR.QuestCamera
             if (_isReleased)
                 return;
 
-            int kernelHandle = Shader.FindKernel("CSMain");
+            Shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
+            Shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
+            Shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
 
-            Shader.SetBuffer(kernelHandle, "YBuffer", _yComputeBuffer);
-            Shader.SetBuffer(kernelHandle, "UBuffer", _uComputeBuffer);
-            Shader.SetBuffer(kernelHandle, "VBuffer", _vComputeBuffer);
+            Shader.SetInt(s_yRowStrideID, yRowStride);
+            Shader.SetInt(s_uvRowStrideID, uvRowStride);
+            Shader.SetInt(s_uvPixelStrideID, uvPixelStride);
 
-            Shader.SetInt("YRowStride", yRowStride);
-            Shader.SetInt("UVRowStride", uvRowStride);
-            Shader.SetInt("UVPixelStride", uvPixelStride);
+            Shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
+            Shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
 
-            Shader.SetInt("TargetWidth", FrameRenderTexture.width);
-            Shader.SetInt("TargetHeight", FrameRenderTexture.height);
-
-            Shader.SetTexture(kernelHandle, "OutputTexture", FrameRenderTexture);
+            Shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
 
             int threadGroupsX = Mathf.CeilToInt(FrameRenderTexture.width / 8.0f);
             int threadGroupsY = Mathf.CeilToInt(FrameRenderTexture.height / 8.0f);
-            Shader.Dispatch(kernelHandle, threadGroupsX, threadGroupsY, 1);
+            Shader.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
 
             OnFrameProcessed?.Invoke(FrameRenderTexture);
             OnFrameProcessedWithTimestamp?.Invoke(FrameRenderTexture, timestampNs);
