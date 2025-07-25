@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.uralstech.ucamera"
-    compileSdk = 36
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 29
