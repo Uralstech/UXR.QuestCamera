@@ -3,7 +3,7 @@
   "displayName": "UXR.QuestCamera",
   "description": "A Unity package to use the new Meta Quest Passthrough Camera API.",
   "keywords": [],
-  "version": "2.6.1-preview.2",
+  "version": "2.6.1",
   "unity": "2022.3",
   "hideInEditor": false,
   "documentationUrl": "https://uralstech.github.io/UXR.QuestCamera/",
@@ -16,8 +16,8 @@
   },
   "samples": [
     {
-      "displayName": "Digit Recognition with Unity Sentis",
-      "description": "A sample showcasing a Unity Sentis digit recognition model being used with the Meta Quest Passthrough Camera API.",
+      "displayName": "Digit Recognition with Unity Inference Engine",
+      "description": "A sample showcasing a Unity Inference Engine (formerly known as Unity Sentis) digit recognition model being used with the Meta Quest Passthrough Camera API.",
       "path": "Samples~/DigitRecognitionSample"
     }
   ],
