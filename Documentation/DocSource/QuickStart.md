@@ -250,7 +250,7 @@ public class CameraTest : MonoBehaviour
 }
 ```
 
-## Sample - Digit Recognition with Unity Sentis
+## Sample - Digit Recognition with Unity Inference Engine
 
 The package contains a Computer Vision sample that uses an MNIST trained model to recognize handwritten digits, through the Camera API.
 
@@ -264,4 +264,4 @@ If you change the path to the model, remember to change it in all `DigitRecognit
 
 ### Package Dependencies
 
-This sample requires the Unity Sentis package (`com.unity.sentis`) and was built with version 2.1.2 of the package.
+This sample requires the Unity Inference Engine package (`com.unity.ai.inference`) and was built with version 2.2.1 of the package.
