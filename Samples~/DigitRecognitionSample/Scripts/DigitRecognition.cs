@@ -13,7 +13,7 @@
 // limitations under the License.
 
 using System.IO;
-using Unity.Sentis;
+using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.Android;
 using UnityEngine.Networking;
@@ -41,7 +41,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
         [Tooltip("Button to stop the camera.")]
         [SerializeField] private Button _stopButton;
 
-        [Tooltip("Path to the Sentis model in StreamingAssets.")]
+        [Tooltip("Path to the model in StreamingAssets.")]
         [SerializeField] private string _modelPathInStreamingAssets = "mnist-12.sentis";
 
         private CameraInfo _cameraInfo; // Camera metadata.
@@ -111,7 +111,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
         }
 
         /// <summary>
-        /// Loads the Sentis model from the StreamingAssets directory.
+        /// Loads the model from the StreamingAssets directory.
         /// </summary>
         /// <remarks>
         /// The StreamingAssets folder is a part of the APK itself, which is a ZIP file,
