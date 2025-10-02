@@ -39,6 +39,10 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         private bool _disposed = false;
+
+        /// <summary>
+        /// Disposes the capture session and texture converter.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed)

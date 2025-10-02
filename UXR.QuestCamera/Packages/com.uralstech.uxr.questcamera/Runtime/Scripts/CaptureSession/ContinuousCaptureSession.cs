@@ -127,8 +127,6 @@ namespace Uralstech.UXR.QuestCamera
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
-                    CurrentState = NativeWrapperState.Opened;
-
                     OnSessionRequestSet.InvokeOnMainThread();
                     return IntPtr.Zero;
 
@@ -139,6 +137,8 @@ namespace Uralstech.UXR.QuestCamera
                     return IntPtr.Zero;
 
                 case "onSessionActive":
+                    CurrentState = NativeWrapperState.Opened;
+                    
                     OnSessionActive.InvokeOnMainThread();
                     return IntPtr.Zero;
 
@@ -202,6 +202,10 @@ namespace Uralstech.UXR.QuestCamera
 #endif
 
         private bool _disposed = false;
+
+        /// <summary>
+        /// Releases native plugin resources.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed)

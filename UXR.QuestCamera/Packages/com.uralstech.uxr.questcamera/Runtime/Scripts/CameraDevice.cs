@@ -70,22 +70,22 @@ namespace Uralstech.UXR.QuestCamera
         public bool IsActiveAndUsable => _cameraDevice?.Get<bool>("isActiveAndUsable") ?? false;
 
         /// <summary>
-        /// Invoked when the CameraDevice is opened.
+        /// Invoked when the CameraDevice is opened, along with the camera ID.
         /// </summary>
         public event Action<string>? OnDeviceOpened;
 
         /// <summary>
-        /// Invoked when the CameraDevice is closed.
+        /// Invoked when the CameraDevice is closed, along with the camera ID.
         /// </summary>
         public event Action<string>? OnDeviceClosed;
 
         /// <summary>
-        /// Invoked when the CameraDevice encounters an error.
+        /// Invoked when the CameraDevice encounters an error, along with the camera ID.
         /// </summary>
         public event Action<string, ErrorCode>? OnDeviceErred;
 
         /// <summary>
-        /// Invoked when the CameraDevice is disconnected.
+        /// Invoked when the CameraDevice is disconnected, along with the camera ID.
         /// </summary>
         public event Action<string>? OnDeviceDisconnected;
 
@@ -93,6 +93,7 @@ namespace Uralstech.UXR.QuestCamera
 
         public CameraDevice() : base("com.uralstech.ucamera.CameraDeviceWrapper$Callbacks") { }
 
+        /// <inheritdoc/>
         public override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
             string cameraId;
@@ -159,6 +160,10 @@ namespace Uralstech.UXR.QuestCamera
 #endif
 
         private bool _disposed = false;
+
+        /// <summary>
+        /// Releases native plugin resources.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed)
@@ -176,12 +181,12 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Destroy"/>
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
         /// to close the session and free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
+        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public CapturePipeline<ContinuousCaptureSession>? CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             if (!IsActiveAndUsable)
@@ -206,11 +211,11 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new on-demand capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Destroy"/>
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
         /// to close the session and free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
-        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
+        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
         {
             if (!IsActiveAndUsable)
@@ -242,7 +247,7 @@ namespace Uralstech.UXR.QuestCamera
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
+        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public SurfaceTextureCaptureSession CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             return CreateSTCaptureSession<SurfaceTextureCaptureSession>(nameof(SurfaceTextureCaptureSession), resolution, captureTemplate);
@@ -259,20 +264,12 @@ namespace Uralstech.UXR.QuestCamera
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
+        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public OnDemandSurfaceTextureCaptureSession CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             return CreateSTCaptureSession<OnDemandSurfaceTextureCaptureSession>(nameof(OnDemandSurfaceTextureCaptureSession), resolution, captureTemplate);
         }
 
-        /// <summary>
-        /// Implementation of <see cref="CreateSurfaceTextureCaptureSession(Resolution, CaptureTemplate)"/> and <see cref="CreateOnDemandSurfaceTextureCaptureSession(Resolution, CaptureTemplate)"/>.
-        /// </summary>
-        /// <typeparam name="T">The type of the capture session wrapper.</typeparam>
-        /// <param name="typeName">The name of the type <typeparamref name="T"/>.</param>
-        /// <param name="resolution">The resolution of the capture.</param>
-        /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
         private T CreateSTCaptureSession<T>(string typeName, Resolution resolution, CaptureTemplate captureTemplate)
             where T : SurfaceTextureCaptureSession
         {

@@ -79,27 +79,23 @@ namespace Uralstech.UXR.QuestCamera
         public event Action<RenderTexture, long>? OnFrameProcessed;
 
         /// <summary>
-        /// Pointer to the buffer containing Y (luminance) data of the frame being processed.
+        /// Buffer containing Y (luminance) data of the frame being processed.
         /// </summary>
         protected readonly ComputeBuffer _yComputeBuffer;
 
         /// <summary>
-        /// Pointer to the buffer containing U (color) data of the frame being processed.
+        /// Buffer containing U (color) data of the frame being processed.
         /// </summary>
         protected readonly ComputeBuffer _uComputeBuffer;
 
         /// <summary>
-        /// Pointer to the buffer containing V (color) data of the frame being processed.
+        /// Buffer containing V (color) data of the frame being processed.
         /// </summary>
         protected readonly ComputeBuffer _vComputeBuffer;
 
         /// <summary>
-        /// Have the converter's resources been released?
+        /// 
         /// </summary>
-#pragma warning disable IDE1006 // Naming Styles
-        protected bool _disposed { get; private set; } = false;
-#pragma warning restore IDE1006 // Naming Styles
-
         protected readonly int _threadGroupsX;
         protected readonly int _threadGroupsY;
         protected readonly int _yBufferSize;
@@ -131,6 +127,10 @@ namespace Uralstech.UXR.QuestCamera
             SetupShader(_shader);
         }
 
+        /// <summary>
+        /// Sets up the parameters for the given shader for YUV to RGBA conversion.
+        /// </summary>
+        /// <param name="shader">The shader to configure.</param>
         protected virtual void SetupShader(ComputeShader shader)
         {
             _kernelHandle = shader.FindKernel("CSMain");
@@ -144,6 +144,11 @@ namespace Uralstech.UXR.QuestCamera
             shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
         }
 
+        /// <summary>
+        /// Copies an array to a compute buffer. If the array is bigger than the buffer, the extra content of the array is ignored.
+        /// </summary>
+        /// <param name="source">The array to copy from.</param>
+        /// <param name="target">The buffer to copy to.</param>
         protected static unsafe void CopyArrayToComputeBuffer(byte[] source, ComputeBuffer target)
         {
             int length = Mathf.Min(source.Length, target.count);
@@ -204,6 +209,16 @@ namespace Uralstech.UXR.QuestCamera
             }
         }
 
+        /// <summary>
+        /// Copies the given data into the shader's buffers and dispatches it.
+        /// </summary>
+        /// <param name="yCpuBuffer">Array containing Y (luminance) data of the frame.</param>
+        /// <param name="uCpuBuffer">Array containing U (color) data of the frame.</param>
+        /// <param name="vCpuBuffer">Array containing V (color) data of the frame.</param>
+        /// <param name="yRowStride">The size of each row of the image in <see cref="_yComputeBuffer"/> in bytes.</param>
+        /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
+        /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
+        /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
         protected virtual async void PrepareDataForComputeBuffer(byte[] yCpuBuffer, byte[] uCpuBuffer, byte[] vCpuBuffer,
             int yRowStride, int uvRowStride, int uvPixelStride, long timestamp)
         {
@@ -214,14 +229,20 @@ namespace Uralstech.UXR.QuestCamera
 #else
                 await Awaiters.UnityMainThread;
 #endif
-                if (_disposed)
+                if (_disposed || _shader == null)
                     return;
 
                 CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
                 CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
                 CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
 
-                SendFrameToComputeShader(yRowStride, uvRowStride, uvPixelStride, timestamp);
+                _shader.SetInt(s_yRowStrideID, yRowStride);
+                _shader.SetInt(s_uvRowStrideID, uvRowStride);
+                _shader.SetInt(s_uvPixelStrideID, uvPixelStride);
+                _shader.Dispatch(_kernelHandle, _threadGroupsX, _threadGroupsY, 1);
+
+                FrameCaptureTimestamp = timestamp;
+                OnFrameProcessed?.Invoke(FrameRenderTexture, timestamp);
             }
             catch (Exception ex)
             {
@@ -235,31 +256,11 @@ namespace Uralstech.UXR.QuestCamera
             }
         }
 
+        private bool _disposed = false;
 
         /// <summary>
-        /// Sends the camera frame stored in the compute buffers to the compute shader and dispatches it.
+        /// Releases the frame RenderTexture and buffers.
         /// </summary>
-        /// <param name="yRowStride">The size of each row of the image in <see cref="_yComputeBuffer"/> in bytes.</param>
-        /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
-        /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
-        /// <param name="timestampNs">The timestamp the frame was captured at in nanoseconds.</param>
-        protected virtual void SendFrameToComputeShader(int yRowStride, int uvRowStride, int uvPixelStride, long timestampNs)
-        {
-            if (_shader == null)
-            {
-                Debug.LogWarning($"Shader is null but {nameof(YUVToRGBAConverter)} is active.");
-                return;
-            }
-
-            _shader.SetInt(s_yRowStrideID, yRowStride);
-            _shader.SetInt(s_uvRowStrideID, uvRowStride);
-            _shader.SetInt(s_uvPixelStrideID, uvPixelStride);
-            _shader.Dispatch(_kernelHandle, _threadGroupsX, _threadGroupsY, 1);
-
-            FrameCaptureTimestamp = timestampNs;
-            OnFrameProcessed?.Invoke(FrameRenderTexture, timestampNs);
-        }
-
         public void Dispose()
         {
             if (_disposed)

@@ -94,7 +94,7 @@ namespace Uralstech.UXR.QuestCamera
         public readonly CameraEye Eye;
 
         /// <summary>
-        /// The position of the camera optical center.
+        /// The position of the camera's optical center.
         /// </summary>
         public readonly Vector3? LensPoseTranslation;
 
@@ -165,6 +165,10 @@ namespace Uralstech.UXR.QuestCamera
         public static implicit operator string(CameraInfo camera) => camera.CameraId;
 
         private bool _disposed = false;
+
+        /// <summary>
+        /// Releases native plugin resources.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed)
