@@ -13,16 +13,16 @@
 // limitations under the License.
 
 using System;
-using System.Collections;
+using System.Threading;
 using UnityEngine;
-using UnityEngine.Events;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
     /// A wrapper for a native Camera2 CameraDevice.
     /// </summary>
-    public class CameraDevice : MonoBehaviour
+    public class CameraDevice : AndroidJavaProxy, IDisposable
     {
         /// <summary>
         /// Error codes that can be returned by the native CameraDevice wrapper.
@@ -60,9 +60,9 @@ namespace Uralstech.UXR.QuestCamera
         public NativeWrapperState CurrentState { get; private set; }
 
         /// <summary>
-        /// The ID of the camera being wrapped.
+        /// The ID of the camera being wrapped. This value is <b>not</b> cached - it is requested from the native plugin on every access.
         /// </summary>
-        public string CameraId => _cameraDevice?.Get<string>("id");
+        public string? CameraId => _cameraDevice?.Get<string>("id");
 
         /// <summary>
         /// Is the native CameraDevice wrapper active and usable?
@@ -72,45 +72,69 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Invoked when the CameraDevice is opened.
         /// </summary>
-        public UnityEvent OnDeviceOpened = new();
+        public event Action<string>? OnDeviceOpened;
 
         /// <summary>
         /// Invoked when the CameraDevice is closed.
         /// </summary>
-        public UnityEvent OnDeviceClosed = new();
+        public event Action<string>? OnDeviceClosed;
 
         /// <summary>
         /// Invoked when the CameraDevice encounters an error.
         /// </summary>
-        public UnityEvent<ErrorCode> OnDeviceErred = new();
+        public event Action<string, ErrorCode>? OnDeviceErred;
 
         /// <summary>
         /// Invoked when the CameraDevice is disconnected.
         /// </summary>
-        public UnityEvent OnDeviceDisconnected = new();
+        public event Action<string>? OnDeviceDisconnected;
 
-        private AndroidJavaObject _cameraDevice;
+        internal protected AndroidJavaObject? _cameraDevice;
 
-        protected void OnDestroy()
+        public CameraDevice() : base("com.uralstech.ucamera.CameraDeviceWrapper$Callbacks") { }
+
+        public override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
-            Release();
-        }
+            string cameraId;
+            switch (methodName)
+            {
+                case "onDeviceOpened":
+                    CurrentState = NativeWrapperState.Opened;
 
-        /// <summary>
-        /// Sets the native CameraDevice wrapper.
-        /// </summary>
-        internal void SetCameraDevice(AndroidJavaObject cameraDevice)
-        {
-            _cameraDevice = cameraDevice;
+                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
+                    OnDeviceOpened.InvokeOnMainThread(cameraId);
+                    return IntPtr.Zero;
+
+                case "onDeviceClosed":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
+                    OnDeviceClosed.InvokeOnMainThread(cameraId);
+                    return IntPtr.Zero;
+
+                case "onDeviceDisconnected":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
+                    OnDeviceDisconnected.InvokeOnMainThread(cameraId);
+                    return IntPtr.Zero;
+
+                case "onDeviceErred":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
+                    int errorCode = JNIExtensions.UnboxIntElement(javaArgs, 1);
+                    OnDeviceErred.InvokeOnMainThread(cameraId, (ErrorCode)errorCode);
+                    return IntPtr.Zero;
+            }
+
+            return base.Invoke(methodName, javaArgs);
         }
 
         /// <summary>
         /// Waits until the CameraDevice is open or erred out.
         /// </summary>
-        public IEnumerator WaitForInitialization()
-        {
-            yield return new WaitUntil(() => CurrentState != NativeWrapperState.Initializing);
-        }
+        public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
 
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
@@ -120,86 +144,91 @@ namespace Uralstech.UXR.QuestCamera
         /// Requires Unity 6.0 or higher.
         /// </remarks>
         /// <returns>The current state of the CameraDevice.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync()
+        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
             if (CurrentState != NativeWrapperState.Initializing)
                 return CurrentState;
 
             await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing)
-                await Awaitable.NextFrameAsync();
+            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
+                await Awaitable.NextFrameAsync(token);
 
+            token.ThrowIfCancellationRequested();
             return CurrentState;
         }
 #endif
+
+        private bool _disposed = false;
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _cameraDevice?.Call("close");
+            _cameraDevice?.Dispose();
+            _cameraDevice = null;
+            _disposed = true;
+
+            GC.SuppressFinalize(this);
+        }
 
         /// <summary>
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CaptureSessionObject{T}.Destroy"/>
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Destroy"/>
         /// to close the session and free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
         /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
-        public CaptureSessionObject<ContinuousCaptureSession> CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        public CapturePipeline<ContinuousCaptureSession>? CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             if (!IsActiveAndUsable)
                 return null;
 
-            CameraFrameForwarder cameraFrameForwarder = new();
-            GameObject wrapperGO = new($"{nameof(ContinuousCaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
-
-            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession",
-                wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height, (int)captureTemplate);
+            ContinuousCaptureSession captureSession = new();
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", captureSession, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                Destroy(wrapperGO);
+                captureSession.Dispose();
                 return null;
             }
 
-            ContinuousCaptureSession wrapper = wrapperGO.AddComponent<ContinuousCaptureSession>();
-            wrapper.SetCaptureSession(nativeObject);
+            YUVToRGBAConverter converter = new(resolution);
+            captureSession.OnFrameReady += converter.OnFrameReady;
+            captureSession._captureSession = nativeObject;
 
-            YUVToRGBAConverter converter = wrapper.gameObject.AddComponent<YUVToRGBAConverter>();
-            converter.SetupCameraFrameForwarder(cameraFrameForwarder, resolution);
-
-            return new CaptureSessionObject<ContinuousCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
+            return new CapturePipeline<ContinuousCaptureSession>(captureSession, converter);
         }
 
         /// <summary>
         /// Creates a new on-demand capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CaptureSessionObject{T}.Destroy"/>
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Destroy"/>
         /// to close the session and free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <returns>A new capture session wrapper. May be null if the current camera device is not usable.</returns>
-        public CaptureSessionObject<OnDemandCaptureSession> CreateOnDemandCaptureSession(Resolution resolution)
+        public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
         {
             if (!IsActiveAndUsable)
                 return null;
 
-            CameraFrameForwarder cameraFrameForwarder = new();
-            GameObject wrapperGO = new($"{nameof(OnDemandCaptureSession)} ({CameraId}, {DateTime.UtcNow.Ticks})");
-
-            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession",
-                wrapperGO.name, cameraFrameForwarder, resolution.width, resolution.height);
+            OnDemandCaptureSession captureSession = new();
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", captureSession, resolution.width, resolution.height);
             if (nativeObject is null)
             {
-                Destroy(wrapperGO);
+                captureSession.Dispose();
                 return null;
             }
 
-            OnDemandCaptureSession wrapper = wrapperGO.AddComponent<OnDemandCaptureSession>();
-            wrapper.SetCaptureSession(nativeObject);
+            YUVToRGBAConverter converter = new(resolution);
+            captureSession.OnFrameReady += converter.OnFrameReady;
+            captureSession._captureSession = nativeObject;
 
-            YUVToRGBAConverter converter = wrapper.gameObject.AddComponent<YUVToRGBAConverter>();
-            converter.SetupCameraFrameForwarder(cameraFrameForwarder, resolution);
-
-            return new CaptureSessionObject<OnDemandCaptureSession>(wrapperGO, wrapper, converter, cameraFrameForwarder);
+            return new CapturePipeline<OnDemandCaptureSession>(captureSession, converter);
         }
 
         /// <summary>
@@ -247,77 +276,26 @@ namespace Uralstech.UXR.QuestCamera
         private T CreateSTCaptureSession<T>(string typeName, Resolution resolution, CaptureTemplate captureTemplate)
             where T : SurfaceTextureCaptureSession
         {
-            if (!IsActiveAndUsable)
-                return null;
+            return null;
+            //if (!IsActiveAndUsable)
+            //    return null;
 
-            long timeStamp = DateTime.Now.Ticks;
-            GameObject wrapperGO = new($"{typeName} ({CameraId}, {timeStamp})");
+            //long timeStamp = DateTime.Now.Ticks;
+            //GameObject wrapperGO = new($"{typeName} ({CameraId}, {timeStamp})");
 
-            AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession",
-                timeStamp, wrapperGO.name, resolution.width, resolution.height, (int)captureTemplate);
-            if (nativeObject is null)
-            {
-                Destroy(wrapperGO);
-                return null;
-            }
+            //AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession",
+            //    timeStamp, wrapperGO.name, resolution.width, resolution.height, (int)captureTemplate);
+            //if (nativeObject is null)
+            //{
+            //    Destroy(wrapperGO);
+            //    return null;
+            //}
 
-            T wrapper = wrapperGO.AddComponent<T>();
-            wrapper.SetCaptureSession(nativeObject);
-            
-            wrapper.CreateNativeTexture(resolution, timeStamp);
-            return wrapper;
+            //T wrapper = wrapperGO.AddComponent<T>();
+            //wrapper.SetCaptureSession(nativeObject);
+
+            //wrapper.CreateNativeTexture(resolution, timeStamp);
+            //return wrapper;
         }
-
-        /// <summary>
-        /// Releases the CameraDevice's native resources, and makes it unusable.
-        /// </summary>
-        public void Release()
-        {
-            _cameraDevice?.Call("close");
-            _cameraDevice?.Dispose();
-            _cameraDevice = null;
-        }
-
-        /// <summary>
-        /// Releases the CameraDevice's native resources, and destroys its GameObject.
-        /// </summary>
-        public void Destroy()
-        {
-            Release();
-            Destroy(gameObject);
-        }
-
-        #region Native Callbacks
-#pragma warning disable IDE1006 // Naming Styles
-        public void _onDeviceOpened(string _)
-        {
-            CurrentState = NativeWrapperState.Opened;
-            OnDeviceOpened?.Invoke();
-        }
-
-        public void _onDeviceClosed(string _)
-        {
-            CurrentState = NativeWrapperState.Closed;
-            OnDeviceClosed?.Invoke();
-        }
-
-        public void _onDeviceErred(string errorCodeStr)
-        {
-            CurrentState = NativeWrapperState.Closed;
-
-            ErrorCode errorCode = ErrorCode.Unknown;
-            if (int.TryParse(errorCodeStr, out int errorCodeInt))
-                errorCode = (ErrorCode)errorCodeInt;
-
-            OnDeviceErred?.Invoke(errorCode);
-        }
-
-        public void _onDeviceDisconnected(string _)
-        {
-            CurrentState = NativeWrapperState.Closed;
-            OnDeviceDisconnected?.Invoke();
-        }
-#pragma warning restore IDE1006 // Naming Styles
-        #endregion
     }
 }

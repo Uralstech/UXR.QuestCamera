@@ -16,6 +16,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera.Editor
 {
     public static class AssetMenuExtensions
@@ -36,7 +37,7 @@ namespace Uralstech.UXR.QuestCamera.Editor
             prefabPath = string.Empty;
 
             // 1. Find the package path
-            string packagePath = GetPackagePath(overridePackagePathCache);
+            string? packagePath = GetPackagePath(overridePackagePathCache);
             if (string.IsNullOrEmpty(packagePath))
             {
                 Debug.LogError($"Could not find package path for {PackageName}.");
@@ -53,7 +54,7 @@ namespace Uralstech.UXR.QuestCamera.Editor
                 return !overridePackagePathCache && InstantiatePrefab(relativePrefabPath, out prefabPath, true);
 
             // 4. Instantiate the prefab
-            GameObject instance = PrefabUtility.InstantiatePrefab(prefab) as GameObject;
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
 
             // 5. Place it in the scene
             instance.transform.SetParent(Selection.activeTransform, false); // Parent to current selection
@@ -69,16 +70,14 @@ namespace Uralstech.UXR.QuestCamera.Editor
             return true;
         }
 
-        private static string s_packagePathCached = string.Empty;
+        private static string? s_packagePathCached = string.Empty;
 
         // Helper method to get the package path
-        private static string GetPackagePath(bool overrideCached)
+        private static string? GetPackagePath(bool overrideCached)
         {
-            if (!string.IsNullOrEmpty(s_packagePathCached) && !overrideCached)
-                return s_packagePathCached;
-
-            s_packagePathCached = UnityEditor.PackageManager.PackageInfo.FindForPackageName(PackageName)?.assetPath;
-            return s_packagePathCached;
+            return string.IsNullOrEmpty(s_packagePathCached) || overrideCached
+                ? (s_packagePathCached = UnityEditor.PackageManager.PackageInfo.FindForPackageName(PackageName)?.assetPath)
+                : s_packagePathCached;
         }
     }
 }
