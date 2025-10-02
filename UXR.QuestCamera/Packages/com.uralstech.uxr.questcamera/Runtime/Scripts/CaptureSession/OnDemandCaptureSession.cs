@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
+
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
@@ -40,7 +43,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <returns>If the capture request was set successfully, <see langword="true"/>, otherwise, <see langword="false"/>.</returns>
         public bool RequestCapture(CaptureTemplate captureTemplate = CaptureTemplate.StillCapture)
         {
-            return _captureSession?.Call<bool>("setSingleCaptureRequest", (int)captureTemplate) ?? false;
+            return _captureSession?.Call<bool>("setSingleCaptureRequest", (int)captureTemplate) ?? throw new ObjectDisposedException(nameof(OnDemandCaptureSession));
         }
     }
 }

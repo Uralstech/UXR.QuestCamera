@@ -21,7 +21,6 @@ import android.hardware.camera2.CameraManager
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import com.unity3d.player.UnityPlayer
-import java.lang.ref.WeakReference
 
 /**
  * Script to manage Camera2 resources.
@@ -32,19 +31,9 @@ class Camera2Wrapper {
         /** Logcat tag. */
         private const val TAG = "Camera2Wrapper"
 
-        private var Instance: WeakReference<Camera2Wrapper> = WeakReference(null)
-
         @JvmStatic
-        fun getInstance(): Camera2Wrapper {
-            val instance = Instance.get()
-            return if (instance != null) {
-                instance
-            } else {
-                val newInstance = Camera2Wrapper()
-                Instance = WeakReference(newInstance)
-
-                newInstance
-            }
+        val instance: Camera2Wrapper by lazy {
+            Camera2Wrapper()
         }
     }
 
@@ -63,13 +52,15 @@ class Camera2Wrapper {
         return try {
             Log.i(TAG, "Getting camera intrinsics.")
 
-            val characteristicsWrappers = mutableListOf<CameraCharacteristicsWrapper>()
-            for (cameraId in cameraManager.cameraIdList) {
+            val cameraIdList = cameraManager.cameraIdList
+            val wrappers = arrayOfNulls<CameraCharacteristicsWrapper>(cameraIdList.size)
+
+            for ((i, cameraId) in cameraIdList.withIndex()) {
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                characteristicsWrappers.add(CameraCharacteristicsWrapper(cameraId, characteristics))
+                wrappers[i] = CameraCharacteristicsWrapper(cameraId, characteristics)
             }
 
-            characteristicsWrappers.toTypedArray()
+            wrappers.requireNoNulls()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Could not get camera characteristics due to a camera access exception.", exp)
             null
@@ -86,12 +77,8 @@ class Camera2Wrapper {
      * callbacks.
      */
     @RequiresPermission(Manifest.permission.CAMERA)
-    fun openCameraDevice(camera: String, unityListener: String): CameraDeviceWrapper {
+    fun openCameraDevice(camera: String, callbacks: CameraDeviceWrapper.Callbacks): CameraDeviceWrapper {
         Log.i(TAG, "Opening camera device with ID \"$camera\"")
-
-        val wrapper = CameraDeviceWrapper(camera, unityListener)
-        wrapper.openDevice(cameraManager)
-
-        return wrapper
+        return CameraDeviceWrapper(camera, callbacks, cameraManager)
     }
 }

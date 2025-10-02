@@ -16,6 +16,7 @@ using System;
 using UnityEngine;
 using Uralstech.Utils.Singleton;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
@@ -42,29 +43,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Returns all available cameras and their characteristics. This is a cached value.
         /// </summary>
-        public CameraInfo[] Cameras
-        {
-            get
-            {
-                if (_cameraInfosCached is not null)
-                    return _cameraInfosCached;
+        public CameraInfo[]? Cameras => _cameraInfosCached is not null ? _cameraInfosCached : (_cameraInfosCached = GetCameraInfos());
 
-                AndroidJavaObject[] nativeCameraInfos = _camera2Wrapper?.Call<AndroidJavaObject[]>("getCameraDevices");
-                if (nativeCameraInfos is null)
-                    return null;
-
-                int cameraInfoCount = nativeCameraInfos.Length;
-
-                _cameraInfosCached = new CameraInfo[cameraInfoCount];
-                for (int i = 0; i < cameraInfoCount; i++)
-                    _cameraInfosCached[i] = new CameraInfo(nativeCameraInfos[i]);
-
-                return _cameraInfosCached;
-            }
-        }
-
-        private CameraInfo[] _cameraInfosCached = null;
-        private AndroidJavaObject _camera2Wrapper;
+        private CameraInfo[]? _cameraInfosCached = null;
+        private AndroidJavaObject? _camera2Wrapper;
 
         protected override void Awake()
         {
@@ -91,13 +73,41 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
+        /// Gets all available cameras and their characteristics. This is <b>not</b> cached.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="CameraInfo"/> implements <see cref="IDisposable"/>, so make sure to dispose every returned value.
+        /// </remarks>
+        /// <returns>An array of <see cref="CameraInfo"/> objects or <see langword="null"/> if any errors occurred.</returns>
+        public CameraInfo[]? GetCameraInfos()
+        {
+            AndroidJavaObject[]? nativeObjects = _camera2Wrapper?.Call<AndroidJavaObject[]>("getCameraDevices");
+            if (nativeObjects is null)
+            {
+                Debug.LogError("Could not get camera device information.");
+                return null;
+            }
+
+            int count = nativeObjects.Length;
+            CameraInfo[] wrappers = new CameraInfo[count];
+
+            for (int i = 0; i < count; i++)
+                wrappers[i] = new CameraInfo(nativeObjects[i]);
+
+            return wrappers;
+        }
+
+        /// <summary>
         /// Gets a camera device by the eye it is closest to.
         /// </summary>
         /// <param name="eye">The eye.</param>
-        /// <returns>The camera's <see cref="CameraInfo"/>, <see langword="null"/> if not found.</returns>
-        public CameraInfo GetCamera(CameraInfo.CameraEye eye)
+        /// <returns>A <see cref="CameraInfo"/> object or <see langword="null"/> if none were found.</returns>
+        public CameraInfo? GetCamera(CameraInfo.CameraEye eye)
         {
-            foreach (CameraInfo cameraInfo in Cameras)
+            if (Cameras is not CameraInfo[] cameras)
+                return null;
+
+            foreach (CameraInfo cameraInfo in cameras)
             {
                 if (cameraInfo.Eye == eye)
                     return cameraInfo;
@@ -114,21 +124,19 @@ namespace Uralstech.UXR.QuestCamera
         /// to close the camera and free up native resources.
         /// </remarks>
         /// <param name="camera">The ID of the camera. You can get it from <see cref="Cameras"/> or <see cref="GetCamera(CameraInfo.CameraEye)"/>.</param>
-        /// <returns>A new camera device wrapper. May be null if the current object is disposed/unusable.</returns>
-        public CameraDevice OpenCamera(string camera)
+        /// <returns>A new camera device wrapper or <see langword="null"/> if any errors occurred.</returns>
+        public CameraDevice? OpenCamera(string camera)
         {
-            GameObject wrapperGO = new($"{nameof(CameraDevice)} ({camera}, {DateTime.UtcNow.Ticks})");
-            
-            AndroidJavaObject nativeObject = _camera2Wrapper?.Call<AndroidJavaObject>("openCameraDevice", camera, wrapperGO.name);
+            CameraDevice cameraDevice = new();
+            AndroidJavaObject? nativeObject = _camera2Wrapper?.Call<AndroidJavaObject>("openCameraDevice", camera, cameraDevice);
             if (nativeObject is null)
             {
-                Destroy(wrapperGO);
+                cameraDevice.Dispose();
                 return null;
             }
 
-            CameraDevice wrapper = wrapperGO.AddComponent<CameraDevice>();
-            wrapper.SetCameraDevice(nativeObject);
-            return wrapper;
+            cameraDevice._cameraDevice = nativeObject;
+            return cameraDevice;
         }
     }
 }

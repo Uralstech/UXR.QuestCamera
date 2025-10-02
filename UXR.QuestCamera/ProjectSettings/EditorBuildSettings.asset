@@ -5,7 +5,7 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Samples/UXR.QuestCamera/2.6.1/Digit Recognition with Unity Inference
       Engine/Scenes/Main.unity
     guid: d21f9028511979e4bbe9142830c1ea80

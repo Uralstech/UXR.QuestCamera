@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.Collections;
+using System;
+using System.Threading;
 using UnityEngine;
-using UnityEngine.Events;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
@@ -25,7 +26,7 @@ namespace Uralstech.UXR.QuestCamera
     /// This is different from <see cref="OnDemandCaptureSession"/> as it returns a
     /// continuous stream of images.
     /// </remarks>
-    public class ContinuousCaptureSession : MonoBehaviour
+    public class ContinuousCaptureSession : AndroidJavaProxy, IDisposable
     {
         /// <summary>
         /// The current assumed state of the native CaptureSession wrapper.
@@ -40,48 +41,144 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Called when the session has been configured.
         /// </summary>
-        public UnityEvent OnSessionConfigured = new();
+        public event Action? OnSessionConfigured;
 
         /// <summary>
-        /// Called when the session could not be configured.
+        /// Called when the session could not be configured, and a boolean value indicating if the failure was caused due to a camera access/security exception.
         /// </summary>
-        public UnityEvent<string> OnSessionConfigurationFailed = new();
+        public event Action<bool>? OnSessionConfigurationFailed;
 
         /// <summary>
         /// Called when the session request has been set.
         /// </summary>
-        public UnityEvent OnSessionRequestSet = new();
+        public event Action? OnSessionRequestSet;
 
         /// <summary>
         /// Called when the session request could not be set.
         /// </summary>
-        public UnityEvent<string> OnSessionRequestFailed = new();
+        public event Action? OnSessionRequestFailed;
+
+        /// <summary>
+        /// Called when the session has started actively processing capture requests.
+        /// </summary>
+        public event Action? OnSessionActive;
+
+        /// <summary>
+        /// Callback for processing the YUV 4:2:0 frame.
+        /// </summary>
+        /// <remarks>
+        /// <list type="table">
+        ///     <listheader>
+        ///         <term>Parameters</term>
+        ///     </listheader>
+        ///     <item>
+        ///         <term>yBuffer (IntPtr)</term>
+        ///         <description>Pointer to the buffer containing Y (luminance) data of the frame.</description>
+        ///     </item>
+        ///     <item>
+        ///         <term>uBuffer (IntPtr)</term>
+        ///         <description>Pointer to the buffer containing U (color) data of the frame.</description>
+        ///     </item>
+        ///     <item>
+        ///         <term>vBuffer (IntPtr)</term>
+        ///         <description>Pointer to the buffer containing V (color) data of the frame.</description>
+        ///     </item>
+        ///     <item>
+        ///         <term>yRowStride (int)</term>
+        ///         <description>The size of each row of the image in yBuffer in bytes.</description>
+        ///     </item>
+        ///     <item>
+        ///         <term>uvRowStride (int)</term>
+        ///         <description>The size of each row of the image in uBuffer and vBuffer in bytes.</description>
+        ///     </item>
+        ///     <item>
+        ///         <term>uvPixelStride (int)</term>
+        ///         <description>The size of a pixel in a row of the image in uBuffer and vBuffer in bytes.</description>
+        ///     </item>
+        ///     <item>
+        ///        <term>timestamp (long)</term>
+        ///        <description>The timestamp the frame was captured at in nanoseconds.</description>
+        ///    </item>
+        /// </list>
+        /// </remarks>
+        public event Action<IntPtr, IntPtr, IntPtr, int, int, int, long>? OnFrameReady;
 
         /// <summary>
         /// The native capture session object.
         /// </summary>
-        protected AndroidJavaObject _captureSession;
+        internal protected AndroidJavaObject? _captureSession;
 
-        protected virtual void OnDestroy()
-        {
-            Release();
-        }
+        public ContinuousCaptureSession() : base("com.uralstech.ucamera.CaptureSessionWrapper$Callbacks") { }
 
-        /// <summary>
-        /// Sets the native CaptureSession wrapper.
-        /// </summary>
-        internal void SetCaptureSession(AndroidJavaObject nativeObject)
+        /// <inheritdoc/>
+        public override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
-            _captureSession = nativeObject;
+            switch (methodName)
+            {
+                case "onSessionConfigured":
+                    OnSessionConfigured.InvokeOnMainThread();
+                    return IntPtr.Zero;
+
+                case "onSessionConfigurationFailed":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
+                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError);
+                    return IntPtr.Zero;
+
+                case "onSessionRequestSet":
+                    CurrentState = NativeWrapperState.Opened;
+
+                    OnSessionRequestSet.InvokeOnMainThread();
+                    return IntPtr.Zero;
+
+                case "onSessionRequestFailed":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    OnSessionRequestFailed.InvokeOnMainThread();
+                    return IntPtr.Zero;
+
+                case "onSessionActive":
+                    OnSessionActive.InvokeOnMainThread();
+                    return IntPtr.Zero;
+
+                case "onFrameReady":
+                    (IntPtr yBufferObj, IntPtr yBufferPtr) = JNIExtensions.UnboxAndCreateGlobalRefForByteBufferElement(javaArgs, 0);
+                    (IntPtr uBufferObj, IntPtr uBufferPtr) = JNIExtensions.UnboxAndCreateGlobalRefForByteBufferElement(javaArgs, 1);
+                    (IntPtr vBufferObj, IntPtr vBufferPtr) = JNIExtensions.UnboxAndCreateGlobalRefForByteBufferElement(javaArgs, 2);
+                    int yRowStride = JNIExtensions.UnboxIntElement(javaArgs, 3);
+                    int uvRowStride = JNIExtensions.UnboxIntElement(javaArgs, 4);
+                    int uvPixelStride = JNIExtensions.UnboxIntElement(javaArgs, 5);
+                    long timestampNs = JNIExtensions.UnboxLongElement(javaArgs, 6);
+
+                    try
+                    {
+                        OnFrameReady?.Invoke(
+                            yBufferPtr, uBufferPtr, vBufferPtr,
+                            yRowStride, uvRowStride,
+                            uvPixelStride, timestampNs);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogException(ex);
+                    }
+                    finally
+                    {
+                        AndroidJNI.DeleteGlobalRef(yBufferObj);
+                        AndroidJNI.DeleteGlobalRef(uBufferObj);
+                        AndroidJNI.DeleteGlobalRef(vBufferObj);
+                    }
+
+                    return IntPtr.Zero;
+            }
+
+            return base.Invoke(methodName, javaArgs);
         }
 
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
-        public IEnumerator WaitForInitialization()
-        {
-            yield return new WaitUntil(() => CurrentState != NativeWrapperState.Initializing);
-        }
+        public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
 
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
@@ -91,54 +188,31 @@ namespace Uralstech.UXR.QuestCamera
         /// Requires Unity 6.0 or higher.
         /// </remarks>
         /// <returns>The current state of the CaptureSession.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync()
+        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
             if (CurrentState != NativeWrapperState.Initializing)
                 return CurrentState;
 
             await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing)
-                await Awaitable.NextFrameAsync();
+            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
+                await Awaitable.NextFrameAsync(token);
 
             return CurrentState;
         }
 #endif
 
-        /// <summary>
-        /// Releases the CaptureSession's native resources, and makes it unusable.
-        /// </summary>
-        public void Release()
+        private bool _disposed = false;
+        public void Dispose()
         {
+            if (_disposed)
+                return;
+
             _captureSession?.Call("close");
             _captureSession?.Dispose();
             _captureSession = null;
-        }
+            _disposed = true;
 
-        #region Native Callbacks
-#pragma warning disable IDE1006 // Naming Styles
-        public void _onSessionConfigured(string _)
-        {
-            OnSessionConfigured?.Invoke();
+            GC.SuppressFinalize(this);
         }
-
-        public void _onSessionConfigurationFailed(string reason)
-        {
-            CurrentState = NativeWrapperState.Closed;
-            OnSessionConfigurationFailed?.Invoke(reason);
-        }
-
-        public void _onSessionRequestSet(string _)
-        {
-            CurrentState = NativeWrapperState.Opened;
-            OnSessionRequestSet?.Invoke();
-        }
-
-        public void _onSessionRequestFailed(string reason)
-        {
-            CurrentState = NativeWrapperState.Closed;
-            OnSessionRequestFailed?.Invoke(reason);
-        }
-#pragma warning restore IDE1006 // Naming Styles
-        #endregion
     }
 }

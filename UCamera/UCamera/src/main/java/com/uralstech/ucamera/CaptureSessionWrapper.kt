@@ -25,32 +25,42 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
-import com.unity3d.player.UnityPlayer
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 
 /**
  * Wrapper class for [CameraCaptureSession].
  */
-abstract class CaptureSessionWrapper(
-    private val unityListener: String,
-    private val frameCallback: CameraFrameCallback,
-    width: Int, height: Int, imageQueueSize: Int) {
+abstract class CaptureSessionWrapper private constructor(private val callbacks: Callbacks, width: Int, height: Int) {
+    interface Callbacks
+    {
+        fun onSessionConfigured()
+        fun onSessionConfigurationFailed(isAccessOrSecurityError: Boolean)
+        fun onSessionRequestSet()
+        fun onSessionRequestFailed()
+        fun onSessionActive()
+
+        fun onFrameReady(
+            yBuffer: ByteBuffer,
+            uBuffer: ByteBuffer,
+            vBuffer: ByteBuffer,
+            yRowStride: Int,
+            uvRowStride: Int,
+            uvPixelStride: Int,
+            timestamp: Long
+        )
+    }
 
     companion object {
         private const val TAG = "CaptureSessionWrapper"
-
-        private const val ON_SESSION_CONFIGURED     = "_onSessionConfigured"
-        private const val ON_SESSION_CONFIG_FAILED  = "_onSessionConfigurationFailed"
-
-        private const val ON_SESSION_REQUEST_SET    = "_onSessionRequestSet"
-        private const val ON_SESSION_REQUEST_FAILED = "_onSessionRequestFailed"
     }
 
     /** Is this object active and usable? */
     var isActiveAndUsable: Boolean = true
+        private set
 
     /** Readers used as buffers for camera still shots. */
-    protected val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, imageQueueSize)
+    protected val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
 
     /** [HandlerThread] where all buffer reading operations run. */
     private val imageReaderThread = HandlerThread("ImageReaderThread").apply { start() }
@@ -64,7 +74,8 @@ abstract class CaptureSessionWrapper(
     /** Executor for the current capture session. */
     private val captureSessionExecutor = Executors.newSingleThreadExecutor()
 
-    init {
+    constructor(cameraDevice: CameraDevice, captureTemplate: Int,
+                callbacks: Callbacks, width: Int, height: Int) : this(callbacks, width, height) {
         imageReader.setOnImageAvailableListener({
             val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
 
@@ -77,13 +88,10 @@ abstract class CaptureSessionWrapper(
 
             val timestamp = image.timestamp
 
-            frameCallback.onFrameReady(
+            callbacks.onFrameReady(
                 yBuffer,
                 uBuffer,
                 vBuffer,
-                yBuffer.remaining(),
-                uBuffer.remaining(),
-                vBuffer.remaining(),
                 yPlane.rowStride,
                 uPlane.rowStride,
                 uPlane.pixelStride,
@@ -92,12 +100,14 @@ abstract class CaptureSessionWrapper(
 
             image.close()
         }, imageReaderHandler)
+
+        startCaptureSession(cameraDevice, captureTemplate)
     }
 
     /**
      * Starts a new capture session.
      */
-    internal abstract fun startCaptureSession(camera: CameraDevice, captureTemplate: Int)
+    protected abstract fun startCaptureSession(camera: CameraDevice, captureTemplate: Int)
 
     /**
      * Creates a new capture session and sets a repeating request.
@@ -111,35 +121,40 @@ abstract class CaptureSessionWrapper(
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         Log.i(TAG, "New capture session configured for camera with ID \"${camera.id}\".")
-                        UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIGURED, "")
-
                         captureSession = session
+
                         setRepeatingCaptureRequest(session, captureTemplate, surface)
+                        callbacks.onSessionConfigured()
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         Log.e(TAG, "Could not create new capture session as it could not be configured for camera with ID \"${camera.id}\".")
-                        UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, "")
-
                         close()
+
+                        callbacks.onSessionConfigurationFailed(false)
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
                         captureSessionExecutor.shutdown()
                         Log.i(TAG, "Capture session executor shut down.")
                     }
+
+                    override fun onActive(session: CameraCaptureSession) {
+                        Log.i(TAG, "Capture session is now active.");
+                        callbacks.onSessionActive()
+                    }
                 }
             ))
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionConfigurationFailed(true)
         } catch (exp: SecurityException) {
             Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a security exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionConfigurationFailed(true)
         }
     }
 
@@ -155,17 +170,17 @@ abstract class CaptureSessionWrapper(
             captureSession.setRepeatingRequest(captureRequest, null, imageReaderHandler)
 
             Log.i(TAG, "Session request set for camera session of camera with ID \"${captureSession.device.id}\".")
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_SET, "")
+            callbacks.onSessionRequestSet()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a camera access exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionRequestFailed()
         } catch (exp: SecurityException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a security exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionRequestFailed()
         }
     }
 
@@ -181,11 +196,20 @@ abstract class CaptureSessionWrapper(
         Log.i(TAG, "Closing camera capture session wrapper.")
         isActiveAndUsable = false
 
-        captureSession?.close()
-        captureSession = null
+        if (captureSession == null) {
+            captureSessionExecutor.shutdown()
+        } else {
+            captureSession?.close()
+            captureSession = null
+        }
 
         imageReader.setOnImageAvailableListener(null, null)
         imageReaderThread.quitSafely()
+        try {
+            imageReaderThread.join()
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
+        }
 
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }

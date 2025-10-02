@@ -32,24 +32,23 @@ import java.util.concurrent.Executors
  */
 class SurfaceTextureCaptureSession(
     timeStamp: Long,
-    private val unityListener: String,
+    private val callbacks: Callbacks,
     private val cameraDevice: CameraDevice,
     private val width: Int,
     private val height: Int,
     private val captureTemplate: Int) {
 
+    interface Callbacks {
+        fun destroyNativeTexture(textureId: Int)
+        fun onSessionConfigured()
+        fun onSessionConfigurationFailed(isAccessOrSecurityError: Boolean)
+        fun onSessionRequestSet()
+        fun onSessionRequestFailed()
+        fun onCaptureCompleted(textureId: Int)
+    }
+
     companion object {
         private const val TAG = "STCaptureSessionWrapper"
-
-        private const val DESTROY_NATIVE_TEXTURE    = "_destroyNativeTexture"
-
-        private const val ON_SESSION_CONFIGURED     = "_onSessionConfigured"
-        private const val ON_SESSION_CONFIG_FAILED  = "_onSessionConfigurationFailed"
-
-        private const val ON_SESSION_REQUEST_SET    = "_onSessionRequestSet"
-        private const val ON_SESSION_REQUEST_FAILED = "_onSessionRequestFailed"
-
-        private const val ON_CAPTURE_COMPLETED      = "_onCaptureCompleted"
 
         init {
             System.loadLibrary("NativeTextureHelper")
@@ -58,6 +57,7 @@ class SurfaceTextureCaptureSession(
 
     /** Is this object active and usable? */
     var isActiveAndUsable: Boolean = true
+        private set
 
     /** The capture session being wrapped by this object. */
     private var captureSession: CameraCaptureSession? = null
@@ -108,40 +108,41 @@ class SurfaceTextureCaptureSession(
                 object : CameraCaptureSession.StateCallback() {
                     override fun onConfigured(session: CameraCaptureSession) {
                         Log.i(TAG, "New capture session configured for camera with ID \"${cameraDevice.id}\".")
-                        UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIGURED, "")
 
                         captureSession = session
                         setRepeatingCaptureRequest(session, captureTemplate, surface)
+                        callbacks.onSessionConfigured()
                     }
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         Log.e(TAG, "Could not create new capture session as it could not be configured for camera with ID \"${cameraDevice.id}\".")
-                        UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, "")
-
                         close()
+
+                        callbacks.onSessionConfigurationFailed(false)
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
                         deregisterSurfaceTextureForUpdates(textureId)
-                        UnityPlayer.UnitySendMessage(unityListener, DESTROY_NATIVE_TEXTURE, textureId.toString())
 
                         surface.release()
                         surfaceTexture.release()
                         captureSessionExecutor.shutdown()
                         Log.i(TAG, "Capture session executor shut down.")
+
+                        callbacks.destroyNativeTexture(textureId)
                     }
                 }
             ))
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Capture session for camera with ID \"${cameraDevice.id}\" could not be created due to a camera access exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionConfigurationFailed(true)
         } catch (exp: SecurityException) {
             Log.e(TAG, "Capture session for camera with ID \"${cameraDevice.id}\" could not be created due to a security exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_CONFIG_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionConfigurationFailed(true)
         }
     }
 
@@ -160,22 +161,26 @@ class SurfaceTextureCaptureSession(
                     request: CaptureRequest,
                     result: TotalCaptureResult
                 ) {
-                    UnityPlayer.UnitySendMessage(unityListener, ON_CAPTURE_COMPLETED, surfaceTextureId.toString())
+                    try {
+                        callbacks.onCaptureCompleted(surfaceTextureId)
+                    } catch (ex: Exception) {
+                        Log.e(TAG, "Client onCaptureCompleted callback threw an exception", ex)
+                    }
                 }
             })
 
             Log.i(TAG, "Session request set for camera session of camera with ID \"${captureSession.device.id}\".")
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_SET, "")
+            callbacks.onSessionRequestSet()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a camera access exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionRequestFailed()
         } catch (exp: SecurityException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a security exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_SESSION_REQUEST_FAILED, exp.message)
-
             close()
+
+            callbacks.onSessionRequestFailed()
         }
     }
 
@@ -191,8 +196,12 @@ class SurfaceTextureCaptureSession(
         Log.i(TAG, "Closing camera capture session wrapper.")
         isActiveAndUsable = false
 
-        captureSession?.close()
-        captureSession = null
+        if (captureSession == null) {
+            captureSessionExecutor.shutdown()
+        } else {
+            captureSession?.close()
+            captureSession = null
+        }
 
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }

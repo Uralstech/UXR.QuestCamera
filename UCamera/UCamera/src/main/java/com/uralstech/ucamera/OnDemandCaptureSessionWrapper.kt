@@ -30,19 +30,18 @@ import android.view.Surface
  * frame being captured.
  */
 class OnDemandCaptureSessionWrapper(
-    unityListener: String,
-    frameCallback: CameraFrameCallback,
-    width: Int, height: Int) : CaptureSessionWrapper(unityListener, frameCallback, width, height, 2) {
+    cameraDevice: CameraDevice, captureTemplate: Int,
+    callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height) {
 
     companion object {
         const val TAG = "ODCaptureSessionWrapper"
     }
 
     /** Dummy surface texture for preview capture request. */
-    private lateinit var dummySurfaceTexture: SurfaceTexture
+    private var dummySurfaceTexture: SurfaceTexture? = null
 
     /** Dummy surface for preview capture request. */
-    private lateinit var dummySurface: Surface
+    private var dummySurface: Surface? = null
 
     /**
      * Creates a new capture session and sets the repeating capture request.
@@ -50,8 +49,10 @@ class OnDemandCaptureSessionWrapper(
     override fun startCaptureSession(camera: CameraDevice, captureTemplate: Int) {
         Log.i(TAG, "Setting up capture session for single-capture request.")
 
-        dummySurfaceTexture = SurfaceTexture(1)
-        dummySurface = Surface(dummySurfaceTexture)
+        val dummySurfaceTexture = SurfaceTexture(1)
+        val dummySurface = Surface(dummySurfaceTexture)
+        this.dummySurfaceTexture = dummySurfaceTexture
+        this.dummySurface = dummySurface
 
         super.startRepeatingCaptureSession(camera, captureTemplate,
             listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
@@ -97,8 +98,12 @@ class OnDemandCaptureSessionWrapper(
 
         super.close()
 
-        dummySurface.release()
-        dummySurfaceTexture.release()
+        dummySurface?.release()
+        dummySurface = null
+
+        dummySurfaceTexture?.release()
+        dummySurfaceTexture = null
+
         Log.i(TAG, "Dummy texture released.")
     }
 }

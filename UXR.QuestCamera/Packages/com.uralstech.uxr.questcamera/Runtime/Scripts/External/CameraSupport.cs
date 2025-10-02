@@ -19,6 +19,7 @@
 #if META_XR_SDK_CORE
 using UnityEngine;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
