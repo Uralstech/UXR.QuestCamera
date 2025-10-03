@@ -39,11 +39,12 @@ class SurfaceTextureCaptureSession(
     private val captureTemplate: Int) {
 
     interface Callbacks {
-        fun destroyNativeTexture(textureId: Int)
         fun onSessionConfigured()
         fun onSessionConfigurationFailed(isAccessOrSecurityError: Boolean)
         fun onSessionRequestSet()
         fun onSessionRequestFailed()
+        fun onSessionActive()
+        fun destroyNativeTexture(textureId: Int)
         fun onCaptureCompleted(textureId: Int)
     }
 
@@ -131,6 +132,11 @@ class SurfaceTextureCaptureSession(
 
                         callbacks.destroyNativeTexture(textureId)
                     }
+
+                    override fun onActive(session: CameraCaptureSession) {
+                        Log.i(TAG, "Capture session is now active.");
+                        callbacks.onSessionActive()
+                    }
                 }
             ))
         } catch (exp: CameraAccessException) {
@@ -198,6 +204,11 @@ class SurfaceTextureCaptureSession(
 
         if (captureSession == null) {
             captureSessionExecutor.shutdown()
+
+            if (surfaceTextureId != 0) {
+                deregisterSurfaceTextureForUpdates(surfaceTextureId)
+                callbacks.destroyNativeTexture(surfaceTextureId)
+            }
         } else {
             captureSession?.close()
             captureSession = null

@@ -82,12 +82,45 @@ uniform vec2 u_resolution;
 
 out vec4 outColor;
 
+// Helper function to convert YUV to RGB, using the compute shader's BT.601 matrix
+// but corrected for full-range input from the texture sampler.
+vec3 computeShader_YUVtoRGB_corrected(vec3 yuv)
+{
+    // The 'yuv' input from texture() is normalized (0.0 to 1.0).
+    // We scale them up to the 0-255 range to use the same matrix math.
+    float y = yuv.r * 255.0;
+    float u = yuv.g * 255.0;
+    float v = yuv.b * 255.0;
+
+    // The U and V components are centered around 128.
+    float uf = u - 128.0;
+    float vf = v - 128.0;
+
+    // The Y component is now treated as full-range.
+    // The incorrect '+ 16.0' offset, which caused the excessive brightness, is removed.
+    float yf = y;
+
+    // Apply the ITU-R BT.601 conversion matrix for full-range signals.
+    vec3 rgb = vec3(
+        yf + 1.402 * vf,
+        yf - 0.344136 * uf - 0.714136 * vf,
+        yf + 1.772 * uf
+    );
+
+    // Normalize the final result back to the 0.0-1.0 range and clamp.
+    return clamp(rgb / 255.0, 0.0, 1.0);
+}
+
 void main() {
-    // Sample the external texture at the interpolated coordinate
+    // Calculate texture coordinates based on fragment position.
     vec2 texCoord = vec2(gl_FragCoord.x / u_resolution.x, 1.0 - (gl_FragCoord.y / u_resolution.y));
+
+    // Sample the external texture to get a YUV value.
     vec4 yuv = texture(u_texture, texCoord);
 
-    vec3 converted = yuv_2_rgb(yuv.xyz, itu_601);
+    // Use the corrected conversion function.
+    vec3 converted = computeShader_YUVtoRGB_corrected(yuv.xyz);
+
     outColor = vec4(converted, 1.0);
 }
 )glsl";

@@ -67,7 +67,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Is the native CameraDevice wrapper active and usable?
         /// </summary>
-        public bool IsActiveAndUsable => _cameraDevice?.Get<bool>("isActiveAndUsable") ?? false;
+        public bool IsActiveAndUsable => _cameraDevice?.Get<bool>("isActiveAndUsable") ?? throw new ObjectDisposedException(nameof(CameraDevice));
 
         /// <summary>
         /// Invoked when the CameraDevice is opened, along with the camera ID.
@@ -248,51 +248,41 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
         /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
-        public SurfaceTextureCaptureSession CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        public SurfaceTextureCaptureSession? CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
-            return CreateSTCaptureSession<SurfaceTextureCaptureSession>(nameof(SurfaceTextureCaptureSession), resolution, captureTemplate);
+            if (!IsActiveAndUsable)
+                return null;
+
+            long timestamp = DateTime.Now.Ticks;
+            SurfaceTextureCaptureSession session = new(resolution);
+
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
+            if (nativeObject is null)
+            {
+                session.Dispose();
+                return null;
+            }
+
+            session._captureSession = nativeObject;
+            session.InitializeNativeTexture(timestamp);
+            return session;
         }
 
-        /// <summary>
-        /// Creates a new on-demand OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="OnDemandCaptureSession"/>.
-        /// </summary>
-        /// <remarks>
-        /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
-        /// 
-        /// The results of this capture session may be more noisy compared to <see cref="OnDemandCaptureSession"/>.
-        /// Requires OpenGL ES 3.0 or higher as the project's Graphics API. Works with single and multi-threaded rendering.
-        /// </remarks>
-        /// <param name="resolution">The resolution of the capture.</param>
-        /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
-        public OnDemandSurfaceTextureCaptureSession CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
-        {
-            return CreateSTCaptureSession<OnDemandSurfaceTextureCaptureSession>(nameof(OnDemandSurfaceTextureCaptureSession), resolution, captureTemplate);
-        }
-
-        private T CreateSTCaptureSession<T>(string typeName, Resolution resolution, CaptureTemplate captureTemplate)
-            where T : SurfaceTextureCaptureSession
-        {
-            return null;
-            //if (!IsActiveAndUsable)
-            //    return null;
-
-            //long timeStamp = DateTime.Now.Ticks;
-            //GameObject wrapperGO = new($"{typeName} ({CameraId}, {timeStamp})");
-
-            //AndroidJavaObject nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession",
-            //    timeStamp, wrapperGO.name, resolution.width, resolution.height, (int)captureTemplate);
-            //if (nativeObject is null)
-            //{
-            //    Destroy(wrapperGO);
-            //    return null;
-            //}
-
-            //T wrapper = wrapperGO.AddComponent<T>();
-            //wrapper.SetCaptureSession(nativeObject);
-
-            //wrapper.CreateNativeTexture(resolution, timeStamp);
-            //return wrapper;
-        }
+        // /// <summary>
+        // /// Creates a new on-demand OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="OnDemandCaptureSession"/>.
+        // /// </summary>
+        // /// <remarks>
+        // /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
+        // /// 
+        // /// The results of this capture session may be more noisy compared to <see cref="OnDemandCaptureSession"/>.
+        // /// Requires OpenGL ES 3.0 or higher as the project's Graphics API. Works with single and multi-threaded rendering.
+        // /// </remarks>
+        // /// <param name="resolution">The resolution of the capture.</param>
+        // /// <param name="captureTemplate">The capture template to use for the capture</param>
+        // /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
+        // public OnDemandSurfaceTextureCaptureSession CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        // {
+        //     return CreateSTCaptureSession<OnDemandSurfaceTextureCaptureSession>(nameof(OnDemandSurfaceTextureCaptureSession), resolution, captureTemplate);
+        // }
     }
 }

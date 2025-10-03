@@ -36,7 +36,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Is the native CaptureSession wrapper active and usable?
         /// </summary>
-        public bool IsActiveAndUsable => _captureSession?.Get<bool>("isActiveAndUsable") ?? false;
+        public bool IsActiveAndUsable => _captureSession?.Get<bool>("isActiveAndUsable") ?? throw new ObjectDisposedException(nameof(ContinuousCaptureSession));
 
         /// <summary>
         /// Called when the session has been configured.
