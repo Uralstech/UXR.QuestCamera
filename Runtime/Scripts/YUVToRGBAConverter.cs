@@ -268,9 +268,9 @@ namespace Uralstech.UXR.QuestCamera
 
             _disposed = true;
             FrameRenderTexture.Release();
-            _yComputeBuffer.Release();
-            _uComputeBuffer.Release();
-            _vComputeBuffer.Release();
+            _yComputeBuffer.Dispose();
+            _uComputeBuffer.Dispose();
+            _vComputeBuffer.Dispose();
         }
     }
 }
