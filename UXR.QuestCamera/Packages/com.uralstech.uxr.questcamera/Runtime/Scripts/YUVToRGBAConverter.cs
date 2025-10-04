@@ -68,7 +68,7 @@ namespace Uralstech.UXR.QuestCamera
                     return;
 
                 _shader = value;
-                SetupShader(_shader);
+                _kernelHandle = _shader.FindKernel("CSMain");
             }
         }
 
@@ -104,7 +104,10 @@ namespace Uralstech.UXR.QuestCamera
         public YUVToRGBAConverter(Resolution resolution)
         {
             if (_shader == null)
+            {
                 _shader = UCameraManager.Instance.YUVToRGBAComputeShader;
+                _kernelHandle = _shader.FindKernel("CSMain");
+            }
 
             FrameRenderTexture = new RenderTexture(resolution.width, resolution.height, 0, RenderTextureFormat.ARGB32)
             {
@@ -121,24 +124,6 @@ namespace Uralstech.UXR.QuestCamera
             _yComputeBuffer = new ComputeBuffer(_yBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
             _uComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
             _vComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
-            SetupShader(_shader);
-        }
-
-        /// <summary>
-        /// Sets up the parameters for the given shader for YUV to RGBA conversion.
-        /// </summary>
-        /// <param name="shader">The shader to configure.</param>
-        protected virtual void SetupShader(ComputeShader shader)
-        {
-            _kernelHandle = shader.FindKernel("CSMain");
-
-            shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
-            shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
-            shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
-
-            shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
-            shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
-            shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
         }
 
         /// <summary>
@@ -232,6 +217,14 @@ namespace Uralstech.UXR.QuestCamera
                 CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
                 CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
                 CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
+
+                _shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
+                _shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
+                _shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
+
+                _shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
+                _shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
+                _shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
 
                 _shader.SetInt(s_yRowStrideID, yRowStride);
                 _shader.SetInt(s_uvRowStrideID, uvRowStride);
