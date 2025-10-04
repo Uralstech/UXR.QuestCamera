@@ -92,7 +92,9 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void*) {
 
     for (auto const& [key, val] : g_renderers) {
         LOGW("Disposing renderers on JNI unload.");
-        delete val;
+        if (val != nullptr) {
+            delete val;
+        }
     }
 
     g_renderers.clear();
@@ -275,8 +277,6 @@ void renderNativeTextures(void* data) {
     }
 
     uint8_t result = renderer->render(surfaceTexture);
-    LOGI("Rendering completed with result: %u", result);
-
     renderData->onDoneCallback(texture, result);
 }
 

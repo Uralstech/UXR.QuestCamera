@@ -64,8 +64,6 @@ Renderer::Renderer(GLuint unityTexture, GLint width, GLint height) {
 }
 
 bool Renderer::initialize(GLuint *texture) {
-    LOGI("Setting up renderer.");
-
     if (_shaderProgram == 0) {
         GLuint vertexShader, fragmentShader;
         if (!compileShader(GL_VERTEX_SHADER, VERTEX_SHADER_SOURCE, &vertexShader)) {
@@ -181,6 +179,8 @@ void Renderer::dispose() {
             _vertexBufferObject = 0;
         }
     }
+
+    LOGI("Renderer disposed.");
 }
 
 bool Renderer::linkShaderProgram(GLuint vertexShader, GLuint fragmentShader) {
@@ -307,6 +307,8 @@ bool Renderer::setupGeometry() {
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    LOGI("Geometry data setup.");
     return true;
 }
 
