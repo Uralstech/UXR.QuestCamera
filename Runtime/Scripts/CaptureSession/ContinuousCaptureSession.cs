@@ -64,6 +64,11 @@ namespace Uralstech.UXR.QuestCamera
         public event Action? OnSessionActive;
 
         /// <summary>
+        /// Called when the session is closed.
+        /// </summary>
+        public event Action? OnSessionClosed;
+
+        /// <summary>
         /// Callback for processing the YUV 4:2:0 frame.
         /// </summary>
         /// <remarks>
@@ -120,8 +125,6 @@ namespace Uralstech.UXR.QuestCamera
                     return IntPtr.Zero;
 
                 case "onSessionConfigurationFailed":
-                    CurrentState = NativeWrapperState.Closed;
-
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
                     OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError);
                     return IntPtr.Zero;
@@ -131,8 +134,6 @@ namespace Uralstech.UXR.QuestCamera
                     return IntPtr.Zero;
 
                 case "onSessionRequestFailed":
-                    CurrentState = NativeWrapperState.Closed;
-
                     OnSessionRequestFailed.InvokeOnMainThread();
                     return IntPtr.Zero;
 
@@ -140,6 +141,12 @@ namespace Uralstech.UXR.QuestCamera
                     CurrentState = NativeWrapperState.Opened;
                     
                     OnSessionActive.InvokeOnMainThread();
+                    return IntPtr.Zero;
+
+                case "onSessionClosed":
+                    CurrentState = NativeWrapperState.Closed;
+
+                    OnSessionClosed.InvokeOnMainThread();
                     return IntPtr.Zero;
 
                 case "onFrameReady":
@@ -190,14 +197,26 @@ namespace Uralstech.UXR.QuestCamera
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
-            if (CurrentState != NativeWrapperState.Initializing)
-                return CurrentState;
-
             await Awaitable.MainThreadAsync();
             while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
                 await Awaitable.NextFrameAsync(token);
 
             return CurrentState;
+        }
+
+        /// <summary>
+        /// Closes the capture session.
+        /// </summary>
+        /// <returns><see langword="true"/> if the session was closed successfully, <see langword="false"/> if the operation was cancelled.</returns>
+        public async Awaitable<bool> CloseAsync(CancellationToken token = default)
+        {
+            await Awaitable.MainThreadAsync();
+
+            _captureSession?.Call("close");
+            while (CurrentState != NativeWrapperState.Closed && !token.IsCancellationRequested)
+                await Awaitable.NextFrameAsync(token);
+
+            return CurrentState == NativeWrapperState.Closed;
         }
 #endif
 
@@ -211,7 +230,6 @@ namespace Uralstech.UXR.QuestCamera
             if (_disposed)
                 return;
 
-            _captureSession?.Call("close");
             _captureSession?.Dispose();
             _captureSession = null;
             _disposed = true;
