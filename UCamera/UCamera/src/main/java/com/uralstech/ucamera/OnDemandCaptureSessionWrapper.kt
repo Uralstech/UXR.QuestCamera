@@ -32,7 +32,6 @@ import android.view.Surface
 class OnDemandCaptureSessionWrapper(
     cameraDevice: CameraDevice, captureTemplate: Int,
     callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height) {
-
     companion object {
         const val TAG = "ODCaptureSessionWrapper"
     }
@@ -49,7 +48,7 @@ class OnDemandCaptureSessionWrapper(
     override fun startCaptureSession(camera: CameraDevice, captureTemplate: Int) {
         Log.i(TAG, "Setting up capture session for single-capture request.")
 
-        val dummySurfaceTexture = SurfaceTexture(1)
+        val dummySurfaceTexture = SurfaceTexture(0)
         val dummySurface = Surface(dummySurfaceTexture)
         this.dummySurfaceTexture = dummySurfaceTexture
         this.dummySurface = dummySurface

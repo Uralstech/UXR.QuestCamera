@@ -26,7 +26,7 @@ import androidx.annotation.RequiresPermission
 /**
  * Wrapper class for [CameraDevice].
  */
-class CameraDeviceWrapper private constructor(val id: String) {
+class CameraDeviceWrapper private constructor(val id: String, private val callbacks: Callbacks) {
     interface Callbacks {
         fun onDeviceOpened(id: String)
         fun onDeviceClosed(id: String)
@@ -43,6 +43,7 @@ class CameraDeviceWrapper private constructor(val id: String) {
     }
 
     /** Is this object active and usable? */
+    @Volatile
     var isActiveAndUsable: Boolean = true
         private set
 
@@ -56,7 +57,7 @@ class CameraDeviceWrapper private constructor(val id: String) {
     private var cameraDevice: CameraDevice? = null
 
     @RequiresPermission(Manifest.permission.CAMERA)
-    constructor(id: String, callbacks: Callbacks, cameraManager: CameraManager) : this(id) {
+    constructor(id: String, callbacks: Callbacks, cameraManager: CameraManager) : this(id, callbacks) {
         try {
             cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
@@ -98,6 +99,9 @@ class CameraDeviceWrapper private constructor(val id: String) {
         }
     }
 
+    /**
+     * Gets the [CameraDevice] this object is wrapping, or logs an error and returns null if it was not found.
+     */
     private fun getActiveDevice(): CameraDevice? {
         if (!isActiveAndUsable || cameraDevice == null) {
             Log.e(TAG, "Tried to use an unusable CameraDeviceWrapper for camera ID \"$id\"!")
@@ -135,13 +139,20 @@ class CameraDeviceWrapper private constructor(val id: String) {
      * Creates a new SurfaceTexture-based capture session and a wrapper for it.
      */
     fun createSurfaceTextureCaptureSession(
-        timeStamp: Long, callbacks: SurfaceTextureCaptureSession.Callbacks,
+        timeStamp: Long, callbacks: STCaptureSessionWrapper.Callbacks,
         width: Int, height: Int,
-        captureTemplate: Int): SurfaceTextureCaptureSession? {
+        captureTemplate: Int): STCaptureSessionWrapper? {
 
         val cameraDevice = getActiveDevice() ?: return null
         Log.i(TAG, "Creating new SurfaceTexture-based camera session for camera with ID \"$id\".")
-        return SurfaceTextureCaptureSession(timeStamp, callbacks, cameraDevice, width, height, captureTemplate)
+
+        val session = STCaptureSessionWrapper(timeStamp, callbacks, cameraDevice, width, height, captureTemplate)
+        if (!session.tryRegister()) {
+            session.close()
+            return null
+        }
+
+        return session
     }
 
     /**
@@ -156,8 +167,12 @@ class CameraDeviceWrapper private constructor(val id: String) {
         Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\".")
         isActiveAndUsable = false
 
-        cameraDevice?.close()
-        cameraDevice = null
+        if (cameraDevice != null) {
+            cameraDevice?.close()
+            cameraDevice = null
+        } else {
+            callbacks.onDeviceClosed("")
+        }
 
         cameraThread.quitSafely()
         try {

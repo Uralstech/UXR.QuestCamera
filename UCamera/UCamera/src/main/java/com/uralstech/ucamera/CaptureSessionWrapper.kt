@@ -39,6 +39,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
         fun onSessionRequestSet()
         fun onSessionRequestFailed()
         fun onSessionActive()
+        fun onSessionClosed()
 
         fun onFrameReady(
             yBuffer: ByteBuffer,
@@ -56,6 +57,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
     }
 
     /** Is this object active and usable? */
+    @Volatile
     var isActiveAndUsable: Boolean = true
         private set
 
@@ -135,8 +137,10 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
-                        captureSessionExecutor.shutdown()
                         Log.i(TAG, "Capture session executor shut down.")
+                        captureSessionExecutor.shutdown()
+
+                        callbacks.onSessionClosed()
                     }
 
                     override fun onActive(session: CameraCaptureSession) {
@@ -198,7 +202,9 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
 
         if (captureSession == null) {
             captureSessionExecutor.shutdown()
+            callbacks.onSessionClosed()
         } else {
+            captureSession?.stopRepeating()
             captureSession?.close()
             captureSession = null
         }

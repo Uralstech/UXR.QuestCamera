@@ -40,7 +40,7 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     val metaQuestCameraEye = characteristics.get(metaCameraPositionMetadata)
 
     /**
-     * The position of the camera optical center.
+     * The position of the camera device's lens optical center.
      */
     val lensPoseTranslation = characteristics.get(CameraCharacteristics.LENS_POSE_TRANSLATION)
 
@@ -55,7 +55,7 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     val supportedResolutions = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.YUV_420_888) ?: emptyArray()
 
     /**
-     * The resolution, in pixels, for which intrinsics are provided.
+     * The area of the image sensor which corresponds to active pixels prior to the application of any geometric distortion correction.
      */
     val intrinsicsResolution = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)?.let { sensorSize ->
         intArrayOf(sensorSize.right, sensorSize.bottom)

@@ -15,6 +15,7 @@
 using System;
 using System.Threading;
 using UnityEngine;
+using Uralstech.UXR.QuestCamera.SurfaceTextureCapture;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
@@ -114,15 +115,11 @@ namespace Uralstech.UXR.QuestCamera
                     return IntPtr.Zero;
 
                 case "onDeviceDisconnected":
-                    CurrentState = NativeWrapperState.Closed;
-
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
                     OnDeviceDisconnected.InvokeOnMainThread(cameraId);
                     return IntPtr.Zero;
 
                 case "onDeviceErred":
-                    CurrentState = NativeWrapperState.Closed;
-
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
                     int errorCode = JNIExtensions.UnboxIntElement(javaArgs, 1);
                     OnDeviceErred.InvokeOnMainThread(cameraId, (ErrorCode)errorCode);
@@ -147,15 +144,26 @@ namespace Uralstech.UXR.QuestCamera
         /// <returns>The current state of the CameraDevice.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
-            if (CurrentState != NativeWrapperState.Initializing)
-                return CurrentState;
-
             await Awaitable.MainThreadAsync();
             while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
                 await Awaitable.NextFrameAsync(token);
 
-            token.ThrowIfCancellationRequested();
             return CurrentState;
+        }
+
+        /// <summary>
+        /// Closes the camera device.
+        /// </summary>
+        /// <returns><see langword="true"/> if the device was closed successfully, <see langword="false"/> if the operation was cancelled.</returns>
+        public async Awaitable<bool> CloseAsync(CancellationToken token = default)
+        {
+            await Awaitable.MainThreadAsync();
+
+            _cameraDevice?.Call("close");
+            while (CurrentState != NativeWrapperState.Closed && !token.IsCancellationRequested)
+                await Awaitable.NextFrameAsync(token);
+
+            return CurrentState == NativeWrapperState.Closed;
         }
 #endif
 
@@ -169,7 +177,6 @@ namespace Uralstech.UXR.QuestCamera
             if (_disposed)
                 return;
 
-            _cameraDevice?.Call("close");
             _cameraDevice?.Dispose();
             _cameraDevice = null;
             _disposed = true;
@@ -264,7 +271,7 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             session._captureSession = nativeObject;
-            session.InitializeNativeTexture(timestamp);
+            session.InitializeNative(timestamp);
             return session;
         }
 
