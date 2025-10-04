@@ -171,7 +171,7 @@ struct NativeSetupData
     GLint width; GLint height;
 
     int64_t timestamp;
-    void (*onDoneCallback)(uint8_t glIsClean, uint8_t sessionCallSent, GLuint nativeTexture, uint8_t idIsValid);
+    void (*onDoneCallback)(uint8_t glIsClean, uint8_t sessionCallSent, GLuint unityTexture, GLuint nativeTexture, uint8_t idIsValid);
 };
 
 void setupNativeTextures(void* data) {
@@ -181,22 +181,23 @@ void setupNativeTextures(void* data) {
     }
 
     auto setupData = reinterpret_cast<NativeSetupData*>(data);
+    GLuint unityTexture = setupData->unityTexture;
 
     scoped_lock lock(g_registeredSessionsMtx, g_renderersMtx);
     if (g_registeredSessions.find(setupData->timestamp) == g_registeredSessions.end()) {
         LOGE("No registered session found for timestamp.");
-        setupData->onDoneCallback(true, false, 0, false);
+        setupData->onDoneCallback(true, false, unityTexture, 0, false);
         return;
     }
 
-    auto renderer = new Renderer(setupData->unityTexture, setupData->width, setupData->height);
+    auto renderer = new Renderer(unityTexture, setupData->width, setupData->height);
 
     GLuint newTexture;
     if (!renderer->initialize(&newTexture)) {
         LOGE("Could not initialize renderer");
         delete renderer;
 
-        setupData->onDoneCallback(true, false, 0, false);
+        setupData->onDoneCallback(true, false, unityTexture, 0, false);
         return;
     }
 
@@ -205,7 +206,7 @@ void setupNativeTextures(void* data) {
         renderer->dispose();
         delete renderer;
 
-        setupData->onDoneCallback(true, false, 0, false);
+        setupData->onDoneCallback(true, false, unityTexture, 0, false);
         return;
     }
 
@@ -220,7 +221,7 @@ void setupNativeTextures(void* data) {
         renderer->dispose();
         delete renderer;
 
-        setupData->onDoneCallback(true, false, 0, false);
+        setupData->onDoneCallback(true, false, unityTexture, 0, false);
         return;
     }
 
@@ -234,7 +235,7 @@ void setupNativeTextures(void* data) {
         }
 
         LOGE("A JNI/script exception occurred.");
-        setupData->onDoneCallback(false, false, newTexture, true);
+        setupData->onDoneCallback(false, false, unityTexture, newTexture, true);
         return;
     }
 
@@ -243,7 +244,7 @@ void setupNativeTextures(void* data) {
     }
 
     LOGI("Renderer is ready for capture session.");
-    setupData->onDoneCallback(true, true, newTexture, true);
+    setupData->onDoneCallback(true, true, unityTexture, newTexture, true);
 }
 
 struct NativeUpdateData {

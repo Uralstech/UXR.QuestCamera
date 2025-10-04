@@ -93,9 +93,6 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         protected readonly ComputeBuffer _vComputeBuffer;
 
-        /// <summary>
-        /// 
-        /// </summary>
         protected readonly int _threadGroupsX;
         protected readonly int _threadGroupsY;
         protected readonly int _yBufferSize;

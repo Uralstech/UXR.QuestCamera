@@ -176,7 +176,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
             Marshal.StructureToPtr(data, dataPtr, false);
 
-            NativeSetupCallbacksQueue.Enqueue((glIsClean, sessionCallSent, textureId, idIsValid) =>
+            NativeSetupCallbacksQueue.TryAdd(data.UnityTexture, (glIsClean, sessionCallSent, _, textureId, idIsValid) =>
             {
                 Marshal.FreeHGlobal(dataPtr);
 

@@ -109,7 +109,7 @@ namespace Uralstech.UXR.QuestCamera
         public readonly Resolution[] SupportedResolutions;
 
         /// <summary>
-        /// The intrinsics for this camera.
+        /// The intrinsic data for this camera.
         /// </summary>
         public readonly CameraIntrinsics? Intrinsics;
 
