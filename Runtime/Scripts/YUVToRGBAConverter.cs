@@ -147,7 +147,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
-        /// Callback for <see cref="CameraFrameForwarder"/>.
+        /// Processes a frame received from the native capture session.
         /// </summary>
         /// <param name="yBuffer">Pointer to the buffer containing Y (luminance) data of the frame.</param>
         /// <param name="uBuffer">Pointer to the buffer containing U (color) data of the frame.</param>
