@@ -225,13 +225,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Creates a new on-demand capture session for use.
         /// </summary>
-        /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.CloseAndDispose()"/>
-        /// or <see cref="CapturePipeline{T}.CloseAndDisposeAsync(CancellationToken)"/> to close and dispose the
-        /// session to free up native and compute shader resources.
-        /// </remarks>
-        /// <param name="resolution">The resolution of the capture.</param>
-        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
+        /// <inheritdoc cref="CreateContinuousCaptureSession(Resolution, CaptureTemplate)"/>
         public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
         {
             if (!IsActiveAndUsable)
@@ -287,21 +281,28 @@ namespace Uralstech.UXR.QuestCamera
             return session;
         }
 
-        // /// <summary>
-        // /// Creates a new on-demand OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="OnDemandCaptureSession"/>.
-        // /// </summary>
-        // /// <remarks>
-        // /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
-        // /// 
-        // /// The results of this capture session may be more noisy compared to <see cref="OnDemandCaptureSession"/>.
-        // /// Requires OpenGL ES 3.0 or higher as the project's Graphics API. Works with single and multi-threaded rendering.
-        // /// </remarks>
-        // /// <param name="resolution">The resolution of the capture.</param>
-        // /// <param name="captureTemplate">The capture template to use for the capture</param>
-        // /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
-        // public OnDemandSurfaceTextureCaptureSession CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
-        // {
-        //     return CreateSTCaptureSession<OnDemandSurfaceTextureCaptureSession>(nameof(OnDemandSurfaceTextureCaptureSession), resolution, captureTemplate);
-        // }
+        /// <summary>
+        /// Creates a new on-demand OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="OnDemandCaptureSession"/>.
+        /// </summary>
+        /// <inheritdoc cref="CreateSurfaceTextureCaptureSession(Resolution, CaptureTemplate)"/>
+        public OnDemandSurfaceTextureCaptureSession? CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        {
+            if (!IsActiveAndUsable)
+                return null;
+
+            long timestamp = DateTime.Now.Ticks;
+            OnDemandSurfaceTextureCaptureSession session = new(resolution);
+
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
+            if (nativeObject is null)
+            {
+                session.Dispose();
+                return null;
+            }
+
+            session._captureSession = nativeObject;
+            session.InitializeNative(timestamp);
+            return session;
+        }
     }
 }

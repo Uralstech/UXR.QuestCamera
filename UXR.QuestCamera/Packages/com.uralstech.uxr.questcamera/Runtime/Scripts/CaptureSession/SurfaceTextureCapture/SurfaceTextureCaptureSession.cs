@@ -171,20 +171,32 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 
                 case "onCaptureCompleted":
                     long timestamp = JNIExtensions.UnboxLongElement(javaArgs, 0);
-                    SendNativeUpdate(NativeEventId.RenderTextures, (_, result, timestamp) =>
-                    {
-                        if (result)
-                        {
-                            GL.InvalidateState();
-                            CaptureTimestamp = timestamp;
-                            OnFrameReady?.Invoke(Texture, timestamp);
-                        }
-                    }, timestamp);
+                    OnCaptureCompleted(timestamp);
                     return IntPtr.Zero;
             }
 
             return base.Invoke(methodName, javaArgs);
         }
+
+        /// <summary>
+        /// Called when a capture is completed.
+        /// </summary>
+        /// <param name="timestamp">The timestamp of the capture.</param>
+        protected virtual void OnCaptureCompleted(long timestamp)
+        {
+            SendNativeUpdate(NativeEventId.RenderTextures, (_, result, timestamp) =>
+            {
+                if (result)
+                {
+                    GL.InvalidateState();
+                    CaptureTimestamp = timestamp;
+                    OnFrameReady?.Invoke(Texture, timestamp);
+                }
+            }, timestamp);
+        }
+
+        /// <summary>Invokes <see cref="OnFrameReady"/> for child classes.</summary>
+        protected void OnFrameReadyInvk(Texture2D texture, long timestamp) => OnFrameReady?.Invoke(texture, timestamp);
 
         /// <summary>
         /// Initializes the native renderer.
