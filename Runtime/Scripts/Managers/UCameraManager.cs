@@ -120,10 +120,11 @@ namespace Uralstech.UXR.QuestCamera
         /// Opens a camera device for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the camera, call <see cref="CameraDevice.Dispose()"/>
-        /// to close the camera and free up native resources.
+        /// Once you have finished using the camera, close the camera using <see cref="CameraDevice.Close()"/>
+        /// or <see cref="CameraDevice.CloseAsync(System.Threading.CancellationToken)"/> and dispose it using
+        /// <see cref="CameraDevice.Dispose()"/> to release all of its native resources.
         /// </remarks>
-        /// <param name="camera">The ID of the camera. You can get it from <see cref="Cameras"/> or <see cref="GetCamera(CameraInfo.CameraEye)"/>.</param>
+        /// <param name="camera">The ID of the camera to open. You can get it from <see cref="Cameras"/> or <see cref="GetCamera(CameraInfo.CameraEye)"/>.</param>
         /// <returns>A new camera device wrapper or <see langword="null"/> if any errors occurred.</returns>
         public CameraDevice? OpenCamera(string camera)
         {

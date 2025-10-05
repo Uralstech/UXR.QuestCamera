@@ -73,8 +73,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
-        /// Called when a frame has been converted from YUV 4:2:0 to RGBA.
-        /// Also includes the timestamp the frame was captured at in nanoseconds.
+        /// Called when a capture is dispatched for conversion to RGBA, with the capture's timestamp in nanoseconds.
         /// </summary>
         public event Action<RenderTexture, long>? OnFrameProcessed;
 

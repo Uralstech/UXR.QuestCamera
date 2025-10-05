@@ -63,7 +63,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// The ID of the camera being wrapped. This value is <b>not</b> cached - it is requested from the native plugin on every access.
         /// </summary>
-        public string? CameraId => _cameraDevice?.Get<string>("id");
+        public string CameraId => _cameraDevice?.Get<string>("id") ?? throw new ObjectDisposedException(nameof(CameraDevice));
 
         /// <summary>
         /// Is the native CameraDevice wrapper active and usable?
@@ -134,13 +134,19 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
 
+        /// <summary>
+        /// Closes the camera device.
+        /// </summary>
+        public WaitUntil Close()
+        {
+            _cameraDevice?.Call("close");
+            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+        }
+
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CameraDevice is open or erred out.
         /// </summary>
-        /// <remarks>
-        /// Requires Unity 6.0 or higher.
-        /// </remarks>
         /// <returns>The current state of the CameraDevice.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
@@ -171,6 +177,7 @@ namespace Uralstech.UXR.QuestCamera
 
         /// <summary>
         /// Releases native plugin resources.
+        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
         /// </summary>
         public void Dispose()
         {
@@ -188,8 +195,9 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
-        /// to close the session and free up native and compute shader resources.
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.CloseAndDispose()"/>
+        /// or <see cref="CapturePipeline{T}.CloseAndDisposeAsync(CancellationToken)"/> to close and dispose the
+        /// session to free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
@@ -218,8 +226,9 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new on-demand capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
-        /// to close the session and free up native and compute shader resources.
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.CloseAndDispose()"/>
+        /// or <see cref="CapturePipeline{T}.CloseAndDisposeAsync(CancellationToken)"/> to close and dispose the
+        /// session to free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
@@ -248,9 +257,12 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         /// <remarks>
         /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
-        /// 
         /// The results of this capture session may be more noisy compared to <see cref="ContinuousCaptureSession"/>.
-        /// Requires OpenGL ES 3.0 or higher as the project's Graphics API. Works with single and multi-threaded rendering.
+        /// Requires OpenGL ES 3.0 as the project's Graphics API. Works with single and multi-threaded rendering.
+        /// 
+        /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.Close()"/>
+        /// or <see cref="SurfaceTextureCaptureSession.CloseAsync(CancellationToken)"/> to close and
+        /// <see cref="SurfaceTextureCaptureSession.Dispose()"/> to dispose the session to free up native resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
