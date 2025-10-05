@@ -72,6 +72,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Callback for processing the YUV 4:2:0 frame.
         /// </summary>
         /// <remarks>
+        /// This callback may not be called from the main thread.
         /// <list type="table">
         ///     <listheader>
         ///         <term>Parameters</term>
@@ -187,13 +188,19 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
 
+        /// <summary>
+        /// Closes the capture session.
+        /// </summary>
+        public WaitUntil Close()
+        {
+            _captureSession?.Call("close");
+            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+        }
+
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
-        /// <remarks>
-        /// Requires Unity 6.0 or higher.
-        /// </remarks>
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
@@ -224,6 +231,7 @@ namespace Uralstech.UXR.QuestCamera
 
         /// <summary>
         /// Releases native plugin resources.
+        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
         /// </summary>
         public void Dispose()
         {

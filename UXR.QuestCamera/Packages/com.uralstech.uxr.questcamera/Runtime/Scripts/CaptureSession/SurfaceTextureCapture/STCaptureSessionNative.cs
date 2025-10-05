@@ -193,7 +193,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         [MonoPInvokeCallback(typeof(NativeSetupCallbackType))]
         public static void NativeSetupCallback(bool glIsClean, bool sessionCallSent, uint unityTextureId, uint textureId, bool idIsValid)
         {
-            if (NativeSetupCallbacksQueue.TryGetValue(unityTextureId, out NativeSetupCallbackType callback))
+            if (NativeSetupCallbacksQueue.TryRemove(unityTextureId, out NativeSetupCallbackType callback))
                 callback.Invoke(glIsClean, sessionCallSent, unityTextureId, textureId, idIsValid);
         }
     }

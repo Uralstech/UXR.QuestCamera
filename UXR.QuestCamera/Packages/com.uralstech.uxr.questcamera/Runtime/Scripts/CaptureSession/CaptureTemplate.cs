@@ -38,9 +38,5 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Creates a request suitable for still image capture while recording video.</summary>
         /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_VIDEO_SNAPSHOT"/></remarks>
         VideoSnapshot = 4,
-
-        /// <summary>Creates a request suitable for zero shutter lag still capture.</summary>
-        /// <remarks><a href="https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_ZERO_SHUTTER_LAG"/></remarks>
-        ZeroShutterLag = 5,
     }
 }

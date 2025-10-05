@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System;
+using System.Collections;
+using System.Threading;
+using UnityEngine;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
@@ -20,7 +22,7 @@ namespace Uralstech.UXR.QuestCamera
     /// <summary>
     /// Simple class for grouping a capture session and its texture converter.
     /// </summary>
-    public class CapturePipeline<T> where T : ContinuousCaptureSession, IDisposable
+    public class CapturePipeline<T> where T : ContinuousCaptureSession
     {
         /// <summary>
         /// The capture session wrapper.
@@ -41,18 +43,35 @@ namespace Uralstech.UXR.QuestCamera
         private bool _disposed = false;
 
         /// <summary>
-        /// Disposes the capture session and texture converter.
+        /// Closes and disposes the capture session and texture converter.
         /// </summary>
-        public void Dispose()
+        public IEnumerator CloseAndDispose()
+        {
+            if (_disposed)
+                yield break;
+
+            yield return CaptureSession.Close();
+            CaptureSession.Dispose();
+
+            TextureConverter.Dispose();
+            _disposed = true;
+        }
+
+#if UNITY_6000_0_OR_NEWER
+        /// <summary>
+        /// Closes and disposes the capture session and texture converter.
+        /// </summary>
+        public async Awaitable CloseAndDisposeAsync(CancellationToken token = default)
         {
             if (_disposed)
                 return;
 
+            await CaptureSession.CloseAsync(token);
             CaptureSession.Dispose();
+
             TextureConverter.Dispose();
             _disposed = true;
-
-            GC.SuppressFinalize(this);
         }
+#endif
     }
 }

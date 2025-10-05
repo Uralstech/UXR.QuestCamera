@@ -27,12 +27,20 @@ using Utilities.Async;
 #nullable enable
 namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 {
+    /// <summary>
+    /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
+    /// </summary>
+    /// <remarks>
+    /// The results of this capture session may be more noisy compared to <see cref="ContinuousCaptureSession"/>.
+    /// Requires OpenGL ES 3.0 as the project's Graphics API. Works with single and multi-threaded rendering.
+    /// </remarks>
     public class SurfaceTextureCaptureSession : AndroidJavaProxy, IDisposable
     {
         /// <summary>
         /// The current assumed state of the native CaptureSession wrapper.
         /// </summary>
         public NativeWrapperState CurrentState { get; private set; }
+        private readonly object _stateLock = new();
 
         /// <summary>
         /// Is the native CaptureSession wrapper active and usable?
@@ -43,6 +51,11 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// The texture being rendered to.
         /// </summary>
         public readonly Texture2D Texture;
+
+        /// <summary>
+        /// The timestamp the last frame processed was captured at in nanoseconds.
+        /// </summary>
+        public long CaptureTimestamp { get; protected set; }
 
         /// <summary>
         /// Called when the session has been configured.
@@ -65,7 +78,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         public event Action? OnSessionRequestFailed;
 
         /// <summary>
-        /// Called when the session could not be registered with the native shader helpers.
+        /// Called when the session could not be registered with the native renderer.
         /// </summary>
         public event Action? OnSessionRegistrationFailed;
 
@@ -80,10 +93,16 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         public event Action? OnSessionClosed;
 
         /// <summary>
-        /// Called when a frame is ready.
+        /// Called when a frame is ready, with its capture timestamp in nanoseconds.
         /// </summary>
-        public event Action<long>? OnFrameReady;
+        /// <remarks>
+        /// This callback may not be called from the main thread.
+        /// </remarks>
+        public event Action<Texture2D, long>? OnFrameReady;
 
+        /// <summary>
+        /// CommandBuffer for invoking native renderer events.
+        /// </summary>
         protected readonly CommandBuffer _commandBuffer;
 
         /// <summary>
@@ -91,6 +110,9 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// </summary>
         internal protected AndroidJavaObject? _captureSession;
 
+        /// <summary>
+        /// The native texture which captures YUV 4:2:0 data.
+        /// </summary>
         protected uint? _nativeTextureId;
 
         public SurfaceTextureCaptureSession(Resolution resolution) : base("com.uralstech.ucamera.STCaptureSessionWrapper$Callbacks")
@@ -126,7 +148,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     return IntPtr.Zero;
 
                 case "onSessionActive":
-                    CurrentState = NativeWrapperState.Opened;
+                    SetCurrentState(NativeWrapperState.Opened);
 
                     OnSessionActive.InvokeOnMainThread();
                     return IntPtr.Zero;
@@ -134,18 +156,19 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 case "onSessionClosed":
                     if (_nativeTextureId == null)
                     {
-                        CurrentState = NativeWrapperState.Closed;
+                        SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed?.InvokeOnMainThread();
                         return IntPtr.Zero;
                     }
 
-                    SendNativeUpdate(NativeEventId.CleanupNativeTexture, (_, __, ___) =>
+                    SendNativeUpdate(NativeEventId.CleanupNativeTexture, (textureId, _, _) =>
                     {
-                        CurrentState = NativeWrapperState.Closed;
+                        NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
+                        SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed?.InvokeOnMainThread();
                     });
                     return IntPtr.Zero;
-                
+
                 case "onCaptureCompleted":
                     long timestamp = JNIExtensions.UnboxLongElement(javaArgs, 0);
                     SendNativeUpdate(NativeEventId.RenderTextures, (_, result, timestamp) =>
@@ -153,7 +176,8 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                         if (result)
                         {
                             GL.InvalidateState();
-                            OnFrameReady?.Invoke(timestamp);
+                            CaptureTimestamp = timestamp;
+                            OnFrameReady?.Invoke(Texture, timestamp);
                         }
                     }, timestamp);
                     return IntPtr.Zero;
@@ -162,11 +186,16 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             return base.Invoke(methodName, javaArgs);
         }
 
+        /// <summary>
+        /// Initializes the native renderer.
+        /// </summary>
+        /// <param name="timestamp">The timestamp corresponding to the native capture session wrapper.</param>
         internal protected virtual void InitializeNative(long timestamp)
         {
+            uint unityTextureId = (uint)Texture.GetNativeTexturePtr();
             NativeSetupData data = new()
             {
-                UnityTexture = (uint)Texture.GetNativeTexturePtr(),
+                UnityTexture = unityTextureId,
                 Width = Texture.width,
                 Height = Texture.height,
                 Timestamp = timestamp,
@@ -176,22 +205,23 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf(data));
             Marshal.StructureToPtr(data, dataPtr, false);
 
-            NativeSetupCallbacksQueue.TryAdd(data.UnityTexture, (glIsClean, sessionCallSent, _, textureId, idIsValid) =>
+            NativeSetupCallbacksQueue.TryAdd(unityTextureId, (glIsClean, sessionCallSent, __, textureId, idIsValid) =>
             {
                 Marshal.FreeHGlobal(dataPtr);
 
                 _nativeTextureId = idIsValid ? textureId : null;
                 if (!glIsClean && idIsValid)
                 {
-                    SendNativeUpdate(NativeEventId.CleanupNativeTexture, (_, __, ___) =>
+                    SendNativeUpdate(NativeEventId.CleanupNativeTexture, (textureId, _, _) =>
                     {
-                        CurrentState = NativeWrapperState.Closed;
+                        NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
+                        SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed.InvokeOnMainThread();
                     });
                 }
                 else if (!sessionCallSent)
                 {
-                    CurrentState = NativeWrapperState.Closed;
+                    SetCurrentState(NativeWrapperState.Closed);
                     OnSessionClosed.InvokeOnMainThread();
                 }
             });
@@ -201,6 +231,12 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             _commandBuffer.Clear();
         }
 
+        /// <summary>
+        /// Sends an update event to the native renderer.
+        /// </summary>
+        /// <param name="eventId">The type of the event.</param>
+        /// <param name="callback">An optional callback for the event's completion.</param>
+        /// <param name="timestamp">An optional timestamp to be tracked in C# code, to be forwarded to <paramref name="timestamp"/>.</param>
         protected virtual async void SendNativeUpdate(NativeEventId eventId, NativeUpdateCallbackWithTimestampType? callback, long timestamp = 0)
         {
 #if UNITY_6000_0_OR_NEWER
@@ -238,13 +274,19 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// </summary>
         public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
 
+        /// <summary>
+        /// Closes the capture session.
+        /// </summary>
+        public WaitUntil Close()
+        {
+            _captureSession?.Call("close");
+            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+        }
+
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
-        /// <remarks>
-        /// Requires Unity 6.0 or higher.
-        /// </remarks>
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
@@ -271,10 +313,22 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         }
 #endif
 
+        /// <summary>
+        /// Sets <see cref="CurrentState"/> with a lock.
+        /// </summary>
+        private void SetCurrentState(NativeWrapperState state)
+        {
+            lock (_stateLock)
+            {
+                CurrentState = state;
+            }
+        }
+
         private bool _disposed = false;
 
         /// <summary>
         /// Releases native plugin resources.
+        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
         /// </summary>
         public void Dispose()
         {
