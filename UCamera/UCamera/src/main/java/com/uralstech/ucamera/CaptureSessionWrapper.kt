@@ -26,7 +26,10 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import java.nio.ByteBuffer
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 /**
  * Wrapper class for [CameraCaptureSession].
@@ -74,7 +77,10 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
     protected var captureSession: CameraCaptureSession? = null
 
     /** Executor for the current capture session. */
-    private val captureSessionExecutor = Executors.newSingleThreadExecutor()
+    protected val captureSessionExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    private val executorSemaphore = Semaphore(1)
+    private val requestSemaphore = Semaphore(1)
 
     constructor(cameraDevice: CameraDevice, captureTemplate: Int,
                 callbacks: Callbacks, width: Int, height: Int) : this(callbacks, width, height) {
@@ -116,6 +122,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
      */
     protected fun startRepeatingCaptureSession(camera: CameraDevice, captureTemplate: Int, outputs: List<OutputConfiguration>, surface: Surface) {
         try {
+            executorSemaphore.acquire()
             camera.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 outputs,
@@ -137,15 +144,20 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
-                        Log.i(TAG, "Capture session executor shut down.")
-                        captureSessionExecutor.shutdown()
-
-                        callbacks.onSessionClosed()
+                        Log.i(TAG, "Capture session closed.")
+                        executorSemaphore.release()
                     }
 
                     override fun onActive(session: CameraCaptureSession) {
-                        Log.i(TAG, "Capture session is now active.");
+                        Log.i(TAG, "Capture session is now active.")
+                        requestSemaphore.acquire()
+
                         callbacks.onSessionActive()
+                    }
+
+                    override fun onReady(session: CameraCaptureSession) {
+                        Log.i(TAG, "Capture session is ready for more requests.")
+                        requestSemaphore.release()
                     }
                 }
             ))
@@ -171,7 +183,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
                 addTarget(surface)
             }.build()
 
-            captureSession.setRepeatingRequest(captureRequest, null, imageReaderHandler)
+            captureSession.setSingleRepeatingRequest(captureRequest, captureSessionExecutor, object : CameraCaptureSession.CaptureCallback() { })
 
             Log.i(TAG, "Session request set for camera session of camera with ID \"${captureSession.device.id}\".")
             callbacks.onSessionRequestSet()
@@ -200,13 +212,23 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
         Log.i(TAG, "Closing camera capture session wrapper.")
         isActiveAndUsable = false
 
-        if (captureSession == null) {
-            captureSessionExecutor.shutdown()
-            callbacks.onSessionClosed()
-        } else {
+        if (captureSession != null) {
             captureSession?.stopRepeating()
-            captureSession?.close()
-            captureSession = null
+            requestSemaphore.acquire()
+            requestSemaphore.release()
+        }
+
+        captureSession?.close()
+        captureSession = null
+
+        executorSemaphore.acquire()
+        captureSessionExecutor.shutdown()
+        try {
+            captureSessionExecutor.awaitTermination(10, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
+        } finally {
+            executorSemaphore.release()
         }
 
         imageReader.setOnImageAvailableListener(null, null)
@@ -218,5 +240,6 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
         }
 
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
+        callbacks.onSessionClosed()
     }
 }

@@ -74,7 +74,7 @@ class OnDemandCaptureSessionWrapper(
                 addTarget(imageReader.surface)
             }.build()
 
-            captureSession.capture(captureRequest, null, imageReaderHandler)
+            captureSession.captureSingleRequest(captureRequest, captureSessionExecutor, object : CameraCaptureSession.CaptureCallback() { })
 
             Log.i(TAG, "Non-repeating capture request set for camera session of camera with ID \"${captureSession.device.id}\".")
             return true

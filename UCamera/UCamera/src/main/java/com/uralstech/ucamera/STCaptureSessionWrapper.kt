@@ -26,6 +26,8 @@ import android.hardware.camera2.params.SessionConfiguration
 import android.util.Log
 import android.view.Surface
 import java.util.concurrent.Executors
+import java.util.concurrent.Semaphore
+import java.util.concurrent.TimeUnit
 
 class STCaptureSessionWrapper(
     private val timestamp: Long,
@@ -71,6 +73,9 @@ class STCaptureSessionWrapper(
     /** [SurfaceTexture] for [surface]. */
     private var surfaceTexture: SurfaceTexture? = null
 
+    private val executorSemaphore = Semaphore(1)
+    private val requestSemaphore = Semaphore(1)
+
     fun tryRegister(): Boolean {
         return registerCaptureSessionNative(timestamp);
     }
@@ -90,6 +95,7 @@ class STCaptureSessionWrapper(
             val surface = Surface(surfaceTexture)
             this.surface = surface
 
+            executorSemaphore.acquire()
             cameraDevice.createCaptureSession(SessionConfiguration(
                 SessionConfiguration.SESSION_REGULAR,
                 listOf(OutputConfiguration(surface)),
@@ -111,17 +117,13 @@ class STCaptureSessionWrapper(
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
+                        Log.i(TAG, "Capture session closed.")
                         deregisterSurfaceTextureForUpdates(textureId)
-
-                        surface.release()
-                        surfaceTexture.release()
-                        captureSessionExecutor.shutdown()
-                        Log.i(TAG, "Capture session executor shut down.")
-
-                        callbacks.onSessionClosed()
+                        executorSemaphore.release()
                     }
 
                     override fun onActive(session: CameraCaptureSession) {
+                        requestSemaphore.acquire()
                         if (!registerSurfaceTextureForUpdates(surfaceTexture, textureId)) {
                             close()
                             callbacks.onSessionRegistrationFailed()
@@ -129,6 +131,11 @@ class STCaptureSessionWrapper(
                             Log.i(TAG, "Capture session is now active.")
                             callbacks.onSessionActive()
                         }
+                    }
+
+                    override fun onReady(session: CameraCaptureSession) {
+                        Log.i(TAG, "Capture session is ready for more requests.")
+                        requestSemaphore.release()
                     }
                 }
             ))
@@ -192,22 +199,33 @@ class STCaptureSessionWrapper(
         isActiveAndUsable = false
         tryDeregisterCaptureSessionNative(timestamp)
 
-        if (captureSession == null) {
-            captureSessionExecutor.shutdown()
-            callbacks.onSessionClosed()
-
-            surface?.release()
-            surface = null
-
-            surfaceTexture?.release()
-            surfaceTexture = null
-        } else {
+        if (captureSession != null) {
             captureSession?.stopRepeating()
-            captureSession?.close()
-            captureSession = null
+            requestSemaphore.acquire()
+            requestSemaphore.release()
         }
 
+        captureSession?.close()
+        captureSession = null
+
+        executorSemaphore.acquire()
+        captureSessionExecutor.shutdown()
+        try {
+            captureSessionExecutor.awaitTermination(10, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
+        } finally {
+            executorSemaphore.release()
+        }
+
+        surface?.release()
+        surface = null
+
+        surfaceTexture?.release()
+        surfaceTexture = null
+
         Log.i(TAG, "Capture session closed.")
+        callbacks.onSessionClosed()
     }
 
     private external fun registerCaptureSessionNative(timestamp: Long): Boolean

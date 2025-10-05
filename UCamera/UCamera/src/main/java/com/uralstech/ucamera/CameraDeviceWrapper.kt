@@ -18,10 +18,10 @@ import android.Manifest
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import androidx.annotation.RequiresPermission
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * Wrapper class for [CameraDevice].
@@ -47,11 +47,8 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
     var isActiveAndUsable: Boolean = true
         private set
 
-    /** [HandlerThread] where all camera operations run. */
-    private val cameraThread = HandlerThread("CameraThread").apply { start() }
-
-    /** [Handler] corresponding to [cameraThread]. */
-    private val cameraHandler = Handler(cameraThread.looper)
+    /** [java.util.concurrent.ExecutorService] for [cameraDevice]. */
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     /** The camera device being wrapped by this object. */
     private var cameraDevice: CameraDevice? = null
@@ -59,7 +56,7 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
     @RequiresPermission(Manifest.permission.CAMERA)
     constructor(id: String, callbacks: Callbacks, cameraManager: CameraManager) : this(id, callbacks) {
         try {
-            cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
+            cameraManager.openCamera(id, cameraExecutor, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     Log.i(TAG, "Camera device with ID \"$id\" opened.")
                     cameraDevice = camera
@@ -85,7 +82,7 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
 
                     callbacks.onDeviceErred(camera.id, error)
                 }
-            }, cameraHandler)
+            })
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Camera could not be opened due to a camera access exception.", exp)
             close()
@@ -174,9 +171,9 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
             callbacks.onDeviceClosed("")
         }
 
-        cameraThread.quitSafely()
+        cameraExecutor.shutdown()
         try {
-            cameraThread.join()
+            cameraExecutor.awaitTermination(10, TimeUnit.SECONDS)
         } catch (e: InterruptedException) {
             Log.e(TAG, "Interrupted while trying to stop the background thread", e)
         }
