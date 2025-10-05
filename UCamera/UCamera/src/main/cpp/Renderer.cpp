@@ -189,6 +189,9 @@ void Renderer::dispose() {
             glDeleteBuffers(1, &_vertexBufferObject);
             _vertexBufferObject = 0;
         }
+
+        LOGI("Disposed static renderer data.");
+        _staticReferenceHolders = 0;
     }
 
     LOGI("Renderer disposed.");

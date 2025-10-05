@@ -15,11 +15,6 @@
     "defineConstraints": [],
     "versionDefines": [
         {
-            "name": "com.utilities.async",
-            "expression": "1.0.0",
-            "define": "UTILITIES_ASYNC"
-        },
-        {
             "name": "com.meta.xr.sdk.core",
             "expression": "1.0.0",
             "define": "META_XR_SDK_CORE"
