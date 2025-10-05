@@ -46,7 +46,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
 
         private CameraInfo _cameraInfo; // Camera metadata.
         private CameraDevice _cameraDevice; // Camera device.
-        private CaptureSessionObject<ContinuousCaptureSession> _captureSession; // Camera capture session data.
+        private CapturePipeline<ContinuousCaptureSession> _captureSession; // Camera capture session data.
 
         private Worker _digitRecognitionWorker; // The model inference worker.
         private Tensor<float> _inputTensors; // The model input.
@@ -199,7 +199,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
                 Debug.LogError("Failed to open camera.");
 
                 // Destroy the camera to release native resources.
-                _cameraDevice.Destroy();
+                _cameraDevice.Dispose();
                 _cameraDevice = null;
                 return;
             }
@@ -216,8 +216,9 @@ namespace Uralstech.UXR.QuestCamera.Samples
                 Debug.LogError("Failed to open capture session.");
 
                 // Destroy the camera AND capture session to release native resources.
-                _captureSession.Destroy();
-                _cameraDevice.Destroy();
+                await _captureSession.CloseAndDisposeAsync();
+                await _cameraDevice.CloseAsync();
+                _cameraDevice.Dispose();
 
                 (_cameraDevice, _captureSession) = (null, null);
             }
@@ -226,7 +227,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
             _cameraPreview.texture = _captureSession.TextureConverter.FrameRenderTexture;
 
             // Set a callback for when each frame is ready for the AI.
-            _captureSession.TextureConverter.OnFrameProcessed.AddListener(OnFrameReady);
+            _captureSession.TextureConverter.OnFrameProcessed += OnFrameReady;
             Debug.Log("Capture session opened.");
         }
 
@@ -234,7 +235,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// Callback for processing the image.
         /// </summary>
         /// <param name="renderTexture">The RenderTexture to process.</param>
-        private async void OnFrameReady(RenderTexture renderTexture)
+        private async void OnFrameReady(RenderTexture renderTexture, long _)
         {
             // If the model is already running, return.
             if (_isModelBusy)
@@ -291,20 +292,23 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// <summary>
         /// Stops the camera.
         /// </summary>
-        private void StopCamera()
+        private async void StopCamera()
         {
-            if (_captureSession != null)
+            if (_captureSession is CapturePipeline<ContinuousCaptureSession> pipeline)
             {
-                // Destroy the session to release native resources.
-                _captureSession.Destroy();
                 _captureSession = null;
+
+                // Destroy the session to release native resources.
+                await pipeline.CloseAndDisposeAsync();
             }
 
-            if (_cameraDevice != null)
+            if (_cameraDevice is CameraDevice device)
             {
-                // Destroy the camera to release native resources.
-                _cameraDevice.Destroy();
                 _cameraDevice = null;
+                
+                // Destroy the camera to release native resources.
+                await device.CloseAsync();
+                device.Dispose();
             }
         }
     }
