@@ -37,9 +37,15 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         public OnDemandSurfaceTextureCaptureSession(Resolution resolution) : base(resolution) { }
 
         /// <inheritdoc/>
-        protected override void OnCaptureCompleted(long timestamp)
+        public override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
-            CaptureTimestamp = timestamp;
+            if (methodName == "onCaptureCompleted")
+            {
+                CaptureTimestamp = JNIExtensions.UnboxLongElement(javaArgs, 0);
+                return IntPtr.Zero;
+            }
+
+            return base.Invoke(methodName, javaArgs);
         }
 
         /// <summary>
