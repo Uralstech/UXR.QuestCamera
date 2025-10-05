@@ -121,11 +121,7 @@ bool Renderer::initialize(GLuint *texture) {
 }
 
 bool Renderer::render(ASurfaceTexture* surfaceTexture) const {
-    ASurfaceTexture_updateTexImage(surfaceTexture);
-
-    float transformMatrix[16];
-    ASurfaceTexture_getTransformMatrix(surfaceTexture, transformMatrix);
-
+    glDisable(GL_FRAMEBUFFER_SRGB_EXT);
     glBindFramebuffer(GL_FRAMEBUFFER, _frameBufferObject);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _unityTexture, 0);
 
@@ -138,10 +134,13 @@ bool Renderer::render(ASurfaceTexture* surfaceTexture) const {
     glViewport(0, 0, _width, _height);
     glUseProgram(_shaderProgram);
 
+    ASurfaceTexture_updateTexImage(surfaceTexture);
+
+    float transformMatrix[16];
+    ASurfaceTexture_getTransformMatrix(surfaceTexture, transformMatrix);
     glUniformMatrix4fv(_transformMatrixHandle, 1, GL_FALSE, transformMatrix);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, _sourceTexture);
     glUniform1i(_textureSamplerHandle, 0);
 
     glBindVertexArray(_vertexArrayObject);
@@ -149,7 +148,9 @@ bool Renderer::render(ASurfaceTexture* surfaceTexture) const {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0); // updateTexImage automatically binds to EXTERNAL_OES
+    glEnable(GL_FRAMEBUFFER_SRGB_EXT);
     return true;
 }
 

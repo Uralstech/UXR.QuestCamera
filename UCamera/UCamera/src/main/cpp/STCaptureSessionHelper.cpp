@@ -102,9 +102,7 @@ JNIEXPORT void JNI_OnUnload(JavaVM* vm, void*) {
 
     for (auto const& [key, val] : g_renderers) {
         LOGW("Disposing renderers on JNI unload.");
-        if (val != nullptr) {
-            delete val;
-        }
+        delete val;
     }
 
     g_renderers.clear();
@@ -114,16 +112,15 @@ extern "C" JNIEXPORT jboolean JNICALL
     Java_com_uralstech_ucamera_STCaptureSessionWrapper_registerCaptureSessionNative(JNIEnv *env, jobject current, jlong timestamp) {
     LOGI("Registering capture session.");
 
-    jobject globalRef = env->NewGlobalRef(current);
-    if (globalRef == nullptr) {
-        LOGE("Could not register capture session as global reference could not be created.");
-        return false;
-    }
-
     lock_guard<mutex> lock(g_registeredSessionsMtx);
     if (g_registeredSessions.find(timestamp) != g_registeredSessions.end()) {
         LOGE("Tried to register capture session twice!");
-        env->DeleteGlobalRef(globalRef);
+        return false;
+    }
+
+    jobject globalRef = env->NewGlobalRef(current);
+    if (globalRef == nullptr) {
+        LOGE("Could not register capture session as global reference could not be created.");
         return false;
     }
 
