@@ -211,6 +211,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             NativeSetupCallbacksQueue.TryAdd(unityTextureId, (glIsClean, sessionCallSent, __, textureId, idIsValid) =>
             {
                 Marshal.FreeHGlobal(dataPtr);
+                GL.InvalidateState();
 
                 _nativeTextureId = idIsValid ? textureId : null;
                 if (!glIsClean && idIsValid)
