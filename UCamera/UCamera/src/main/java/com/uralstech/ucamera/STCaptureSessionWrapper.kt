@@ -25,6 +25,7 @@ import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.util.Log
 import android.view.Surface
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
@@ -74,7 +75,7 @@ class STCaptureSessionWrapper(
     private var surfaceTexture: SurfaceTexture? = null
 
     private val executorSemaphore = Semaphore(1)
-    private val requestSemaphore = Semaphore(1)
+    private val requestCompletionLatch = CountDownLatch(2)
 
     fun tryRegister(): Boolean {
         return registerCaptureSessionNative(timestamp);
@@ -123,7 +124,6 @@ class STCaptureSessionWrapper(
                     }
 
                     override fun onActive(session: CameraCaptureSession) {
-                        requestSemaphore.acquire()
                         if (!registerSurfaceTextureForUpdates(surfaceTexture, textureId)) {
                             close()
                             callbacks.onSessionRegistrationFailed()
@@ -135,7 +135,7 @@ class STCaptureSessionWrapper(
 
                     override fun onReady(session: CameraCaptureSession) {
                         Log.i(TAG, "Capture session is ready for more requests.")
-                        requestSemaphore.release()
+                        requestCompletionLatch.countDown()
                     }
                 }
             ))
@@ -201,8 +201,7 @@ class STCaptureSessionWrapper(
 
         if (captureSession != null) {
             captureSession?.stopRepeating()
-            requestSemaphore.acquire()
-            requestSemaphore.release()
+            requestCompletionLatch.await()
         }
 
         captureSession?.close()
