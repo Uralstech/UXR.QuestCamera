@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading.Tasks;
 using UnityEngine;
 
 #if !UNITY_6000_0_OR_NEWER
@@ -27,31 +28,19 @@ namespace Uralstech.UXR.QuestCamera
     /// </summary>
     public static class ActionExtensions
     {
-        /// <summary>
-        /// Invokes the current action on the main thread.
-        /// </summary>
-        public static async void InvokeOnMainThread(this Action? current)
+        public static void HandleAnyException(this Task current)
         {
-#if UNITY_6000_0_OR_NEWER
-            await Awaitable.MainThreadAsync();
-#else
-            await Awaiters.UnityMainThread;
-#endif
-
-            try
+            current.ContinueWith(static t =>
             {
-                current?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
+                foreach (Exception ex in t.Exception.Flatten().InnerExceptions)
+                    Debug.LogException(ex);
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
         /// Invokes the current action on the main thread.
         /// </summary>
-        public static async void InvokeOnMainThread<T>(this Action<T>? current, T arg0)
+        public static async Task InvokeOnMainThread(this Action? current)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
@@ -59,20 +48,13 @@ namespace Uralstech.UXR.QuestCamera
             await Awaiters.UnityMainThread;
 #endif
 
-            try
-            {
-                current?.Invoke(arg0);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
+            current?.Invoke();
         }
 
         /// <summary>
         /// Invokes the current action on the main thread.
         /// </summary>
-        public static async void InvokeOnMainThread<T0, T1>(this Action<T0, T1>? current, T0 arg0, T1 arg1)
+        public static async Task InvokeOnMainThread<T>(this Action<T>? current, T arg0)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
@@ -80,14 +62,21 @@ namespace Uralstech.UXR.QuestCamera
             await Awaiters.UnityMainThread;
 #endif
 
-            try
-            {
-                current?.Invoke(arg0, arg1);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
+            current?.Invoke(arg0);
+        }
+
+        /// <summary>
+        /// Invokes the current action on the main thread.
+        /// </summary>
+        public static async Task InvokeOnMainThread<T0, T1>(this Action<T0, T1>? current, T0 arg0, T1 arg1)
+        {
+#if UNITY_6000_0_OR_NEWER
+            await Awaitable.MainThreadAsync();
+#else
+            await Awaiters.UnityMainThread;
+#endif
+
+            current?.Invoke(arg0, arg1);
         }
     }
 }

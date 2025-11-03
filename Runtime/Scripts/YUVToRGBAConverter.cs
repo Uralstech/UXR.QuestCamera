@@ -15,6 +15,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using UnityEngine;
 
 #if !UNITY_6000_0_OR_NEWER
@@ -156,7 +157,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="uvRowStride">The size of each row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
-        public virtual void OnFrameReady(
+        public virtual async void OnFrameReady(
             IntPtr yBuffer,
             IntPtr uBuffer,
             IntPtr vBuffer,
@@ -178,15 +179,14 @@ namespace Uralstech.UXR.QuestCamera
                 Marshal.Copy(uBuffer, uCpuBuffer, 0, _uvBufferSize);
                 Marshal.Copy(vBuffer, vCpuBuffer, 0, _uvBufferSize);
 
-                PrepareDataForComputeBuffer(yCpuBuffer, uCpuBuffer, vCpuBuffer,
+                await PrepareDataForComputeBuffer(yCpuBuffer, uCpuBuffer, vCpuBuffer,
                     yRowStride, uvRowStride, uvPixelStride, timestamp);
             }
-            catch (Exception ex)
+            finally
             {
                 ArrayPool<byte>.Shared.Return(yCpuBuffer);
                 ArrayPool<byte>.Shared.Return(uCpuBuffer);
                 ArrayPool<byte>.Shared.Return(vCpuBuffer);
-                Debug.LogException(ex);
             }
         }
 
@@ -200,49 +200,36 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
-        protected virtual async void PrepareDataForComputeBuffer(byte[] yCpuBuffer, byte[] uCpuBuffer, byte[] vCpuBuffer,
+        protected virtual async Task PrepareDataForComputeBuffer(byte[] yCpuBuffer, byte[] uCpuBuffer, byte[] vCpuBuffer,
             int yRowStride, int uvRowStride, int uvPixelStride, long timestamp)
         {
-            try
-            {
 #if UNITY_6000_0_OR_NEWER
-                await Awaitable.MainThreadAsync();
+            await Awaitable.MainThreadAsync();
 #else
-                await Awaiters.UnityMainThread;
+            await Awaiters.UnityMainThread;
 #endif
-                if (_disposed || _shader == null)
-                    return;
+            if (_disposed || _shader == null)
+                return;
 
-                CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
-                CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
-                CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
+            CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
+            CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
+            CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
 
-                _shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
-                _shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
-                _shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
+            _shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
+            _shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
+            _shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
 
-                _shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
-                _shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
-                _shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
+            _shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
+            _shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
+            _shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
 
-                _shader.SetInt(s_yRowStrideID, yRowStride);
-                _shader.SetInt(s_uvRowStrideID, uvRowStride);
-                _shader.SetInt(s_uvPixelStrideID, uvPixelStride);
-                _shader.Dispatch(_kernelHandle, _threadGroupsX, _threadGroupsY, 1);
+            _shader.SetInt(s_yRowStrideID, yRowStride);
+            _shader.SetInt(s_uvRowStrideID, uvRowStride);
+            _shader.SetInt(s_uvPixelStrideID, uvPixelStride);
+            _shader.Dispatch(_kernelHandle, _threadGroupsX, _threadGroupsY, 1);
 
-                FrameCaptureTimestamp = timestamp;
-                OnFrameProcessed?.Invoke(FrameRenderTexture, timestamp);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogException(ex);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(yCpuBuffer);
-                ArrayPool<byte>.Shared.Return(uCpuBuffer);
-                ArrayPool<byte>.Shared.Return(vCpuBuffer);
-            }
+            FrameCaptureTimestamp = timestamp;
+            OnFrameProcessed?.Invoke(FrameRenderTexture, timestamp);
         }
 
         private bool _disposed = false;

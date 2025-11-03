@@ -16,6 +16,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Rendering;
 using static Uralstech.UXR.QuestCamera.SurfaceTextureCapture.STCaptureSessionNative;
@@ -127,30 +128,30 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             switch (methodName)
             {
                 case "onSessionConfigured":
-                    OnSessionConfigured.InvokeOnMainThread();
+                    OnSessionConfigured.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
-                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError);
+                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
-                    OnSessionRequestSet.InvokeOnMainThread();
+                    OnSessionRequestSet.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRequestFailed":
-                    OnSessionRequestFailed.InvokeOnMainThread();
+                    OnSessionRequestFailed.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRegistrationFailed":
-                    OnSessionRegistrationFailed.InvokeOnMainThread();
+                    OnSessionRegistrationFailed.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionActive":
                     SetCurrentState(NativeWrapperState.Opened);
 
-                    OnSessionActive.InvokeOnMainThread();
+                    OnSessionActive.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionClosed":
@@ -166,7 +167,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                         NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
                         SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed?.InvokeOnMainThread();
-                    });
+                    }).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onCaptureCompleted":
@@ -179,7 +180,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                             CaptureTimestamp = timestamp;
                             OnFrameReady?.Invoke(Texture, timestamp);
                         }
-                    }, timestamp);
+                    }, timestamp).HandleAnyException();
                     return IntPtr.Zero;
             }
 
@@ -220,13 +221,13 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     {
                         NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
                         SetCurrentState(NativeWrapperState.Closed);
-                        OnSessionClosed.InvokeOnMainThread();
-                    });
+                        OnSessionClosed.InvokeOnMainThread().HandleAnyException();
+                    }).HandleAnyException();
                 }
                 else if (!sessionCallSent)
                 {
                     SetCurrentState(NativeWrapperState.Closed);
-                    OnSessionClosed.InvokeOnMainThread();
+                    OnSessionClosed.InvokeOnMainThread().HandleAnyException();
                 }
             });
 
@@ -241,7 +242,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <param name="eventId">The type of the event.</param>
         /// <param name="callback">An optional callback for the event's completion.</param>
         /// <param name="timestamp">An optional timestamp to be tracked in C# code, to be forwarded to <paramref name="timestamp"/>.</param>
-        protected virtual async void SendNativeUpdate(NativeEventId eventId, NativeUpdateCallbackWithTimestampType? callback, long timestamp = 0)
+        protected virtual async Task SendNativeUpdate(NativeEventId eventId, NativeUpdateCallbackWithTimestampType? callback, long timestamp = 0)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();

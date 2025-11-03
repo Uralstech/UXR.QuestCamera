@@ -122,32 +122,32 @@ namespace Uralstech.UXR.QuestCamera
             switch (methodName)
             {
                 case "onSessionConfigured":
-                    OnSessionConfigured.InvokeOnMainThread();
+                    OnSessionConfigured.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
-                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError);
+                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
-                    OnSessionRequestSet.InvokeOnMainThread();
+                    OnSessionRequestSet.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRequestFailed":
-                    OnSessionRequestFailed.InvokeOnMainThread();
+                    OnSessionRequestFailed.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionActive":
                     CurrentState = NativeWrapperState.Opened;
                     
-                    OnSessionActive.InvokeOnMainThread();
+                    OnSessionActive.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionClosed":
                     CurrentState = NativeWrapperState.Closed;
 
-                    OnSessionClosed.InvokeOnMainThread();
+                    OnSessionClosed.InvokeOnMainThread().HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onFrameReady":
@@ -165,10 +165,6 @@ namespace Uralstech.UXR.QuestCamera
                             yBufferPtr, uBufferPtr, vBufferPtr,
                             yRowStride, uvRowStride,
                             uvPixelStride, timestampNs);
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.LogException(ex);
                     }
                     finally
                     {

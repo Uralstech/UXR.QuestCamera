@@ -104,25 +104,25 @@ namespace Uralstech.UXR.QuestCamera
                     CurrentState = NativeWrapperState.Opened;
 
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceOpened.InvokeOnMainThread(cameraId);
+                    OnDeviceOpened.InvokeOnMainThread(cameraId).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onDeviceClosed":
                     CurrentState = NativeWrapperState.Closed;
 
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceClosed.InvokeOnMainThread(cameraId);
+                    OnDeviceClosed.InvokeOnMainThread(cameraId).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onDeviceDisconnected":
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceDisconnected.InvokeOnMainThread(cameraId);
+                    OnDeviceDisconnected.InvokeOnMainThread(cameraId).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onDeviceErred":
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
                     int errorCode = JNIExtensions.UnboxIntElement(javaArgs, 1);
-                    OnDeviceErred.InvokeOnMainThread(cameraId, (ErrorCode)errorCode);
+                    OnDeviceErred.InvokeOnMainThread(cameraId, (ErrorCode)errorCode).HandleAnyException();
                     return IntPtr.Zero;
             }
 

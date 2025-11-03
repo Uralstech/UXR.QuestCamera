@@ -64,9 +64,9 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 {
                     GL.InvalidateState();
                     OnFrameReadyInvk(Texture, timestamp);
-                    onDone.InvokeOnMainThread(Texture, timestamp);
+                    onDone.InvokeOnMainThread(Texture, timestamp).HandleAnyException();
                 }
-            }, CaptureTimestamp);
+            }, CaptureTimestamp).HandleAnyException();
             return true;
         }
 
