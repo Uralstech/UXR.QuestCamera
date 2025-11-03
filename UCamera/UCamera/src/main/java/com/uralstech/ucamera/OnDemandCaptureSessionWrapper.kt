@@ -31,7 +31,7 @@ import android.view.Surface
  */
 class OnDemandCaptureSessionWrapper(
     cameraDevice: CameraDevice, captureTemplate: Int,
-    callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height) {
+    callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height, 2) {
     companion object {
         const val TAG = "ODCaptureSessionWrapper"
     }

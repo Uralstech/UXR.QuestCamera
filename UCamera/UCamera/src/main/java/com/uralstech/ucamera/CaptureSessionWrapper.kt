@@ -26,6 +26,7 @@ import android.os.HandlerThread
 import android.util.Log
 import android.view.Surface
 import java.nio.ByteBuffer
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Semaphore
@@ -34,7 +35,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Wrapper class for [CameraCaptureSession].
  */
-abstract class CaptureSessionWrapper private constructor(private val callbacks: Callbacks, width: Int, height: Int) {
+abstract class CaptureSessionWrapper private constructor(private val callbacks: Callbacks, width: Int, height: Int, latchCount: Int) {
     interface Callbacks
     {
         fun onSessionConfigured()
@@ -80,10 +81,10 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
     protected val captureSessionExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private val executorSemaphore = Semaphore(1)
-    private val requestSemaphore = Semaphore(1)
+    private val requestCompletionLatch = CountDownLatch(latchCount)
 
     constructor(cameraDevice: CameraDevice, captureTemplate: Int,
-                callbacks: Callbacks, width: Int, height: Int) : this(callbacks, width, height) {
+                callbacks: Callbacks, width: Int, height: Int, latchCount: Int = 1) : this(callbacks, width, height, latchCount) {
         imageReader.setOnImageAvailableListener({
             val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
 
@@ -150,14 +151,12 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
 
                     override fun onActive(session: CameraCaptureSession) {
                         Log.i(TAG, "Capture session is now active.")
-                        requestSemaphore.acquire()
-
                         callbacks.onSessionActive()
                     }
 
                     override fun onReady(session: CameraCaptureSession) {
                         Log.i(TAG, "Capture session is ready for more requests.")
-                        requestSemaphore.release()
+                        requestCompletionLatch.countDown()
                     }
                 }
             ))
@@ -214,8 +213,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
 
         if (captureSession != null) {
             captureSession?.stopRepeating()
-            requestSemaphore.acquire()
-            requestSemaphore.release()
+            requestCompletionLatch.await()
         }
 
         captureSession?.close()

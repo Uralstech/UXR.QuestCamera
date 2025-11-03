@@ -1,7 +1,7 @@
 [versions]
-agp = "8.7.2"
-camera2 = "1.5.0"
-kotlin = "2.2.20"
+agp = "8.10.0"
+camera2 = "1.5.1"
+kotlin = "2.2.21"
 coreKtx = "1.17.0"
 
 [libraries]
