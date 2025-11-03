@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Wrapper class for [CameraCaptureSession].
  */
-abstract class CaptureSessionWrapper private constructor(private val callbacks: Callbacks, width: Int, height: Int, latchCount: Int) {
+abstract class CaptureSessionWrapper private constructor(private val callbacks: Callbacks, width: Int, height: Int) {
     interface Callbacks
     {
         fun onSessionConfigured()
@@ -81,10 +81,10 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
     protected val captureSessionExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 
     private val executorSemaphore = Semaphore(1)
-    private val requestCompletionLatch = CountDownLatch(latchCount)
+    private val requestCompletionLatch = CountDownLatch(2)
 
     constructor(cameraDevice: CameraDevice, captureTemplate: Int,
-                callbacks: Callbacks, width: Int, height: Int, latchCount: Int = 1) : this(callbacks, width, height, latchCount) {
+                callbacks: Callbacks, width: Int, height: Int) : this(callbacks, width, height) {
         imageReader.setOnImageAvailableListener({
             val image = imageReader.acquireLatestImage() ?: return@setOnImageAvailableListener
 
