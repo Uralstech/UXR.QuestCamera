@@ -26,8 +26,11 @@ namespace Uralstech.UXR.QuestCamera
     /// <summary>
     /// Extensions for <see cref="Action"/>.
     /// </summary>
-    public static class ActionExtensions
+    public static class TaskExtensions
     {
+        /// <summary>
+        /// Adds a continuation to a task to log exceptions.
+        /// </summary>
         public static void HandleAnyException(this Task current)
         {
             current.ContinueWith(static t =>
