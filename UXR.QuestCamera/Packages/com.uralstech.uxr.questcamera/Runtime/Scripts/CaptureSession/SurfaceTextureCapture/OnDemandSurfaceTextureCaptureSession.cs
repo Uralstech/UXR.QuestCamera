@@ -29,8 +29,8 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
     /// On-demand version of <see cref="SurfaceTextureCaptureSession"/>.
     /// </summary>
     /// <remarks>
-    /// The results of this capture session may be more noisy compared to <see cref="OnDemandCaptureSession"/>.
-    /// Requires OpenGL ES 3.0 as the project's Graphics API. Works with single and multi-threaded rendering.
+    /// This capture session uses a native OpenGL texture to capture images for better performance and
+    /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
     /// </remarks>
     public class OnDemandSurfaceTextureCaptureSession : SurfaceTextureCaptureSession
     {
@@ -55,6 +55,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <returns><see langword="true"/> if the renderer was invoked, <see langword="false"/> otherwise.</returns>
         public bool RequestCapture(Action<Texture2D, long> onDone)
         {
+            ThrowIfDisposed();
             if (_nativeTextureId == null || CaptureTimestamp == 0)
                 return false;
 
@@ -76,6 +77,8 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <returns>Returns a WaitUntil operation if the renderer was invoked, <see langword="null"/> otherwise.</returns>
         public WaitUntil? RequestCapture()
         {
+            ThrowIfDisposed();
+
             bool isDone = false;
             return RequestCapture((_, _) => isDone = true)
                 ? new WaitUntil(() => isDone) : null;
@@ -88,6 +91,8 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <returns>The rendered texture and timestamp, or default values if the renderer could not be invoked.</returns>
         public async Awaitable<(Texture2D?, long)> RequestCaptureAsync(CancellationToken token = default)
         {
+            ThrowIfDisposed();
+
             TaskCompletionSource<(Texture2D?, long)> tcs = new();
             using (token.Register((tcs) => ((TaskCompletionSource<(Texture2D?, long)>)tcs).TrySetCanceled(), tcs))
             {
@@ -96,5 +101,11 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             }
         }
 #endif
+
+        private void ThrowIfDisposed()
+        {
+            if (Disposed)
+                throw new ObjectDisposedException(nameof(OnDemandSurfaceTextureCaptureSession));
+        }
     }
 }

@@ -29,13 +29,12 @@ using Utilities.Async;
 namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 {
     /// <summary>
-    /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
+    /// This capture session uses a native OpenGL texture to capture images for better performance.
     /// </summary>
     /// <remarks>
-    /// The results of this capture session may be more noisy compared to <see cref="ContinuousCaptureSession"/>.
-    /// Requires OpenGL ES 3.0 as the project's Graphics API. Works with single and multi-threaded rendering.
+    /// Requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
     /// </remarks>
-    public class SurfaceTextureCaptureSession : AndroidJavaProxy, IDisposable
+    public class SurfaceTextureCaptureSession : AndroidJavaProxy, IAsyncDisposable
     {
         /// <summary>
         /// The current assumed state of the native CaptureSession wrapper.
@@ -249,7 +248,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 #else
             await Awaiters.UnityMainThread;
 #endif
-            if (_disposed || _nativeTextureId is not uint textureId)
+            if (Disposed || _nativeTextureId is not uint textureId)
                 return;
 
             if (eventId == NativeEventId.CleanupNativeTexture)
@@ -277,15 +276,10 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
-        public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
-
-        /// <summary>
-        /// Closes the capture session.
-        /// </summary>
-        public WaitUntil Close()
+        public WaitUntil WaitForInitialization()
         {
-            _captureSession?.Call("close");
-            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+            ThrowIfDisposed();
+            return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
 #if UNITY_6000_0_OR_NEWER
@@ -295,26 +289,12 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
+            ThrowIfDisposed();
             await Awaitable.MainThreadAsync();
             while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
                 await Awaitable.NextFrameAsync(token);
 
             return CurrentState;
-        }
-
-        /// <summary>
-        /// Closes the capture session.
-        /// </summary>
-        /// <returns><see langword="true"/> if the session was closed successfully, <see langword="false"/> if the operation was cancelled.</returns>
-        public async Awaitable<bool> CloseAsync(CancellationToken token = default)
-        {
-            await Awaitable.MainThreadAsync();
-
-            _captureSession?.Call("close");
-            while (CurrentState != NativeWrapperState.Closed && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
-
-            return CurrentState == NativeWrapperState.Closed;
         }
 #endif
 
@@ -329,22 +309,30 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             }
         }
 
-        private bool _disposed = false;
+        protected bool Disposed { get; private set; } = false;
 
         /// <summary>
-        /// Releases native plugin resources.
-        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
+        /// Closes and releases the capture session..
         /// </summary>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
-            if (_disposed)
-                return;
+            ThrowIfDisposed();
 
+            Disposed = true;
+            _captureSession?.Call("close");
             _captureSession?.Dispose();
             _captureSession = null;
-            _disposed = true;
+
+            while (CurrentState != NativeWrapperState.Closed)
+                await Task.Yield();
 
             GC.SuppressFinalize(this);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (Disposed)
+                throw new ObjectDisposedException(nameof(SurfaceTextureCaptureSession));
         }
     }
 }

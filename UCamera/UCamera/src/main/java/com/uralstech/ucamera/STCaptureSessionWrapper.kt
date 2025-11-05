@@ -59,8 +59,11 @@ class STCaptureSessionWrapper(
 
     /** Is this object active and usable? */
     @Volatile
-    var isActiveAndUsable: Boolean = true
-        private set
+    protected var isDisposed = false
+
+    /** Does the session executor need additional closure? */
+    @Volatile
+    protected var partialExecutorClosure = false
 
     /** The capture session being wrapped by this object. */
     private var captureSession: CameraCaptureSession? = null
@@ -82,7 +85,7 @@ class STCaptureSessionWrapper(
     }
 
     private fun startCaptureSession(textureId: Int): Boolean {
-        if (captureSession != null || !isActiveAndUsable) {
+        if (isDisposed || captureSession != null) {
             Log.e(TAG, "Tried to start capture session on wrapper which is already disposed/recording!");
             return false;
         }
@@ -112,7 +115,7 @@ class STCaptureSessionWrapper(
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         Log.e(TAG, "Configuration for capture session failed, camera: \"${cameraDevice.id}\".")
-                        close()
+                        closeFromExecutor()
 
                         callbacks.onSessionConfigurationFailed(false)
                     }
@@ -120,12 +123,13 @@ class STCaptureSessionWrapper(
                     override fun onClosed(session: CameraCaptureSession) {
                         Log.i(TAG, "Capture session closed.")
                         deregisterSurfaceTextureForUpdates(textureId)
+                        callbacks.onSessionClosed()
                         executorSemaphore.release()
                     }
 
                     override fun onActive(session: CameraCaptureSession) {
                         if (!registerSurfaceTextureForUpdates(surfaceTexture, textureId)) {
-                            close()
+                            closeFromExecutor()
                             callbacks.onSessionRegistrationFailed()
                         } else {
                             Log.i(TAG, "Capture session is now active.")
@@ -180,41 +184,69 @@ class STCaptureSessionWrapper(
             callbacks.onSessionRequestSet()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Capture session request could not be set due to access exception, camera: \"${cameraDevice.id}\"", exp)
-            close()
+            closeFromExecutor()
 
             callbacks.onSessionRequestFailed()
         } catch (exp: SecurityException) {
             Log.e(TAG, "Capture session request could not be set due to security exception, camera: \"${cameraDevice.id}\"", exp)
-            close()
+            closeFromExecutor()
 
             callbacks.onSessionRequestFailed()
         }
     }
 
-    fun close() {
-        if (!isActiveAndUsable) {
+    fun closeFromExecutor() {
+        if (isDisposed) {
             return
         }
 
-        isActiveAndUsable = false
+        isDisposed = true
+        partialExecutorClosure = true
+
+        Log.i(TAG, "Closing camera capture session wrapper from executor.")
+        captureSession?.stopRepeating()
+        captureSession?.close()
+    }
+
+    fun close() {
+        if (isDisposed && !partialExecutorClosure) {
+            return
+        }
+
+        isDisposed = true
+        partialExecutorClosure = false
         tryDeregisterCaptureSessionNative(timestamp)
 
         if (captureSession != null) {
             captureSession?.stopRepeating()
-            requestCompletionLatch.await()
+            try {
+                if (!requestCompletionLatch.await(1, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Could not wait for total request completion due to timeout.")
+                }
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "Interrupted while trying to stop captureSession", e)
+            }
         }
 
         captureSession?.close()
         captureSession = null
 
-        executorSemaphore.acquire()
-        captureSessionExecutor.shutdown()
-        try {
-            captureSessionExecutor.awaitTermination(10, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
-        } finally {
-            executorSemaphore.release()
+        if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS))
+        {
+            captureSessionExecutor.shutdown()
+            try {
+                if (!captureSessionExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Closing background thread forcefully due to termination timeout.")
+                    captureSessionExecutor.shutdownNow()
+                }
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "Interrupted while trying to stop the background thread", e)
+            } finally {
+                executorSemaphore.release()
+            }
+        } else {
+            Log.w(TAG, "Closing background thread forcefully due to acquire timeout.")
+            captureSessionExecutor.shutdownNow()
         }
 
         surface?.release()
@@ -224,7 +256,6 @@ class STCaptureSessionWrapper(
         surfaceTexture = null
 
         Log.i(TAG, "Capture session closed.")
-        callbacks.onSessionClosed()
     }
 
     private external fun registerCaptureSessionNative(timestamp: Long): Boolean
