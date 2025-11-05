@@ -62,8 +62,11 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
 
     /** Is this object active and usable? */
     @Volatile
-    var isActiveAndUsable: Boolean = true
-        private set
+    protected var isDisposed = false
+
+    /** Does the session executor need additional closure? */
+    @Volatile
+    protected var partialExecutorClosure = false
 
     /** Readers used as buffers for camera still shots. */
     protected val imageReader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
@@ -139,13 +142,14 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
 
                     override fun onConfigureFailed(session: CameraCaptureSession) {
                         Log.e(TAG, "Could not create new capture session as it could not be configured for camera with ID \"${camera.id}\".")
-                        close()
+                        closeFromExecutor()
 
                         callbacks.onSessionConfigurationFailed(false)
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
                         Log.i(TAG, "Capture session closed.")
+                        callbacks.onSessionClosed()
                         executorSemaphore.release()
                     }
 
@@ -188,56 +192,83 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
             callbacks.onSessionRequestSet()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a camera access exception.", exp)
-            close()
+            closeFromExecutor()
 
             callbacks.onSessionRequestFailed()
         } catch (exp: SecurityException) {
             Log.e(TAG, "Camera device with ID \"${captureSession.device.id}\" erred out with a security exception.", exp)
-            close()
+            closeFromExecutor()
 
             callbacks.onSessionRequestFailed()
         }
     }
 
+    fun closeFromExecutor() {
+        if (isDisposed) {
+            return
+        }
+
+        isDisposed = true
+        partialExecutorClosure = true
+
+        Log.i(TAG, "Closing camera capture session wrapper from executor.")
+        captureSession?.stopRepeating()
+        captureSession?.close()
+    }
+
     /**
      * Releases associated resources and closes the session.
-     * This results in [isActiveAndUsable] being set to false.
      */
     open fun close() {
-        if (!isActiveAndUsable) {
+        if (isDisposed && !partialExecutorClosure) {
             return
         }
 
         Log.i(TAG, "Closing camera capture session wrapper.")
-        isActiveAndUsable = false
+        isDisposed = true
+        partialExecutorClosure = false
 
         if (captureSession != null) {
             captureSession?.stopRepeating()
-            requestCompletionLatch.await()
+
+            try {
+                if (!requestCompletionLatch.await(1, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Could not wait for total request completion due to timeout.")
+                }
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "Interrupted while trying to stop captureSession", e)
+            }
         }
 
         captureSession?.close()
         captureSession = null
 
-        executorSemaphore.acquire()
-        captureSessionExecutor.shutdown()
-        try {
-            captureSessionExecutor.awaitTermination(10, TimeUnit.SECONDS)
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
-        } finally {
-            executorSemaphore.release()
+        if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS))
+        {
+            captureSessionExecutor.shutdown()
+            try {
+                if (!captureSessionExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Closing background thread forcefully due to termination timeout.")
+                    captureSessionExecutor.shutdownNow()
+                }
+            } catch (e: InterruptedException) {
+                Log.e(TAG, "Interrupted while trying to stop the background thread", e)
+            } finally {
+                executorSemaphore.release()
+            }
+        } else {
+            Log.w(TAG, "Closing background thread forcefully due to acquire timeout.")
+            captureSessionExecutor.shutdownNow()
         }
 
         imageReader.setOnImageAvailableListener(null, null)
         imageReaderThread.quitSafely()
         try {
-            imageReaderThread.join()
+            imageReaderThread.join(1000)
         } catch (e: InterruptedException) {
             Log.e(TAG, "Interrupted while trying to stop the background thread", e)
         }
 
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
-        callbacks.onSessionClosed()
     }
 }

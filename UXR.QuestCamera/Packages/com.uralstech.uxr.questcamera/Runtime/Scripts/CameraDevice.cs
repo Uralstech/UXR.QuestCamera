@@ -1,4 +1,4 @@
-﻿// Copyright 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+// Copyright 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -61,14 +61,9 @@ namespace Uralstech.UXR.QuestCamera
         public NativeWrapperState CurrentState { get; private set; }
 
         /// <summary>
-        /// The ID of the camera being wrapped. This value is <b>not</b> cached - it is requested from the native plugin on every access.
+        /// The ID of the camera being wrapped.
         /// </summary>
-        public string CameraId => _cameraDevice?.Get<string>("id") ?? throw new ObjectDisposedException(nameof(CameraDevice));
-
-        /// <summary>
-        /// Is the native CameraDevice wrapper active and usable?
-        /// </summary>
-        public bool IsActiveAndUsable => _cameraDevice?.Get<bool>("isActiveAndUsable") ?? throw new ObjectDisposedException(nameof(CameraDevice));
+        public readonly string CameraId;
 
         /// <summary>
         /// Invoked when the CameraDevice is opened, along with the camera ID.
@@ -78,12 +73,18 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Invoked when the CameraDevice is closed, along with the camera ID.
         /// </summary>
-        public event Action<string>? OnDeviceClosed;
+        /// <remarks>
+        /// The camera ID may be <see langword="null"/> if the camera could not be opened in the first place.
+        /// </remarks>
+        public event Action<string?>? OnDeviceClosed;
 
         /// <summary>
         /// Invoked when the CameraDevice encounters an error, along with the camera ID.
         /// </summary>
-        public event Action<string, ErrorCode>? OnDeviceErred;
+        /// <remarks>
+        /// The camera ID may be <see langword="null"/> if the camera could not be opened in the first place.
+        /// </remarks>
+        public event Action<string?, ErrorCode>? OnDeviceErred;
 
         /// <summary>
         /// Invoked when the CameraDevice is disconnected, along with the camera ID.
@@ -92,19 +93,22 @@ namespace Uralstech.UXR.QuestCamera
 
         internal protected AndroidJavaObject? _cameraDevice;
 
-        public CameraDevice() : base("com.uralstech.ucamera.CameraDeviceWrapper$Callbacks") { }
+        public CameraDevice(string id) : base("com.uralstech.ucamera.CameraDeviceWrapper$Callbacks")
+        {
+            CameraId = id;
+        }
 
         /// <inheritdoc/>
         public override IntPtr Invoke(string methodName, IntPtr javaArgs)
         {
-            string cameraId;
+            string? cameraId;
             switch (methodName)
             {
                 case "onDeviceOpened":
                     CurrentState = NativeWrapperState.Opened;
 
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceOpened.InvokeOnMainThread(cameraId).HandleAnyException();
+                    OnDeviceOpened.InvokeOnMainThread(cameraId!).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onDeviceClosed":
@@ -116,7 +120,7 @@ namespace Uralstech.UXR.QuestCamera
 
                 case "onDeviceDisconnected":
                     cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceDisconnected.InvokeOnMainThread(cameraId).HandleAnyException();
+                    OnDeviceDisconnected.InvokeOnMainThread(cameraId!).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onDeviceErred":
@@ -130,63 +134,43 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
-        /// Waits until the CameraDevice is open or erred out.
+        /// Waits until the CameraDevice opens or errs out.
         /// </summary>
-        public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
-
-        /// <summary>
-        /// Closes the camera device.
-        /// </summary>
-        public WaitUntil Close()
+        public WaitUntil WaitForInitialization()
         {
-            _cameraDevice?.Call("close");
-            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+            ThrowIfDisposed();
+            return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
 #if UNITY_6000_0_OR_NEWER
         /// <summary>
-        /// Waits until the CameraDevice is open or erred out.
+        /// Waits until the CameraDevice opens or errs out.
         /// </summary>
         /// <returns>The current state of the CameraDevice.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
+            ThrowIfDisposed();
             await Awaitable.MainThreadAsync();
             while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
                 await Awaitable.NextFrameAsync(token);
 
             return CurrentState;
         }
-
-        /// <summary>
-        /// Closes the camera device.
-        /// </summary>
-        /// <returns><see langword="true"/> if the device was closed successfully, <see langword="false"/> if the operation was cancelled.</returns>
-        public async Awaitable<bool> CloseAsync(CancellationToken token = default)
-        {
-            await Awaitable.MainThreadAsync();
-
-            _cameraDevice?.Call("close");
-            while (CurrentState != NativeWrapperState.Closed && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
-
-            return CurrentState == NativeWrapperState.Closed;
-        }
 #endif
 
         private bool _disposed = false;
 
         /// <summary>
-        /// Releases native plugin resources.
-        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
+        /// Closes and disposes the camera device.
         /// </summary>
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            ThrowIfDisposed();
 
+            _disposed = true;
+            _cameraDevice?.Call("close");
             _cameraDevice?.Dispose();
             _cameraDevice = null;
-            _disposed = true;
 
             GC.SuppressFinalize(this);
         }
@@ -195,18 +179,15 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.CloseAndDispose()"/>
-        /// or <see cref="CapturePipeline{T}.CloseAndDisposeAsync(CancellationToken)"/> to close and dispose the
-        /// session to free up native and compute shader resources.
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
+        /// to close and dispose the session to free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
         /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public CapturePipeline<ContinuousCaptureSession>? CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
-            if (!IsActiveAndUsable)
-                return null;
-
+            ThrowIfDisposed();
             ContinuousCaptureSession captureSession = new();
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", captureSession, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
@@ -228,9 +209,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <inheritdoc cref="CreateContinuousCaptureSession(Resolution, CaptureTemplate)"/>
         public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
         {
-            if (!IsActiveAndUsable)
-                return null;
-
+            ThrowIfDisposed();
             OnDemandCaptureSession captureSession = new();
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", captureSession, resolution.width, resolution.height);
             if (nativeObject is null)
@@ -250,21 +229,18 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="ContinuousCaptureSession"/>.
         /// </summary>
         /// <remarks>
-        /// This is an experimental capture session type that uses a native OpenGL texture to capture images for better performance.
-        /// The results of this capture session may be more noisy compared to <see cref="ContinuousCaptureSession"/>.
-        /// Requires OpenGL ES 3.0 as the project's Graphics API. Works with single and multi-threaded rendering.
+        /// This capture session uses a native OpenGL texture to capture images for better performance and
+        /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
         /// 
-        /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.Close()"/>
-        /// or <see cref="SurfaceTextureCaptureSession.CloseAsync(CancellationToken)"/> to close and
-        /// <see cref="SurfaceTextureCaptureSession.Dispose()"/> to dispose the session to free up native resources.
+        /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.DisposeAsync()"/>
+        /// to dispose the session to free up native resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
         /// <param name="captureTemplate">The capture template to use for the capture</param>
         /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
         public SurfaceTextureCaptureSession? CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
-            if (!IsActiveAndUsable)
-                return null;
+            ThrowIfDisposed();
 
             long timestamp = DateTime.Now.Ticks;
             SurfaceTextureCaptureSession session = new(resolution);
@@ -272,7 +248,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                session.Dispose();
+                _ = session.DisposeAsync();
                 return null;
             }
 
@@ -287,8 +263,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <inheritdoc cref="CreateSurfaceTextureCaptureSession(Resolution, CaptureTemplate)"/>
         public OnDemandSurfaceTextureCaptureSession? CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
-            if (!IsActiveAndUsable)
-                return null;
+            ThrowIfDisposed();
 
             long timestamp = DateTime.Now.Ticks;
             OnDemandSurfaceTextureCaptureSession session = new(resolution);
@@ -296,13 +271,19 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                session.Dispose();
+                _ = session.DisposeAsync();
                 return null;
             }
 
             session._captureSession = nativeObject;
             session.InitializeNative(timestamp);
             return session;
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(CameraDevice));
         }
     }
 }

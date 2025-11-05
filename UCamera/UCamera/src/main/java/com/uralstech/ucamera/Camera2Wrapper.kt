@@ -53,14 +53,16 @@ class Camera2Wrapper {
             Log.i(TAG, "Getting camera intrinsics.")
 
             val cameraIdList = cameraManager.cameraIdList
-            val wrappers = arrayOfNulls<CameraCharacteristicsWrapper>(cameraIdList.size)
+            val wrappers = mutableListOf<CameraCharacteristicsWrapper>()
 
-            for ((i, cameraId) in cameraIdList.withIndex()) {
-                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                wrappers[i] = CameraCharacteristicsWrapper(cameraId, characteristics)
+            for (cameraId in cameraIdList) {
+                try {
+                    val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+                    wrappers.add(CameraCharacteristicsWrapper(cameraId, characteristics))
+                } catch (_: CameraAccessException) { }
             }
 
-            wrappers.requireNoNulls()
+            wrappers.toTypedArray()
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Could not get camera characteristics due to a camera access exception.", exp)
             null

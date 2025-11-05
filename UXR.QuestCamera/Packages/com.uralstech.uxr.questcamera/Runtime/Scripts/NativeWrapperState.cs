@@ -26,7 +26,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>The native wrapper is open and ready.</summary>
         Opened,
 
-        /// <summary>The native wrapper failed with an error, was disconnected or was closed normally.</summary>
+        /// <summary>The native wrapper failed with an error, was disconnected or is being/was closed normally.</summary>
         Closed,
     }
 }

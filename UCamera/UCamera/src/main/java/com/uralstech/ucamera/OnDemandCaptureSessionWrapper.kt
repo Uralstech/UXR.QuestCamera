@@ -62,7 +62,7 @@ class OnDemandCaptureSessionWrapper(
      */
     fun setSingleCaptureRequest(captureTemplate: Int): Boolean {
         val captureSession = this.captureSession
-        if (!isActiveAndUsable || captureSession == null) {
+        if (isDisposed || captureSession == null) {
             Log.e(TAG, "Tried to set non-repeating capture request for unusable capture session.")
             return false
         }
@@ -91,7 +91,7 @@ class OnDemandCaptureSessionWrapper(
      * Same as [CaptureSessionWrapper.close], but also releases [dummySurfaceTexture].
      */
     override fun close() {
-        if (!isActiveAndUsable) {
+        if (isDisposed && !partialExecutorClosure) {
             return
         }
 

@@ -240,13 +240,17 @@ namespace Uralstech.UXR.QuestCamera
         public void Dispose()
         {
             if (_disposed)
-                return;
+                throw new ObjectDisposedException(nameof(YUVToRGBAConverter));
 
             _disposed = true;
+            
             FrameRenderTexture.Release();
+            UnityEngine.Object.Destroy(FrameRenderTexture);
+
             _yComputeBuffer.Dispose();
             _uComputeBuffer.Dispose();
             _vComputeBuffer.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

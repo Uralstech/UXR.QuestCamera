@@ -116,18 +116,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// The native CameraCharacteristics object.
         /// </summary>
-        /// <remarks>
-        /// The caller is responsible of disposing the returned <see cref="AndroidJavaObject"/>.
-        /// </remarks>
-        /// <exception cref="ObjectDisposedException">Thrown if the current <see cref="CameraInfo"/> object was disposed.</exception>
-        public AndroidJavaObject NativeCameraCharacteristics => _cameraInfo?.Get<AndroidJavaObject>("characteristics") ?? throw new ObjectDisposedException(nameof(CameraInfo));
-
-        private AndroidJavaObject? _cameraInfo;
+        public readonly AndroidJavaObject NativeCameraCharacteristics;
 
         public CameraInfo(AndroidJavaObject cameraInfo)
         {
-            _cameraInfo = cameraInfo;
-
             CameraId = cameraInfo.Get<string>("cameraId");
             Source = cameraInfo.GetNullableInt("metaQuestCameraSource") is int source ? (CameraSource)source : CameraSource.Unknown;
             Eye = cameraInfo.GetNullableInt("metaQuestCameraEye") is int eye ? (CameraEye)eye : CameraEye.Unknown;
@@ -160,6 +152,8 @@ namespace Uralstech.UXR.QuestCamera
                     intrinsicsSkew
                 );
             }
+
+            NativeCameraCharacteristics = cameraInfo.Get<AndroidJavaObject>("characteristics");
         }
 
         public static implicit operator string(CameraInfo camera) => camera.CameraId;
@@ -172,12 +166,10 @@ namespace Uralstech.UXR.QuestCamera
         public void Dispose()
         {
             if (_disposed)
-                return;
+                throw new ObjectDisposedException(nameof(CameraInfo));
 
-            _cameraInfo?.Dispose();
-            _cameraInfo = null;
             _disposed = true;
-
+            NativeCameraCharacteristics.Dispose();
             GC.SuppressFinalize(this);
         }
     }

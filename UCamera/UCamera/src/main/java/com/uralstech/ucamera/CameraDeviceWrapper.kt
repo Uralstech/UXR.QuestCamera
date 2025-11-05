@@ -26,10 +26,10 @@ import java.util.concurrent.TimeUnit
 /**
  * Wrapper class for [CameraDevice].
  */
-class CameraDeviceWrapper private constructor(val id: String, private val callbacks: Callbacks) {
+class CameraDeviceWrapper private constructor(private val id: String, private val callbacks: Callbacks) {
     interface Callbacks {
         fun onDeviceOpened(id: String)
-        fun onDeviceClosed(id: String)
+        fun onDeviceClosed(id: String?)
         fun onDeviceErred(id: String?, errorCode: Int)
         fun onDeviceDisconnected(id: String)
     }
@@ -44,8 +44,11 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
 
     /** Is this object active and usable? */
     @Volatile
-    var isActiveAndUsable: Boolean = true
-        private set
+    private var isDisposed = false
+
+    /** Does the executor need additional closure? */
+    @Volatile
+    private var partialExecutorClosure = false
 
     /** [java.util.concurrent.ExecutorService] for [cameraDevice]. */
     private val cameraExecutor = Executors.newSingleThreadExecutor()
@@ -71,14 +74,14 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
 
                 override fun onDisconnected(camera: CameraDevice) {
                     Log.i(TAG, "Camera device with ID \"$id\" disconnected.")
-                    close()
+                    closeFromExecutor()
 
                     callbacks.onDeviceDisconnected(camera.id)
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
                     Log.i(TAG, "Camera device with ID \"$id\" erred out, code: $error")
-                    close()
+                    closeFromExecutor()
 
                     callbacks.onDeviceErred(camera.id, error)
                 }
@@ -100,7 +103,7 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
      * Gets the [CameraDevice] this object is wrapping, or logs an error and returns null if it was not found.
      */
     private fun getActiveDevice(): CameraDevice? {
-        if (!isActiveAndUsable || cameraDevice == null) {
+        if (isDisposed || cameraDevice == null) {
             Log.e(TAG, "Tried to use an unusable CameraDeviceWrapper for camera ID \"$id\"!")
             return null
         }
@@ -152,28 +155,49 @@ class CameraDeviceWrapper private constructor(val id: String, private val callba
         return session
     }
 
+    private fun closeFromExecutor() {
+        if (isDisposed) {
+            return
+        }
+
+        isDisposed = true
+        partialExecutorClosure = true
+
+        Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\" from executor.")
+        if (cameraDevice != null) {
+            cameraDevice?.close()
+        } else {
+            callbacks.onDeviceClosed(null)
+        }
+
+        cameraExecutor.shutdown()
+    }
+
     /**
      * Releases associated resources and closes the camera device.
-     * This results in [isActiveAndUsable] being set to false.
      */
     fun close() {
-        if (!isActiveAndUsable) {
+        if (isDisposed && !partialExecutorClosure) {
             return
         }
 
         Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\".")
-        isActiveAndUsable = false
+        isDisposed = true
 
         if (cameraDevice != null) {
             cameraDevice?.close()
             cameraDevice = null
-        } else {
-            callbacks.onDeviceClosed("")
+        } else if (!partialExecutorClosure) {
+            callbacks.onDeviceClosed(null)
         }
 
+        partialExecutorClosure = false
         cameraExecutor.shutdown()
         try {
-            cameraExecutor.awaitTermination(10, TimeUnit.SECONDS)
+            if (!cameraExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
+                Log.w(TAG, "Closing background thread forcefully due to timeout.")
+                cameraExecutor.shutdownNow()
+            }
         } catch (e: InterruptedException) {
             Log.e(TAG, "Interrupted while trying to stop the background thread", e)
         }
