@@ -34,11 +34,6 @@ namespace Uralstech.UXR.QuestCamera
         public NativeWrapperState CurrentState { get; private set; }
 
         /// <summary>
-        /// Is the native CaptureSession wrapper active and usable?
-        /// </summary>
-        public bool IsActiveAndUsable => _captureSession?.Get<bool>("isActiveAndUsable") ?? throw new ObjectDisposedException(nameof(ContinuousCaptureSession));
-
-        /// <summary>
         /// Called when the session has been configured.
         /// </summary>
         public event Action? OnSessionConfigured;
@@ -182,15 +177,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Waits until the CaptureSession is open or erred out.
         /// </summary>
-        public WaitUntil WaitForInitialization() => new(() => CurrentState != NativeWrapperState.Initializing);
-
-        /// <summary>
-        /// Closes the capture session.
-        /// </summary>
-        public WaitUntil Close()
+        public WaitUntil WaitForInitialization()
         {
-            _captureSession?.Call("close");
-            return new WaitUntil(() => CurrentState != NativeWrapperState.Closed);
+            ThrowIfDisposed();
+            return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
 #if UNITY_6000_0_OR_NEWER
@@ -200,45 +190,36 @@ namespace Uralstech.UXR.QuestCamera
         /// <returns>The current state of the CaptureSession.</returns>
         public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
         {
+            ThrowIfDisposed();
             await Awaitable.MainThreadAsync();
             while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
                 await Awaitable.NextFrameAsync(token);
 
             return CurrentState;
         }
-
-        /// <summary>
-        /// Closes the capture session.
-        /// </summary>
-        /// <returns><see langword="true"/> if the session was closed successfully, <see langword="false"/> if the operation was cancelled.</returns>
-        public async Awaitable<bool> CloseAsync(CancellationToken token = default)
-        {
-            await Awaitable.MainThreadAsync();
-
-            _captureSession?.Call("close");
-            while (CurrentState != NativeWrapperState.Closed && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
-
-            return CurrentState == NativeWrapperState.Closed;
-        }
 #endif
 
         private bool _disposed = false;
 
         /// <summary>
-        /// Releases native plugin resources.
-        /// Make sure to call <see cref="Close()"/> or <see cref="CloseAsync(CancellationToken)"/> before disposing this object.
+        /// Closes and disposes the capture session.
         /// </summary>
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            ThrowIfDisposed();
 
+            _disposed = true;
+            _captureSession?.Call("close");
             _captureSession?.Dispose();
             _captureSession = null;
-            _disposed = true;
 
             GC.SuppressFinalize(this);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(ContinuousCaptureSession));
         }
     }
 }

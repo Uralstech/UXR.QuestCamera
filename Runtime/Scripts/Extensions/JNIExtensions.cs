@@ -74,10 +74,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="args">The native array to take the string from.</param>
         /// <param name="index">The index of the string object in the native array.</param>
         /// <returns>The unboxed string.</returns>
-        public static string UnboxStringElement(IntPtr args, int index)
+        public static string? UnboxStringElement(IntPtr args, int index)
         {
             IntPtr ptr = AndroidJNI.GetObjectArrayElement(args, index);
-            string value = AndroidJNI.GetStringUTFChars(ptr);
+            string? value = AndroidJNI.GetStringUTFChars(ptr);
 
             AndroidJNI.DeleteLocalRef(ptr);
             return value;
