@@ -248,7 +248,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 #else
             await Awaiters.UnityMainThread;
 #endif
-            if (Disposed || _nativeTextureId is not uint textureId)
+            if ((Disposed && eventId != NativeEventId.CleanupNativeTexture) || _nativeTextureId is not uint textureId)
                 return;
 
             if (eventId == NativeEventId.CleanupNativeTexture)
@@ -319,12 +319,16 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             ThrowIfDisposed();
 
             Disposed = true;
-            _captureSession?.Call("close");
-            _captureSession?.Dispose();
-            _captureSession = null;
 
-            while (CurrentState != NativeWrapperState.Closed)
-                await Task.Yield();
+            if (_captureSession != null)
+            {
+                _captureSession?.Call("close");
+                _captureSession?.Dispose();
+                _captureSession = null;
+
+                while (CurrentState != NativeWrapperState.Closed)
+                    await Task.Yield();
+            }
 
             GC.SuppressFinalize(this);
         }
