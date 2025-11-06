@@ -147,12 +147,14 @@ class STCaptureSessionWrapper(
             return true
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Capture session could not be started due to access exception, camera: \"${cameraDevice.id}\"", exp)
+            executorSemaphore.release()
             close()
 
             callbacks.onSessionConfigurationFailed(true)
             return false
         } catch (exp: SecurityException) {
             Log.e(TAG, "Capture session could not be started due to security exception, camera: \"${cameraDevice.id}\"", exp)
+            executorSemaphore.release()
             close()
 
             callbacks.onSessionConfigurationFailed(true)

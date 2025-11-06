@@ -166,11 +166,13 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
             ))
         } catch (exp: CameraAccessException) {
             Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exception.", exp)
+            executorSemaphore.release()
             close()
 
             callbacks.onSessionConfigurationFailed(true)
         } catch (exp: SecurityException) {
             Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a security exception.", exp)
+            executorSemaphore.release()
             close()
 
             callbacks.onSessionConfigurationFailed(true)
@@ -269,6 +271,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
             Log.e(TAG, "Interrupted while trying to stop the background thread", e)
         }
 
+        imageReader.close()
         Log.i(TAG, "Camera capture session wrapper closed, executor will be shut down soon.")
     }
 }
