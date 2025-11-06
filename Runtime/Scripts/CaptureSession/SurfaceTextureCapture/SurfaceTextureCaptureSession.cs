@@ -102,6 +102,11 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         public event Action<Texture2D, long>? OnFrameReady;
 
         /// <summary>
+        /// Called when the native Kotlin wrapper has been completely disposed.
+        /// </summary>
+        protected event Action? OnDisposeCompleted;
+
+        /// <summary>
         /// CommandBuffer for invoking native renderer events.
         /// </summary>
         protected readonly CommandBuffer _commandBuffer;
@@ -181,6 +186,10 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                             OnFrameReady?.Invoke(Texture, timestamp);
                         }
                     }, timestamp).HandleAnyException();
+                    return IntPtr.Zero;
+
+                case "disposeCompleted":
+                    OnDisposeCompleted?.Invoke();
                     return IntPtr.Zero;
             }
 
@@ -323,24 +332,27 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 
             if (_captureSession != null)
             {
-                _captureSession?.Call("close");
-                _captureSession?.Dispose();
+                TaskCompletionSource<bool> disposeTCS = new();
+                TaskCompletionSource<bool> cleanupTCS = new();
+                void OnDisposed() => disposeTCS.SetResult(true);
+                void OnCleanup() => cleanupTCS.SetResult(true);
+
+                OnSessionClosed += OnCleanup;
+                OnDisposeCompleted += OnDisposed;
+
+                bool isClosing = _captureSession.Call<bool>("close");
+                if (isClosing)
+                    await disposeTCS.Task;
+                
+                OnDisposeCompleted -= OnDisposed;
+                _captureSession.Dispose();
                 _captureSession = null;
 
-                while (CurrentState != NativeWrapperState.Closed)
-                    await Task.Yield();
+                await cleanupTCS.Task;
+                OnSessionClosed -= OnCleanup;
             }
 
             GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Closes and releases the capture session..
-        /// </summary>
-        public IEnumerator DisposeCoroutine()
-        {
-            Task disposeTask = DisposeAsync().AsTask();
-            yield return new WaitUntil(() => disposeTask.IsCompleted);
         }
 
         private void ThrowIfDisposed()

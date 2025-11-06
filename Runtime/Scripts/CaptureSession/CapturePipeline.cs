@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Threading.Tasks;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
@@ -20,7 +21,7 @@ namespace Uralstech.UXR.QuestCamera
     /// <summary>
     /// Simple class for grouping a capture session and its texture converter.
     /// </summary>
-    public class CapturePipeline<T> : IDisposable
+    public class CapturePipeline<T> : IAsyncDisposable
         where T : ContinuousCaptureSession
     {
         /// <summary>
@@ -44,13 +45,13 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Closes and disposes the capture session and texture converter.
         /// </summary>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(CapturePipeline<T>));
             
             _disposed = true;
-            CaptureSession.Dispose();
+            await CaptureSession.DisposeAsync();
             TextureConverter.Dispose();
             GC.SuppressFinalize(this);
         }

@@ -14,6 +14,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 #nullable enable
@@ -26,7 +27,7 @@ namespace Uralstech.UXR.QuestCamera
     /// This is different from <see cref="OnDemandCaptureSession"/> as it returns a
     /// continuous stream of images.
     /// </remarks>
-    public class ContinuousCaptureSession : AndroidJavaProxy, IDisposable
+    public class ContinuousCaptureSession : AndroidJavaProxy, IAsyncDisposable
     {
         /// <summary>
         /// The current assumed state of the native CaptureSession wrapper.
@@ -105,6 +106,11 @@ namespace Uralstech.UXR.QuestCamera
         public event Action<IntPtr, IntPtr, IntPtr, int, int, int, long>? OnFrameReady;
 
         /// <summary>
+        /// Called when the native wrapper has been completely disposed.
+        /// </summary>
+        protected event Action? OnDisposeCompleted;
+
+        /// <summary>
         /// The native capture session object.
         /// </summary>
         internal protected AndroidJavaObject? _captureSession;
@@ -169,6 +175,10 @@ namespace Uralstech.UXR.QuestCamera
                     }
 
                     return IntPtr.Zero;
+
+                case "disposeCompleted":
+                    OnDisposeCompleted?.Invoke();
+                    return IntPtr.Zero;
             }
 
             return base.Invoke(methodName, javaArgs);
@@ -204,14 +214,27 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Closes and disposes the capture session.
         /// </summary>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             ThrowIfDisposed();
 
             _disposed = true;
-            _captureSession?.Call("close");
-            _captureSession?.Dispose();
-            _captureSession = null;
+
+            if (_captureSession != null)
+            {
+                TaskCompletionSource<bool> tcs = new();
+                void OnDisposed() => tcs.SetResult(true);
+
+                OnDisposeCompleted += OnDisposed;
+                bool isClosing = _captureSession.Call<bool>("close");
+                
+                if (isClosing)
+                    await tcs.Task;
+
+                OnDisposeCompleted -= OnDisposed;
+                _captureSession.Dispose();
+                _captureSession = null;
+            }
 
             GC.SuppressFinalize(this);
         }

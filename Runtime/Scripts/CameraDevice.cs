@@ -14,6 +14,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using Uralstech.UXR.QuestCamera.SurfaceTextureCapture;
 
@@ -23,7 +24,7 @@ namespace Uralstech.UXR.QuestCamera
     /// <summary>
     /// A wrapper for a native Camera2 CameraDevice.
     /// </summary>
-    public class CameraDevice : AndroidJavaProxy, IDisposable
+    public class CameraDevice : AndroidJavaProxy, IAsyncDisposable
     {
         /// <summary>
         /// Error codes that can be returned by the native CameraDevice wrapper.
@@ -163,14 +164,27 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Closes and disposes the camera device.
         /// </summary>
-        public void Dispose()
+        public async ValueTask DisposeAsync()
         {
             ThrowIfDisposed();
 
             _disposed = true;
-            _cameraDevice?.Call("close");
-            _cameraDevice?.Dispose();
-            _cameraDevice = null;
+
+            if (_cameraDevice != null)
+            {
+                TaskCompletionSource<bool> tcs = new();
+                void OnDisposed(string? _) => tcs.SetResult(true);
+
+                OnDeviceClosed += OnDisposed;
+                bool isClosing = _cameraDevice.Call<bool>("close");
+                
+                if (isClosing)
+                    await tcs.Task;
+
+                OnDeviceClosed -= OnDisposed;
+                _cameraDevice.Dispose();
+                _cameraDevice = null;
+            }
 
             GC.SuppressFinalize(this);
         }
@@ -188,19 +202,19 @@ namespace Uralstech.UXR.QuestCamera
         public CapturePipeline<ContinuousCaptureSession>? CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
         {
             ThrowIfDisposed();
-            ContinuousCaptureSession captureSession = new();
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", captureSession, resolution.width, resolution.height, (int)captureTemplate);
+            ContinuousCaptureSession session = new();
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                captureSession.Dispose();
+                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
                 return null;
             }
 
             YUVToRGBAConverter converter = new(resolution);
-            captureSession.OnFrameReady += converter.OnFrameReady;
-            captureSession._captureSession = nativeObject;
+            session.OnFrameReady += converter.OnFrameReady;
+            session._captureSession = nativeObject;
 
-            return new CapturePipeline<ContinuousCaptureSession>(captureSession, converter);
+            return new CapturePipeline<ContinuousCaptureSession>(session, converter);
         }
 
         /// <summary>
@@ -210,19 +224,19 @@ namespace Uralstech.UXR.QuestCamera
         public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
         {
             ThrowIfDisposed();
-            OnDemandCaptureSession captureSession = new();
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", captureSession, resolution.width, resolution.height);
+            OnDemandCaptureSession session = new();
+            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", session, resolution.width, resolution.height);
             if (nativeObject is null)
             {
-                captureSession.Dispose();
+                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
                 return null;
             }
 
             YUVToRGBAConverter converter = new(resolution);
-            captureSession.OnFrameReady += converter.OnFrameReady;
-            captureSession._captureSession = nativeObject;
+            session.OnFrameReady += converter.OnFrameReady;
+            session._captureSession = nativeObject;
 
-            return new CapturePipeline<OnDemandCaptureSession>(captureSession, converter);
+            return new CapturePipeline<OnDemandCaptureSession>(session, converter);
         }
 
         /// <summary>
@@ -248,7 +262,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeCoroutine());
+                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
                 return null;
             }
 
@@ -271,7 +285,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeCoroutine());
+                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
                 return null;
             }
 
