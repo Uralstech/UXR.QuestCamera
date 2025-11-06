@@ -44,6 +44,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
         fun onSessionRequestFailed()
         fun onSessionActive()
         fun onSessionClosed()
+        fun disposeCompleted()
 
         fun onFrameReady(
             yBuffer: ByteBuffer,
@@ -125,57 +126,59 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
      * Creates a new capture session and sets a repeating request.
      */
     protected fun startRepeatingCaptureSession(camera: CameraDevice, captureTemplate: Int, outputs: List<OutputConfiguration>, surface: Surface) {
-        try {
-            executorSemaphore.acquire()
-            camera.createCaptureSession(SessionConfiguration(
-                SessionConfiguration.SESSION_REGULAR,
-                outputs,
-                captureSessionExecutor,
-                object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        Log.i(TAG, "New capture session configured for camera with ID \"${camera.id}\".")
-                        captureSession = session
+        captureSessionExecutor.submit {
+            try {
+                executorSemaphore.acquire()
+                camera.createCaptureSession(SessionConfiguration(
+                    SessionConfiguration.SESSION_REGULAR,
+                    outputs,
+                    captureSessionExecutor,
+                    object : CameraCaptureSession.StateCallback() {
+                        override fun onConfigured(session: CameraCaptureSession) {
+                            Log.i(TAG, "New capture session configured for camera with ID \"${camera.id}\".")
+                            captureSession = session
 
-                        setRepeatingCaptureRequest(session, captureTemplate, surface)
-                        callbacks.onSessionConfigured()
+                            setRepeatingCaptureRequest(session, captureTemplate, surface)
+                            callbacks.onSessionConfigured()
+                        }
+
+                        override fun onConfigureFailed(session: CameraCaptureSession) {
+                            Log.e(TAG, "Could not create new capture session as it could not be configured for camera with ID \"${camera.id}\".")
+                            closeFromExecutor()
+
+                            callbacks.onSessionConfigurationFailed(false)
+                        }
+
+                        override fun onClosed(session: CameraCaptureSession) {
+                            Log.i(TAG, "Capture session closed.")
+                            callbacks.onSessionClosed()
+                            executorSemaphore.release()
+                        }
+
+                        override fun onActive(session: CameraCaptureSession) {
+                            Log.i(TAG, "Capture session is now active.")
+                            callbacks.onSessionActive()
+                        }
+
+                        override fun onReady(session: CameraCaptureSession) {
+                            Log.i(TAG, "Capture session is ready for more requests.")
+                            requestCompletionLatch.countDown()
+                        }
                     }
+                ))
+            } catch (exp: CameraAccessException) {
+                Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exception.", exp)
+                executorSemaphore.release()
+                close()
 
-                    override fun onConfigureFailed(session: CameraCaptureSession) {
-                        Log.e(TAG, "Could not create new capture session as it could not be configured for camera with ID \"${camera.id}\".")
-                        closeFromExecutor()
+                callbacks.onSessionConfigurationFailed(true)
+            } catch (exp: SecurityException) {
+                Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a security exception.", exp)
+                executorSemaphore.release()
+                close()
 
-                        callbacks.onSessionConfigurationFailed(false)
-                    }
-
-                    override fun onClosed(session: CameraCaptureSession) {
-                        Log.i(TAG, "Capture session closed.")
-                        callbacks.onSessionClosed()
-                        executorSemaphore.release()
-                    }
-
-                    override fun onActive(session: CameraCaptureSession) {
-                        Log.i(TAG, "Capture session is now active.")
-                        callbacks.onSessionActive()
-                    }
-
-                    override fun onReady(session: CameraCaptureSession) {
-                        Log.i(TAG, "Capture session is ready for more requests.")
-                        requestCompletionLatch.countDown()
-                    }
-                }
-            ))
-        } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a camera access exception.", exp)
-            executorSemaphore.release()
-            close()
-
-            callbacks.onSessionConfigurationFailed(true)
-        } catch (exp: SecurityException) {
-            Log.e(TAG, "Capture session for camera with ID \"${camera.id}\" could not be created due to a security exception.", exp)
-            executorSemaphore.release()
-            close()
-
-            callbacks.onSessionConfigurationFailed(true)
+                callbacks.onSessionConfigurationFailed(true)
+            }
         }
     }
 
@@ -221,15 +224,29 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
     /**
      * Releases associated resources and closes the session.
      */
-    open fun close() {
+    fun close(): Boolean {
         if (isDisposed && !partialExecutorClosure) {
-            return
+            return false
         }
 
         Log.i(TAG, "Closing camera capture session wrapper.")
         isDisposed = true
         partialExecutorClosure = false
 
+        val closureExecutor = Executors.newSingleThreadExecutor()
+        closureExecutor.submit {
+            try {
+                closeWork()
+            } finally {
+                closureExecutor.shutdown()
+                callbacks.disposeCompleted()
+            }
+        }
+
+        return true
+    }
+
+    protected open fun closeWork() {
         if (captureSession != null) {
             captureSession?.stopRepeating()
 
@@ -248,16 +265,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
         if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS))
         {
             captureSessionExecutor.shutdown()
-            try {
-                if (!captureSessionExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
-                    Log.w(TAG, "Closing background thread forcefully due to termination timeout.")
-                    captureSessionExecutor.shutdownNow()
-                }
-            } catch (e: InterruptedException) {
-                Log.e(TAG, "Interrupted while trying to stop the background thread", e)
-            } finally {
-                executorSemaphore.release()
-            }
+            executorSemaphore.release()
         } else {
             Log.w(TAG, "Closing background thread forcefully due to acquire timeout.")
             captureSessionExecutor.shutdownNow()

@@ -46,6 +46,7 @@ class STCaptureSessionWrapper(
         fun onSessionRegistrationFailed()
         fun onSessionActive()
         fun onSessionClosed()
+        fun disposeCompleted()
         fun onCaptureCompleted(timestamp: Long)
     }
 
@@ -210,15 +211,29 @@ class STCaptureSessionWrapper(
         captureSession?.close()
     }
 
-    fun close() {
+    fun close(): Boolean {
         if (isDisposed && !partialExecutorClosure) {
-            return
+            return false
         }
 
         isDisposed = true
         partialExecutorClosure = false
         tryDeregisterCaptureSessionNative(timestamp)
 
+        val closureExecutor = Executors.newSingleThreadExecutor()
+        closureExecutor.submit {
+            try {
+                closeWork()
+            } finally {
+                closureExecutor.shutdown()
+                callbacks.disposeCompleted()
+            }
+        }
+
+        return true
+    }
+
+    private fun closeWork() {
         if (captureSession != null) {
             captureSession?.stopRepeating()
             try {
@@ -233,19 +248,9 @@ class STCaptureSessionWrapper(
         captureSession?.close()
         captureSession = null
 
-        if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS))
-        {
+        if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS)) {
             captureSessionExecutor.shutdown()
-            try {
-                if (!captureSessionExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
-                    Log.w(TAG, "Closing background thread forcefully due to termination timeout.")
-                    captureSessionExecutor.shutdownNow()
-                }
-            } catch (e: InterruptedException) {
-                Log.e(TAG, "Interrupted while trying to stop the background thread", e)
-            } finally {
-                executorSemaphore.release()
-            }
+            executorSemaphore.release()
         } else {
             Log.w(TAG, "Closing background thread forcefully due to acquire timeout.")
             captureSessionExecutor.shutdownNow()

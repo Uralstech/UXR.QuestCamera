@@ -21,7 +21,6 @@ import android.hardware.camera2.CameraManager
 import android.util.Log
 import androidx.annotation.RequiresPermission
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /**
  * Wrapper class for [CameraDevice].
@@ -46,10 +45,6 @@ class CameraDeviceWrapper private constructor(private val id: String, private va
     @Volatile
     private var isDisposed = false
 
-    /** Does the executor need additional closure? */
-    @Volatile
-    private var partialExecutorClosure = false
-
     /** [java.util.concurrent.ExecutorService] for [cameraDevice]. */
     private val cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -58,44 +53,46 @@ class CameraDeviceWrapper private constructor(private val id: String, private va
 
     @RequiresPermission(Manifest.permission.CAMERA)
     constructor(id: String, callbacks: Callbacks, cameraManager: CameraManager) : this(id, callbacks) {
-        try {
-            cameraManager.openCamera(id, cameraExecutor, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" opened.")
-                    cameraDevice = camera
+        cameraExecutor.submit {
+            try {
+                cameraManager.openCamera(id, cameraExecutor, object : CameraDevice.StateCallback() {
+                    override fun onOpened(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" opened.")
+                        cameraDevice = camera
 
-                    callbacks.onDeviceOpened(camera.id)
-                }
+                        callbacks.onDeviceOpened(camera.id)
+                    }
 
-                override fun onClosed(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" closed.")
-                    callbacks.onDeviceClosed(camera.id)
-                }
+                    override fun onClosed(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" closed.")
+                        callbacks.onDeviceClosed(camera.id)
+                    }
 
-                override fun onDisconnected(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" disconnected.")
-                    closeFromExecutor()
+                    override fun onDisconnected(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" disconnected.")
+                        close()
 
-                    callbacks.onDeviceDisconnected(camera.id)
-                }
+                        callbacks.onDeviceDisconnected(camera.id)
+                    }
 
-                override fun onError(camera: CameraDevice, error: Int) {
-                    Log.i(TAG, "Camera device with ID \"$id\" erred out, code: $error")
-                    closeFromExecutor()
+                    override fun onError(camera: CameraDevice, error: Int) {
+                        Log.i(TAG, "Camera device with ID \"$id\" erred out, code: $error")
+                        close()
 
-                    callbacks.onDeviceErred(camera.id, error)
-                }
-            })
-        } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Camera could not be opened due to a camera access exception.", exp)
-            close()
+                        callbacks.onDeviceErred(camera.id, error)
+                    }
+                })
+            } catch (exp: CameraAccessException) {
+                Log.e(TAG, "Camera could not be opened due to a camera access exception.", exp)
+                close()
 
-            callbacks.onDeviceErred(null, ERROR_CODE_CAMERA_ACCESS_EXCEPTION)
-        } catch (exp: SecurityException) {
-            Log.e(TAG, "Camera could not be opened due to a security exception.", exp)
-            close()
+                callbacks.onDeviceErred(null, ERROR_CODE_CAMERA_ACCESS_EXCEPTION)
+            } catch (exp: SecurityException) {
+                Log.e(TAG, "Camera could not be opened due to a security exception.", exp)
+                close()
 
-            callbacks.onDeviceErred(null, ERROR_CODE_SECURITY_EXCEPTION)
+                callbacks.onDeviceErred(null, ERROR_CODE_SECURITY_EXCEPTION)
+            }
         }
     }
 
@@ -155,53 +152,32 @@ class CameraDeviceWrapper private constructor(private val id: String, private va
         return session
     }
 
-    private fun closeFromExecutor() {
-        if (isDisposed) {
-            return
-        }
-
-        isDisposed = true
-        partialExecutorClosure = true
-
-        Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\" from executor.")
-        if (cameraDevice != null) {
-            cameraDevice?.close()
-        } else {
-            callbacks.onDeviceClosed(null)
-        }
-
-        cameraExecutor.shutdown()
-    }
-
     /**
      * Releases associated resources and closes the camera device.
      */
-    fun close() {
-        if (isDisposed && !partialExecutorClosure) {
-            return
+    fun close(): Boolean {
+        if (isDisposed) {
+            return false
         }
 
         Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\".")
         isDisposed = true
 
-        if (cameraDevice != null) {
-            cameraDevice?.close()
-            cameraDevice = null
-        } else if (!partialExecutorClosure) {
-            callbacks.onDeviceClosed(null)
-        }
+        cameraExecutor.submit {
+            try {
+                if (cameraDevice != null) {
+                    cameraDevice?.close()
+                    cameraDevice = null
+                } else {
+                    callbacks.onDeviceClosed(null)
+                }
 
-        partialExecutorClosure = false
-        cameraExecutor.shutdown()
-        try {
-            if (!cameraExecutor.awaitTermination(1, TimeUnit.SECONDS)) {
-                Log.w(TAG, "Closing background thread forcefully due to timeout.")
-                cameraExecutor.shutdownNow()
+                Log.i(TAG, "Camera device closed.")
+            } finally {
+                cameraExecutor.shutdown()
             }
-        } catch (e: InterruptedException) {
-            Log.e(TAG, "Interrupted while trying to stop the background thread", e)
         }
 
-        Log.i(TAG, "Camera device closed.")
+        return true
     }
 }

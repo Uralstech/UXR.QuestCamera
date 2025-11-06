@@ -53,8 +53,19 @@ class OnDemandCaptureSessionWrapper(
         this.dummySurfaceTexture = dummySurfaceTexture
         this.dummySurface = dummySurface
 
-        super.startRepeatingCaptureSession(camera, captureTemplate,
-            listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
+        try {
+            super.startRepeatingCaptureSession(camera, captureTemplate,
+                listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
+        } catch (exp: Exception) {
+            dummySurface.release()
+            this.dummySurface = null
+
+            dummySurfaceTexture.release()
+            this.dummySurfaceTexture = null
+
+            Log.e(TAG, "Failed to start repeating capture session, cleaned up dummy surfaces.", exp)
+            throw exp
+        }
     }
 
     /**
@@ -88,14 +99,10 @@ class OnDemandCaptureSessionWrapper(
     }
 
     /**
-     * Same as [CaptureSessionWrapper.close], but also releases [dummySurfaceTexture].
+     * Same as [CaptureSessionWrapper.closeWork], but also releases [dummySurfaceTexture].
      */
-    override fun close() {
-        if (isDisposed && !partialExecutorClosure) {
-            return
-        }
-
-        super.close()
+    override fun closeWork() {
+        super.closeWork()
 
         dummySurface?.release()
         dummySurface = null

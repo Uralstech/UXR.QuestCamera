@@ -81,5 +81,7 @@ namespace Uralstech.UXR.QuestCamera
 
             current?.Invoke(arg0, arg1);
         }
+
+        public static WaitUntil Yield(this ValueTask current) => new(() => current.IsCompleted);
     }
 }

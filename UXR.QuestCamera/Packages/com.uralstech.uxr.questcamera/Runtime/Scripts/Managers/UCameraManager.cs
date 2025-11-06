@@ -155,7 +155,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _camera2Wrapper?.Call<AndroidJavaObject>("openCameraDevice", camera, cameraDevice);
             if (nativeObject is null)
             {
-                cameraDevice.Dispose();
+                StartCoroutine(cameraDevice.DisposeAsync().Yield());
                 return null;
             }
 
