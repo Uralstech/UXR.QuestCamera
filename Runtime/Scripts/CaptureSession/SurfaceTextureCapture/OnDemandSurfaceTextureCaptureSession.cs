@@ -49,6 +49,11 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         }
 
         /// <summary>
+        /// Has the capture session received its first frame?
+        /// </summary>
+        public bool HasFrame => _nativeTextureId != null && CaptureTimestamp != 0;
+
+        /// <summary>
         /// Updates the unity texture with the latest capture from the camera.
         /// </summary>
         /// <param name="onDone">Called when the capture has been rendered in unity, with its timestamp.</param>
@@ -56,7 +61,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         public bool RequestCapture(Action<Texture2D, long> onDone)
         {
             ThrowIfDisposed();
-            if (_nativeTextureId == null || CaptureTimestamp == 0)
+            if (!HasFrame)
                 return false;
 
             SendNativeUpdate(NativeEventId.RenderTextures, (_, result, timestamp) =>

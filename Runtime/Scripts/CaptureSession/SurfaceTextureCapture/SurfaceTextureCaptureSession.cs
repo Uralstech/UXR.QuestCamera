@@ -164,7 +164,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 
                     SendNativeUpdate(NativeEventId.CleanupNativeTexture, (textureId, _, _) =>
                     {
-                        NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
+                        DeregisterNativeUpdateCallbacks(textureId);
                         SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed?.InvokeOnMainThread();
                     }).HandleAnyException();
@@ -219,7 +219,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 {
                     SendNativeUpdate(NativeEventId.CleanupNativeTexture, (textureId, _, _) =>
                     {
-                        NativeUpdateCallbacksQueue.TryRemove(textureId, out _);
+                        DeregisterNativeUpdateCallbacks(textureId);
                         SetCurrentState(NativeWrapperState.Closed);
                         OnSessionClosed.InvokeOnMainThread().HandleAnyException();
                     }).HandleAnyException();

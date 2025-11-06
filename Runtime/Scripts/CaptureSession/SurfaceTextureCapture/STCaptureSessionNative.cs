@@ -169,6 +169,22 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         }
 
         /// <summary>
+        /// Deregisters a native update queue for a texture and disposes allocated data.
+        /// </summary>
+        /// <param name="textureId">The ID of the native texture to deregister updates of.</param>
+        public static void DeregisterNativeUpdateCallbacks(uint textureId)
+        {
+            if (NativeUpdateCallbacksQueue.TryRemove(textureId, out ConcurrentQueue<AdditionalUpdateCallbackData> queue))
+            {
+                while (queue.TryDequeue(out AdditionalUpdateCallbackData data))
+                {
+                    if (data.NativeData != IntPtr.Zero)
+                        Marshal.FreeHGlobal(data.NativeData);
+                }
+            }
+        }
+
+        /// <summary>
         /// Callback type for <see cref="NativeEventId.SetupNativeTexture"/> events.
         /// </summary>
         /// <param name="glIsClean">Was the GL context successfully cleaned up in this call?</param>
