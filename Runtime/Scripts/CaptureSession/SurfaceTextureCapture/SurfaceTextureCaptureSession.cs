@@ -13,6 +13,7 @@
 // limitations under the License.
 
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -331,6 +332,15 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             }
 
             GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Closes and releases the capture session..
+        /// </summary>
+        public IEnumerator DisposeCoroutine()
+        {
+            Task disposeTask = DisposeAsync().AsTask();
+            yield return new WaitUntil(() => disposeTask.IsCompleted);
         }
 
         private void ThrowIfDisposed()
