@@ -139,6 +139,21 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
                     OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
+
+                    if (isAccessOrSecurityError)
+                        return IntPtr.Zero;
+
+                    if (_nativeTextureId == null)
+                    {
+                        SetCurrentState(NativeWrapperState.Closed);
+                        return IntPtr.Zero;
+                    }
+                    
+                    SendNativeUpdate(NativeEventId.CleanupNativeTexture, (textureId, _, _) =>
+                    {
+                        DeregisterNativeUpdateCallbacks(textureId);
+                        SetCurrentState(NativeWrapperState.Closed);
+                    }).HandleAnyException();
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
@@ -163,7 +178,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     if (_nativeTextureId == null)
                     {
                         SetCurrentState(NativeWrapperState.Closed);
-                        OnSessionClosed?.InvokeOnMainThread();
+                        OnSessionClosed?.InvokeOnMainThread().HandleAnyException();
                         return IntPtr.Zero;
                     }
 
@@ -171,7 +186,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     {
                         DeregisterNativeUpdateCallbacks(textureId);
                         SetCurrentState(NativeWrapperState.Closed);
-                        OnSessionClosed?.InvokeOnMainThread();
+                        OnSessionClosed?.InvokeOnMainThread().HandleAnyException();
                     }).HandleAnyException();
                     return IntPtr.Zero;
 
