@@ -53,7 +53,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
         private bool _isModelBusy; // Busy flag.
 
         // Start is called on the frame when a script is enabled for the first time.
-        protected async void Start()
+        protected void Start()
         {
             // Load the model.
             Model model = ModelLoader.Load(_modelAsset);
