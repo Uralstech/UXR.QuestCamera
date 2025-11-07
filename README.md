@@ -5,10 +5,6 @@ A Unity package to use the new Meta Quest Passthrough Camera API.
 [![openupm](https://img.shields.io/npm/v/com.uralstech.uxr.questcamera?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 [![openupm](https://img.shields.io/badge/dynamic/json?color=brightgreen&label=downloads&query=%24.downloads&suffix=%2Fmonth&url=https%3A%2F%2Fpackage.openupm.com%2Fdownloads%2Fpoint%2Flast-month%2Fcom.uralstech.uxr.questcamera)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 
-> Computer Vision with the Meta Quest Passthrough Camera API: Tutorials and Showcase Videos on YouTube<br/>
-> [![YouTube Tutorials](https://img.youtube.com/vi/V_drkO-DfCg/0.jpg)](https://youtube.com/playlist?list=PLU7W-ZU9OIiEanYEKtjyHQIoLrf0SflXx)
-> [![Camera API in hAI! MR](https://img.youtube.com/vi/7Fq__tlaXSU/0.jpg)](https://www.youtube.com/watch?v=7Fq__tlaXSU)
-
 ## Installation
 
 This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.2.
