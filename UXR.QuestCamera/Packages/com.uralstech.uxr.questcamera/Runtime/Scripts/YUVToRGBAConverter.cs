@@ -240,10 +240,10 @@ namespace Uralstech.UXR.QuestCamera
         public void Dispose()
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(YUVToRGBAConverter));
+                return;
 
             _disposed = true;
-            
+
             FrameRenderTexture.Release();
             UnityEngine.Object.Destroy(FrameRenderTexture);
 
@@ -251,6 +251,14 @@ namespace Uralstech.UXR.QuestCamera
             _uComputeBuffer.Dispose();
             _vComputeBuffer.Dispose();
             GC.SuppressFinalize(this);
+        }
+
+        ~YUVToRGBAConverter()
+        {
+            Debug.LogWarning(
+                $"A {nameof(YUVToRGBAConverter)} object was finalized by the GC without being properly disposed.\n" +
+                "Its RenderTexture was NOT released — call Dispose() on the main thread."
+            );
         }
     }
 }

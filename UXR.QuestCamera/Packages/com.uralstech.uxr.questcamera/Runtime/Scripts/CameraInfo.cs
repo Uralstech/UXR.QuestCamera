@@ -166,8 +166,8 @@ namespace Uralstech.UXR.QuestCamera
         public void Dispose()
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(CameraInfo));
-
+                return;
+                
             _disposed = true;
             NativeCameraCharacteristics.Dispose();
             GC.SuppressFinalize(this);

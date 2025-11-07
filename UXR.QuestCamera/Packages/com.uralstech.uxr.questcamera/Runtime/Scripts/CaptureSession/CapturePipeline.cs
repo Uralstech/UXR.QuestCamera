@@ -48,7 +48,7 @@ namespace Uralstech.UXR.QuestCamera
         public async ValueTask DisposeAsync()
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(CapturePipeline<T>));
+                return;
             
             _disposed = true;
             await CaptureSession.DisposeAsync();

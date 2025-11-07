@@ -219,7 +219,8 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            ThrowIfDisposed();
+            if (_disposed)
+                return;
 
             _disposed = true;
 
@@ -230,7 +231,7 @@ namespace Uralstech.UXR.QuestCamera
 
                 OnDisposeCompleted += OnDisposed;
                 bool isClosing = _captureSession.Call<bool>("close");
-                
+
                 if (isClosing)
                     await tcs.Task;
 
@@ -240,6 +241,17 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             GC.SuppressFinalize(this);
+        }
+        
+        ~ContinuousCaptureSession()
+        {
+            Debug.LogWarning(
+                $"A {nameof(ContinuousCaptureSession)} object was finalized by the garbage collector without being properly disposed.\n" +
+                $"The native camera capture session was **not closed** and resources may still be held.\n\n" +
+                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
+                $"    await using var session = cameraDevice.CreateContinuousCaptureSession(...);\n" +
+                $"This ensures that the capture session is closed on the correct Unity thread."
+            );
         }
 
         private void ThrowIfDisposed()
