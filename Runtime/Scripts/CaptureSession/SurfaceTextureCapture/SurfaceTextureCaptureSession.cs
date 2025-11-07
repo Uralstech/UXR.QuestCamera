@@ -340,7 +340,8 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            ThrowIfDisposed();
+            if (Disposed)
+                return;
 
             Disposed = true;
 
@@ -357,7 +358,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 bool isClosing = _captureSession.Call<bool>("close");
                 if (isClosing)
                     await disposeTCS.Task;
-                
+
                 OnDisposeCompleted -= OnDisposed;
                 _captureSession.Dispose();
                 _captureSession = null;
@@ -367,6 +368,17 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             }
 
             GC.SuppressFinalize(this);
+        }
+        
+        ~SurfaceTextureCaptureSession()
+        {
+            Debug.LogWarning(
+                $"A {nameof(SurfaceTextureCaptureSession)} object was finalized by the garbage collector without being properly disposed.\n" +
+                $"The native camera capture session was **not closed**, renderer data was **not cleaned up** and resources may still be held.\n\n" +
+                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
+                $"    await using var session = cameraDevice.CreateSurfaceTextureCaptureSession(...);\n" +
+                $"This ensures that the capture session is closed on the correct Unity thread."
+            );
         }
 
         private void ThrowIfDisposed()

@@ -166,7 +166,8 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            ThrowIfDisposed();
+            if (_disposed)
+                return;
 
             _disposed = true;
 
@@ -177,7 +178,7 @@ namespace Uralstech.UXR.QuestCamera
 
                 OnDeviceClosed += OnDisposed;
                 bool isClosing = _cameraDevice.Call<bool>("close");
-                
+
                 if (isClosing)
                     await tcs.Task;
 
@@ -187,6 +188,17 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             GC.SuppressFinalize(this);
+        }
+        
+        ~CameraDevice()
+        {
+            Debug.LogWarning(
+                $"A {nameof(CameraDevice)} object was finalized by the garbage collector without being properly disposed.\n" +
+                $"The native camera device was **not closed** and resources may still be held.\n\n" +
+                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
+                $"    await using var camera = UCameraManager.Instance.OpenCamera(...);\n" +
+                $"This ensures that the camera is closed on the correct Unity thread."
+            );
         }
 
         /// <summary>
