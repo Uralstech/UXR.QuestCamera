@@ -243,7 +243,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="ContinuousCaptureSession"/>.
         /// </summary>
         /// <remarks>
-        /// This capture session uses a native OpenGL texture to capture images for better performance and
+        /// This experimental capture session uses a native OpenGL texture to capture images for better performance and
         /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
         /// 
         /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.DisposeAsync()"/>

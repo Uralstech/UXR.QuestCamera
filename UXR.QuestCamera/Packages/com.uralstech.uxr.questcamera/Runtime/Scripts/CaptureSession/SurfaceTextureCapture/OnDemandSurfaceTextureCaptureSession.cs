@@ -29,7 +29,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
     /// On-demand version of <see cref="SurfaceTextureCaptureSession"/>.
     /// </summary>
     /// <remarks>
-    /// This capture session uses a native OpenGL texture to capture images for better performance and
+    /// This experimental capture session uses a native OpenGL texture to capture images for better performance and
     /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
     /// </remarks>
     public class OnDemandSurfaceTextureCaptureSession : SurfaceTextureCaptureSession

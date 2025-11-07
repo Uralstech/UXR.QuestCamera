@@ -426,7 +426,7 @@ MonoBehaviour:
   _modelInputPreview: {fileID: 1397780475}
   _startButton: {fileID: 1386429084}
   _stopButton: {fileID: 252522778}
-  _modelPathInStreamingAssets: mnist-12.sentis
+  _modelAsset: {fileID: 5022602860645237092, guid: bea3df236e6caba4f87e4d9ee236498c, type: 3}
 --- !u!1 &330846896
 GameObject:
   m_ObjectHideFlags: 0
