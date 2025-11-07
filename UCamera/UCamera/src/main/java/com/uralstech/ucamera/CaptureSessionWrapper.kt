@@ -147,6 +147,7 @@ abstract class CaptureSessionWrapper private constructor(private val callbacks: 
                             closeFromExecutor()
 
                             callbacks.onSessionConfigurationFailed(false)
+                            executorSemaphore.release()
                         }
 
                         override fun onClosed(session: CameraCaptureSession) {

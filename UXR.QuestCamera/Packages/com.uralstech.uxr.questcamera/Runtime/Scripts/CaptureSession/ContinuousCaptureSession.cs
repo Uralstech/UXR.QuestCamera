@@ -128,6 +128,9 @@ namespace Uralstech.UXR.QuestCamera
 
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
+                    if (!isAccessOrSecurityError)
+                        CurrentState = NativeWrapperState.Closed;
+
                     OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
                     return IntPtr.Zero;
 

@@ -119,6 +119,7 @@ class STCaptureSessionWrapper(
                         closeFromExecutor()
 
                         callbacks.onSessionConfigurationFailed(false)
+                        executorSemaphore.release()
                     }
 
                     override fun onClosed(session: CameraCaptureSession) {
