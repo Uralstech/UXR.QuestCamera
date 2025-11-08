@@ -43,11 +43,6 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         private readonly object _stateLock = new();
 
         /// <summary>
-        /// Is the native CaptureSession wrapper active and usable?
-        /// </summary>
-        public bool IsActiveAndUsable => _captureSession?.Get<bool>("isActiveAndUsable") ?? throw new ObjectDisposedException(nameof(SurfaceTextureCaptureSession));
-
-        /// <summary>
         /// The texture being rendered to.
         /// </summary>
         public readonly Texture2D Texture;

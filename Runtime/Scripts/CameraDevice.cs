@@ -205,7 +205,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new repeating/continuous capture session for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.Dispose()"/>
+        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.DisposeAsync()"/>
         /// to close and dispose the session to free up native and compute shader resources.
         /// </remarks>
         /// <param name="resolution">The resolution of the capture.</param>
