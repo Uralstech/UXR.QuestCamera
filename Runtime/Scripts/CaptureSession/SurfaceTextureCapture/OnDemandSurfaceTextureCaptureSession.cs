@@ -89,6 +89,17 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 ? new WaitUntil(() => isDone) : null;
         }
 
+        /// <inheritdoc cref="RequestCapture()"/>
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public WaitUntil? RequestCapture(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
+        {
+            ThrowIfDisposed();
+
+            bool isDone = false;
+            return RequestCapture((_, _) => isDone = true)
+                ? new WaitUntil(() => isDone, timeout, onTimeout, timeoutMode) : null;
+        }
+
         /// <summary>
         /// Updates the unity texture with the latest capture from the camera.
         /// </summary>

@@ -87,9 +87,19 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public static WaitUntil Yield(this ValueTask current) => new(() => current.IsCompleted);
 
+        /// <inheritdoc cref="Yield(ValueTask)"/>
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public static WaitUntil Yield(this ValueTask current, TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime) =>
+            new(() => current.IsCompleted, timeout, onTimeout, timeoutMode);
+
         /// <summary>
         /// Allows for "yielding" a <see cref="Task"/> using a <see cref="WaitUntil"/> object.
         /// </summary>
         public static WaitUntil Yield(this Task current) => new(() => current.IsCompleted);
+
+        /// <inheritdoc cref="Yield(Task)"/>
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public static WaitUntil Yield(this Task current, TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime) =>
+            new(() => current.IsCompleted, timeout, onTimeout, timeoutMode);
     }
 }
