@@ -174,7 +174,7 @@ namespace Uralstech.UXR.QuestCamera
 
             try
             {
-                using CancellationTokenRegistration _ = token.Register(() => wrapperState.SetCanceled());
+                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
                 return await wrapperState.Task;
             }
             finally

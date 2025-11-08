@@ -42,10 +42,6 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Called when the session could not be configured, and a boolean value indicating if the failure was caused due to a camera access/security exception.
         /// </summary>
-        /// <remarks>
-        /// If the failure was <b>not</b> caused by a camera access or security exception, the session has been closed and this callback should be treated the
-        /// same way as a <see cref="OnSessionClosed"/> callback.
-        /// </remarks>
         public event Action<bool>? OnSessionConfigurationFailed;
 
         /// <summary>
@@ -132,10 +128,13 @@ namespace Uralstech.UXR.QuestCamera
 
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
-                    if (!isAccessOrSecurityError)
-                        CurrentState = NativeWrapperState.Closed;
-
                     OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
+
+                    if (!isAccessOrSecurityError)
+                    {
+                        CurrentState = NativeWrapperState.Closed;
+                        OnSessionClosed.InvokeOnMainThread().HandleAnyException();
+                    }
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
@@ -221,27 +220,21 @@ namespace Uralstech.UXR.QuestCamera
                 return CurrentState == NativeWrapperState.Opened;
 
             TaskCompletionSource<bool> wrapperState = new();
-            void OnEvent() => wrapperState.SetResult(CurrentState == NativeWrapperState.Opened);
-            void OnConfigError(bool isAccessOrSecurityError)
-            {
-                if (!isAccessOrSecurityError)
-                    wrapperState.SetResult(false);
-            }
+            void OnOpened() => wrapperState.SetResult(true);
+            void OnClosed() => wrapperState.SetResult(false);
 
-            OnSessionActive += OnEvent;
-            OnSessionClosed += OnEvent;
-            OnSessionConfigurationFailed += OnConfigError;
+            OnSessionActive += OnOpened;
+            OnSessionClosed += OnClosed;
 
             try
             {
-                using CancellationTokenRegistration _ = token.Register(() => wrapperState.SetCanceled());
+                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
                 return await wrapperState.Task;
             }
             finally
             {
-                OnSessionActive -= OnEvent;
-                OnSessionClosed -= OnEvent;
-                OnSessionConfigurationFailed -= OnConfigError;
+                OnSessionActive -= OnOpened;
+                OnSessionClosed -= OnClosed;
             }
         }
 

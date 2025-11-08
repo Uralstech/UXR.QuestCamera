@@ -50,7 +50,7 @@ Check if the current device is supported with the [`CameraSupport.IsSupported`](
 
 ### Choosing the Camera
 
-[`UCameraManager`](Uralstech.UXR.QuestCamera.UCameraManager.yml) allows you to access [`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml)
+[`UCameraManager`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml) allows you to access [`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml)
 objects and create [`CameraDevice`](~/api/Uralstech.UXR.QuestCamera.CameraDevice.yml) objects. It's a persistent singleton, so add it to a GameObject
 in the first scene it's referenced in, and it can be used in any scene loaded thereafter.
 
