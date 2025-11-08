@@ -125,6 +125,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Gets a camera device by the eye it is closest to.
         /// </summary>
+        /// <remarks>
+        /// The <see cref="CameraInfo"/> object returned by this method is managed by the
+        /// <see cref="UCameraManager"/> instance, so do not dispose it manually.
+        /// </remarks>
         /// <param name="eye">The eye.</param>
         /// <returns>A <see cref="CameraInfo"/> object or <see langword="null"/> if none were found.</returns>
         public CameraInfo? GetCamera(CameraInfo.CameraEye eye)
@@ -145,7 +149,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Opens a camera device for use.
         /// </summary>
         /// <remarks>
-        /// Once you have finished using the camera, close and dispose of it using <see cref="CameraDevice.Dispose()"/>.
+        /// Once you have finished using the camera, close and dispose of it using <see cref="CameraDevice.DisposeAsync()"/>.
         /// </remarks>
         /// <param name="camera">The ID of the camera to open; accepts <see cref="CameraInfo"/> objects through an implicit cast.</param>
         /// <returns>A <see cref="CameraDevice"/> object or <see langword="null"/> if any errors occurred.</returns>
