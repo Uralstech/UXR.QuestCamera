@@ -9,12 +9,9 @@ A Unity package to use the new Meta Quest Passthrough Camera API.
 [![openupm](https://img.shields.io/npm/v/com.uralstech.uxr.questcamera?label=openupm&registry_uri=https://package.openupm.com)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 [![openupm](https://img.shields.io/badge/dynamic/json?color=brightgreen&label=downloads&query=%24.downloads&suffix=%2Fmonth&url=https%3A%2F%2Fpackage.openupm.com%2Fdownloads%2Fpoint%2Flast-month%2Fcom.uralstech.uxr.questcamera)](https://openupm.com/packages/com.uralstech.uxr.questcamera/)
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/videoseries?si=XZUUi5MozrEe2VPX&amp;list=PLU7W-ZU9OIiEanYEKtjyHQIoLrf0SflXx" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-<iframe width="560" height="315" src="https://www.youtube.com/embed/7Fq__tlaXSU?si=mn-qfbJAtJrcrQF0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
 ## Installation
 
-This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.1.
+This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.2.
 Versions older than Unity 6.0 **REQUIRE** [com.utilities.async](https://github.com/RageAgainstThePixel/com.utilities.async/).
 
 Since this package contains a native AAR plugin, it depends on the [External Dependency Manager for Unity (EDM4U)](https://github.com/googlesamples/unity-jar-resolver) to resolve native dependencies.

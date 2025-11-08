@@ -16,7 +16,6 @@ package com.uralstech.ucamera
 
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCharacteristics
-import android.util.Size
 
 /**
  * Wrapper for [CameraCharacteristics].
@@ -26,22 +25,22 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
         private const val META_CAMERA_SOURCE_METADATA = "com.meta.extra_metadata.camera_source"
         private const val META_CAMERA_POSITION_METADATA = "com.meta.extra_metadata.position"
 
-        private val metaCameraSourceMetadata = CameraCharacteristics.Key(META_CAMERA_SOURCE_METADATA, IntArray::class.java)
-        private val metaCameraPositionMetadata = CameraCharacteristics.Key(META_CAMERA_POSITION_METADATA, IntArray::class.java)
+        private val metaCameraSourceMetadata = CameraCharacteristics.Key(META_CAMERA_SOURCE_METADATA, Int::class.java)
+        private val metaCameraPositionMetadata = CameraCharacteristics.Key(META_CAMERA_POSITION_METADATA, Int::class.java)
     }
 
     /**
      * (Meta Quest) The source of the camera feed.
      */
-    val metaQuestCameraSource: Int
+    val metaQuestCameraSource = characteristics.get(metaCameraSourceMetadata)
 
     /**
      * (Meta Quest) The eye which the camera is closest to.
      */
-    val metaQuestCameraEye: Int
+    val metaQuestCameraEye = characteristics.get(metaCameraPositionMetadata)
 
     /**
-     * The position of the camera optical center.
+     * The position of the camera device's lens optical center.
      */
     val lensPoseTranslation = characteristics.get(CameraCharacteristics.LENS_POSE_TRANSLATION)
 
@@ -53,12 +52,14 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     /**
      * The resolutions supported by this device.
      */
-    val supportedResolutions: Array<Size>
+    val supportedResolutions = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.YUV_420_888) ?: emptyArray()
 
     /**
-     * The resolution, in pixels, for which intrinsics are provided.
+     * The area of the image sensor which corresponds to active pixels prior to the application of any geometric distortion correction.
      */
-    val intrinsicsResolution: IntArray?
+    val intrinsicsResolution = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)?.let { sensorSize ->
+        intArrayOf(sensorSize.right, sensorSize.bottom)
+    }
 
     /**
      * The horizontal and vertical focal lengths, in pixels.
@@ -73,42 +74,12 @@ class CameraCharacteristicsWrapper(val cameraId: String, val characteristics: Ca
     /**
      * Skew coefficient for axis misalignment.
      */
-    val intrinsicsSkew: Float
+    val intrinsicsSkew: Float?
 
     init {
-        var metaQuestCameraSource = -1
-        var metaQuestCameraEye = -1
-
-        for (key in characteristics.keys) {
-            if (key.name == META_CAMERA_SOURCE_METADATA) {
-                metaQuestCameraSource = characteristics.get(metaCameraSourceMetadata)!![0]
-            } else if (key.name == META_CAMERA_POSITION_METADATA) {
-                metaQuestCameraEye = characteristics.get(metaCameraPositionMetadata)!![0]
-            }
-        }
-
-        this.metaQuestCameraSource = metaQuestCameraSource
-        this.metaQuestCameraEye = metaQuestCameraEye
-
-        val configMap = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!
-        supportedResolutions = configMap.getOutputSizes(ImageFormat.YUV_420_888)!!
-
-        val sensorSize = characteristics.get(CameraCharacteristics.SENSOR_INFO_PRE_CORRECTION_ACTIVE_ARRAY_SIZE)
-        intrinsicsResolution = if (sensorSize != null) {
-            intArrayOf(sensorSize.right, sensorSize.bottom)
-        } else {
-            null
-        }
-
         val lensCalibration = characteristics.get(CameraCharacteristics.LENS_INTRINSIC_CALIBRATION)
-        if (lensCalibration != null) {
-            intrinsicsFocalLength = floatArrayOf(lensCalibration[0], lensCalibration[1])
-            intrinsicsPrincipalPoint = floatArrayOf(lensCalibration[2], lensCalibration[3])
-            intrinsicsSkew = lensCalibration[4]
-        } else {
-            intrinsicsFocalLength = null
-            intrinsicsPrincipalPoint = null
-            intrinsicsSkew = Float.NEGATIVE_INFINITY
-        }
+        intrinsicsFocalLength = lensCalibration?.let { floatArrayOf(it[0], it[1]) }
+        intrinsicsPrincipalPoint = lensCalibration?.let { floatArrayOf(it[2], it[3]) }
+        intrinsicsSkew = lensCalibration?.get(4)
     }
 }

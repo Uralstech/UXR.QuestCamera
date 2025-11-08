@@ -1,5 +1,5 @@
 <dependencies>
     <androidPackages>
-        <androidPackage spec="androidx.camera:camera-camera2:1.4.2" />
+        <androidPackage spec="androidx.camera:camera-camera2:1.5.1" />
     </androidPackages>
 </dependencies>

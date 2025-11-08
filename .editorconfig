@@ -85,9 +85,9 @@ csharp_style_expression_bodied_accessors = true:warning
 csharp_style_expression_bodied_constructors = false:warning
 csharp_style_expression_bodied_indexers = true:warning
 csharp_style_expression_bodied_lambdas = true:warning
-csharp_style_expression_bodied_local_functions = false:warning
-csharp_style_expression_bodied_methods = false:warning
-csharp_style_expression_bodied_operators = false:warning
+csharp_style_expression_bodied_local_functions = when_on_single_line:warning
+csharp_style_expression_bodied_methods = when_on_single_line:warning
+csharp_style_expression_bodied_operators = when_on_single_line:warning
 csharp_style_expression_bodied_properties = true:warning
 
 # Pattern matching preferences

@@ -22,9 +22,8 @@ import android.hardware.camera2.params.OutputConfiguration
  * Wrapper class for [CameraCaptureSession] with a repeating capture request.
  */
 class RepeatingCaptureSessionWrapper(
-    unityListener: String,
-    frameCallback: CameraFrameCallback,
-    width: Int, height: Int) : CaptureSessionWrapper(unityListener, frameCallback, width, height, 3) {
+    cameraDevice: CameraDevice, captureTemplate: Int,
+    callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height) {
 
     /**
      * Creates a new capture session and sets the repeating capture request.

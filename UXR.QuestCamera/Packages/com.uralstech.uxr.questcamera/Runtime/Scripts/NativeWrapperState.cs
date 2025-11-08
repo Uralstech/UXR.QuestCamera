@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
@@ -25,7 +26,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>The native wrapper is open and ready.</summary>
         Opened,
 
-        /// <summary>The native wrapper failed with an error, was disconnected or was closed normally.</summary>
+        /// <summary>The native wrapper failed with an error, was disconnected or is being/was closed normally.</summary>
         Closed,
     }
 }

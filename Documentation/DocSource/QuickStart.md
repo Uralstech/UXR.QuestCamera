@@ -4,7 +4,7 @@ Please note that the code provided in this page is *purely* for learning purpose
 
 ## Breaking Changes Notice
 
-If you've just updated the package, it is recommended to check the [*changelogs*](https://github.com/Uralstech/UXR.QuestCamera/releases) for information on breaking changes.
+If you've just updated the package to v3.0.0 or later, it is recommended to check the [migration guide](~/DocSource/V3Migration.md) for information on breaking changes from v2.6.1, including async disposal patterns, renamed types (e.g., `CaptureSessionObject<T>` → `CapturePipeline<T>`), and nullable-aware APIs.
 
 ## Setup
 
@@ -32,9 +32,12 @@ To install UXR.QuestCamera:
     - Scope(s): `com.uralstech`
 - Click `Apply`
 - Open the package manager and go to `My Registries` -> `OpenUPM`
-- Install UXR.QuestCamera >= `2.2.0`
+- Install UXR.QuestCamera >= `3.0.0`
 
 ### AndroidManifest.xml
+
+> [!NOTE]
+> You can skip this step if you're using the Meta XR Core SDK v81 or higher by enabling the ‘Enabled Passthrough Camera Access’ setting in your `OVR Manager` instance and regenerating your AndroidManifest using the SDK's tools.
 
 Add the following to your project's `AndroidManifest.xml` file:
 ```xml
@@ -90,15 +93,16 @@ Now you're ready to open the camera and start a capture session!
 You can open the camera by calling `UCameraManager.OpenCamera(cameraId)`. You can pass the previous `CameraInfo`
 object into this function, as `CameraInfo` will implicitly return its camera's ID as a string.
 
-The function returns a `CameraDevice` object, which is a wrapper for the native Camera2 `CameraDevice` class.
-You should then wait for the camera to open. To do so, yield `CameraDevice.WaitForInitialization()`, or on
-Unity 6 and above, await `CameraDevice.WaitForInitializationAsync()`.
+The function returns a `CameraDevice?` object, which is a wrapper for the native Camera2 `CameraDevice` class.
+You should then wait for the camera to open. To do so, yield `camera.WaitForInitialization()` (returns `WaitUntil`), or on
+Unity 6 and above, await `camera.WaitForInitializationAsync()` (supports `CancellationToken`).
 
 After this, you can check the state of the camera by accessing its `CurrentState` property. If it is
 `NativeWrapperState.Opened`, the camera is ready for use. Otherwise, it means the camera could not be opened successfully.
 For error details, check logcat or add listeners to `CameraDevice.OnDeviceDisconnected` and `CameraDevice.OnDeviceErred`.
 
-If the camera could not be opened successfully, release its native resources by calling `CameraDevice.Destroy`.
+If the camera could not be opened successfully, release its native resources by awaiting `camera.DisposeAsync()`.
+You can also yield these dispose calls by using the `.Yield()` extension provided by the package.
 
 ### Creating a Capture Session
 
@@ -110,20 +114,17 @@ requested to do so. Other than that, both function the exact same way.
 To create a new continuous capture session, call `CameraDevice.CreateContinuousCaptureSession(resolution)` with the previously
 chosen resolution. To create an on-demand capture session, call `CameraDevice.CreateOnDemandCaptureSession(resolution)` instead.
 
-They return `CaptureSessionObject<ContinuousCaptureSession>` and `CaptureSessionObject<OnDemandCaptureSession>` respectively,
-which contain the session object (`ContinuousCaptureSession` or `OnDemandCaptureSession`), a YUV to RGBA texture converter,
-the native-to-unity frame forwarder, and the `GameObject` that they are components of.
+They return `CapturePipeline<ContinuousCaptureSession>?` and `CapturePipeline<OnDemandCaptureSession>?` respectively,
+which contain the session object (`CaptureSession` property), a YUV to RGBA texture converter (`TextureConverter` property),
+and implement `IAsyncDisposable` for closure and cleanup.
 
-Yield `CaptureSessionObject.CaptureSession.WaitForInitialization()` or await `CaptureSessionObject.CaptureSession.WaitForInitializationAsync()`
-and check `CaptureSessionObject.CaptureSession.CurrentState`, just like with `CameraDevice`. If the capture session could not be started
-successfully, release the native resources and `ComputeBuffer`s held by it by calling `CaptureSessionObject.Destroy()`.
+Yield `pipeline.CaptureSession.WaitForInitialization()` or await `pipeline.CaptureSession.WaitForInitializationAsync()`
+and check `pipeline.CaptureSession.CurrentState`, just like with `CameraDevice`. If the capture session could not be started
+successfully, release the native resources by awaiting/yielding `pipeline.DisposeAsync()`.
 
 Once started successfully, you will receive the frames from the camera in an ARGB32 format `RenderTexture` as
-`CaptureSessionObject.TextureConverter.FrameRenderTexture`. For `OnDemandCaptureSession`s, the `RenderTexture` will remain
-black until you call `CaptureSessionObject.CaptureSession.RequestCapture()`, which can be called any number of times.
-
-The first few frames after the session has been started will be black. I've found that waiting around 0.1 seconds after the session has started
-and then requesting the capture or accessing the image works.
+`pipeline.TextureConverter.FrameRenderTexture`. For `OnDemandCaptureSession`s, the `RenderTexture` will remain
+black until you call `pipeline.CaptureSession.RequestCapture()`, which can be called any number of times (throws `ObjectDisposedException` if disposed).
 
 See the documentation for `RenderTexture` on how to get its pixel data to the CPU: <https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html>
 
@@ -132,23 +133,73 @@ See the documentation for `RenderTexture` on how to get its pixel data to the CP
 Camera2 allows you to set capture templates for capture requests. `CameraDevice.CreateContinuousCaptureSession()` and `OnDemandCaptureSession.RequestCapture()`
 also allow you to do so. By default, continuous captures use [TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW),
 which is suitable for camera preview windows, and on-demand captures use [TEMPLATE_STILL_CAPTURE](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_STILL_CAPTURE), which is suitable for still image capture. You can change them by specifying one of the templates
-defined in the `CaptureTemplate` enum.
+defined in the `CaptureTemplate` enum. Note: `ZeroShutterLag` is no longer supported.
 
 ### Releasing Resources
 
-It is highly recommended to release or destroy all `CameraDevice`s and `CaptureSessionObject`s *immediately* after you have finished
-using them, as not doing so may result in the app not closing quickly. They will automatically be released and destroyed by Unity,
-like when a new scene is loaded, but do not rely on it!
+Make sure to dispose all `CameraDevice`s and `CapturePipeline`s *immediately* after you have finished
+using them, so that the native camera device and capture session are closed. You can also try to force
+closure synchronously like in `OnApplicationQuit`, where Unity won't wait for async methods like so:
+
+```C#
+Task.WhenAll(
+    captureSession.DisposeAsync().AsTask(),
+    cameraDevice.DisposeAsync().AsTask()
+).Wait();
+
+Debug.Log("Synchronously closed resources.");
+```
+
+### Using the `await using` Pattern
+
+If you can use C#'s `await using` statement, you can simplify the entire process significantly. For example:
+```C#
+// This example requires Unity 6.0 or greater.
+public async Awaitable TakePicture()
+{
+    if (UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left) is not CameraInfo cameraInfo)
+    {
+        Debug.LogError("Could not get camera info!");
+        return;
+    }
+
+    await using CameraDevice? cameraDevice = UCameraManager.Instance.OpenCamera(cameraInfo);
+    if (cameraDevice == null || await cameraDevice.WaitForInitializationAsync() != NativeWrapperState.Opened)
+    {
+        Debug.LogError("Could not open camera!");
+        return;
+    }
+
+    Resolution resolution = cameraInfo.SupportedResolutions[^1];
+    await using CapturePipeline<OnDemandCaptureSession>? capturePipeline = cameraDevice.CreateOnDemandCaptureSession(resolution);
+    if (capturePipeline == null || await capturePipeline.CaptureSession.WaitForInitializationAsync() != NativeWrapperState.Opened)
+    {
+        Debug.LogError("Could not open capture session!");
+        return;
+    }
+
+    TaskCompletionSource<RenderTexture> taskCompletion = new();
+    void OnFrameProcessed(RenderTexture texture, long timestamp) => taskCompletion.SetResult(texture);
+
+    capturePipeline.TextureConverter.OnFrameProcessed += OnFrameProcessed;
+    if (!capturePipeline.CaptureSession.RequestCapture())
+    {
+        Debug.LogError("Could not capture frame!");
+        taskCompletion.SetCanceled();
+        return;
+    }
+
+    RenderTexture texture = await taskCompletion.Task;
+    // Process the RenderTexture here!
+}
+```
 
 ### Better Performance in OpenGL
 
-If your app uses the OpenGL Graphics API, you can use `SurfaceTextureCaptureSession` and `OnDemandSurfaceTextureCaptureSession` instead of
+If your app uses the OpenGL Graphics API, you can use `SurfaceTextureCaptureSession` and `OnDemandSurfaceTextureCaptureSession` (in the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace) instead of
 `ContinuousCaptureSession` and `OnDemandCaptureSession`, respectively. This can improve performance as the SurfaceTexture-based sessions use
 low-level OpenGL shaders to convert the camera image from YUV to RGBA. They are also much simpler to use as they do not have any other associated
-components, like texture converters, or frame forwarders. Unlike all other types in this package, **you must not destroy `SurfaceTextureCaptureSession`
-and `OnDemandSurfaceTextureCaptureSession`!** They manage their own lifetimes, so just call `Release()` on them when you're done. After they've
-released their native resources, like the OpenGL textures and Framebuffers, they will destroy their own GameObjects. Both have a Texture2D property,
-`Texture`, which will store the camera images.
+components, like texture converters, or frame forwarders. Both have a read-only `Texture` property, which will store the camera images.
 
 You can create them by calling `CameraDevice.CreateSurfaceTextureCaptureSession()` or `CameraDevice.CreateOnDemandSurfaceTextureCaptureSession()`, like:
 ```csharp
@@ -156,28 +207,30 @@ CameraDevice camera = ...;
 Resolution resolution = ...;
 
 // Create a capture session with the camera, at the chosen resolution.
-SurfaceTextureCaptureSession sessionObject = camera.CreateSurfaceTextureCaptureSession(resolution);
-yield return sessionObject.WaitForInitialization();
+SurfaceTextureCaptureSession? session = camera.CreateSurfaceTextureCaptureSession(resolution);
+if (session == null) { /* Handle error */ }
+yield return session.WaitForInitialization();
 
 // Check if it opened successfully
-if (sessionObject.CurrentState != NativeWrapperState.Opened)
+if (session.CurrentState != NativeWrapperState.Opened)
 {
     Debug.LogError("Could not open camera session!");
 
     // Both of these are important for releasing the camera and session resources.
-    sessionObject.Release();
-    camera.Destroy();
+    yield return session.DisposeAsync().Yield();
+    yield return camera.DisposeAsync().Yield();
     yield break;
 }
 
 // Set the image texture.
-_rawImage.texture = sessionObject.Texture;
+_rawImage.texture = session.Texture;
 ```
 
 ## Example Script
 
 ```csharp
 using System.Collections;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Android;
 using UnityEngine.UI;
@@ -205,7 +258,12 @@ public class CameraTest : MonoBehaviour
         }
 
         // Get a camera device.
-        CameraInfo currentCamera = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
+        CameraInfo? currentCamera = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
+        if (currentCamera == null)
+        {
+            Debug.LogError("No camera available!");
+            yield break;
+        }
 
         // Get the supported resolutions of the camera and choose the highest resolution.
         Resolution highestResolution = default;
@@ -216,7 +274,13 @@ public class CameraTest : MonoBehaviour
         }
 
         // Open the camera.
-        CameraDevice camera = UCameraManager.Instance.OpenCamera(currentCamera);
+        CameraDevice? camera = UCameraManager.Instance.OpenCamera(currentCamera);
+        if (camera == null)
+        {
+            Debug.LogError("Could not open camera!");
+            yield break;
+        }
+
         yield return camera.WaitForInitialization();
 
         // Check if it opened successfully
@@ -225,27 +289,38 @@ public class CameraTest : MonoBehaviour
             Debug.LogError("Could not open camera!");
 
             // Very important, this frees up any resources held by the camera.
-            camera.Destroy();
+            yield return camera.DisposeAsync().Yield();
             yield break;
         }
 
         // Create a capture session with the camera, at the chosen resolution.
-        CaptureSessionObject<ContinuousCaptureSession> sessionObject = camera.CreateContinuousCaptureSession(highestResolution);
-        yield return sessionObject.CaptureSession.WaitForInitialization();
+        CapturePipeline<ContinuousCaptureSession>? sessionPipeline = camera.CreateContinuousCaptureSession(highestResolution);
+        if (sessionPipeline == null)
+        {
+            Debug.LogError("Could not create session!");
+            yield return camera.DisposeAsync().Yield();
+            yield break;
+        }
+
+        yield return sessionPipeline.CaptureSession.WaitForInitialization();
 
         // Check if it opened successfully
-        if (sessionObject.CaptureSession.CurrentState != NativeWrapperState.Opened)
+        if (sessionPipeline.CaptureSession.CurrentState != NativeWrapperState.Opened)
         {
             Debug.LogError("Could not open camera session!");
 
             // Both of these are important for releasing the camera and session resources.
-            sessionObject.Destroy();
-            camera.Destroy();
+            yield return sessionPipeline.DisposeAsync().Yield();
+            yield return camera.DisposeAsync().Yield();
             yield break;
         }
 
         // Set the image texture.
-        _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
+        _rawImage.texture = sessionPipeline.TextureConverter.FrameRenderTexture;
+
+        // Optional: Dispose at end of use (e.g., in StopCoroutine or OnDestroy)
+        // yield return sessionPipeline.DisposeAsync().Yield();
+        // yield return camera.DisposeAsync().Yield();
     }
 }
 ```
@@ -254,14 +329,6 @@ public class CameraTest : MonoBehaviour
 
 The package contains a Computer Vision sample that uses an MNIST trained model to recognize handwritten digits, through the Camera API.
 
-### Sample Setup
-
-- In the sample folder, under `Models`, click on `mnist-21`.
-- In the Inspector, click `Serialize To StreamingAssets`.
-
-The main script in this sample is `DigitRecognition.cs`, which requires a reference to the MNIST-21 model.
-If you change the path to the model, remember to change it in all `DigitRecognition.cs` scripts.
-
 ### Package Dependencies
 
-This sample requires the Unity Inference Engine package (`com.unity.ai.inference`) and was built with version 2.2.1 of the package.
+This sample requires the Unity Inference Engine package (`com.unity.ai.inference`) and was built with version 2.3.0 of the package.

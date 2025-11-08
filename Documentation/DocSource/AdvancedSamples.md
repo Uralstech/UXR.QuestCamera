@@ -4,8 +4,8 @@ This page contains some samples for advanced use-cases, like custom texture conv
 
 ## Custom Texture Converters
 
-The texture converter in `CaptureSessionObject.TextureConverter` allows you to easily change the conversion compute shader to custom
-ones. All you have to do is set `CaptureSessionObject.TextureConverter.Shader` to your shader. You can also change the compute shader
+The texture converter in `CapturePipeline<T>.TextureConverter` allows you to easily change the conversion compute shader to custom
+ones. All you have to do is set `CapturePipeline<T>.TextureConverter.Shader` to your shader. You can also change the compute shader
 for all new capture sessions by changing `UCameraManager.YUVToRGBAComputeShader`.
 
 For example, the following compute shader ignores the U and V values of the YUV stream to provide a Luminance-only image:
@@ -76,23 +76,25 @@ post-processing effect:
 
 ```csharp
 // Create a capture session with the camera, at the chosen resolution.
-CaptureSessionObject<ContinuousCaptureSession> sessionObject = camera.CreateContinuousCaptureSession(highestResolution);
-yield return sessionObject.CaptureSession.WaitForInitialization();
+CapturePipeline<ContinuousCaptureSession> capturePipeline = camera.CreateContinuousCaptureSession(highestResolution);
+if (capturePipeline == null...
+
+yield return capturePipeline.CaptureSession.WaitForInitialization();
 
 // Check if it opened successfully.
-if (sessionObject.CaptureSession.CurrentState...
+if (capturePipeline.CaptureSession.CurrentState...
 
 // Set the image texture.
-_rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
+_rawImage.texture = capturePipeline.TextureConverter.FrameRenderTexture;
 
-// Create a new YUVToRGBAConverter to the current GameObject.
-YUVToRGBAConverter secondary = gameObject.AddComponent<YUVToRGBAConverter>();
+// Create a new YUVToRGBAConverter.
+YUVToRGBAConverter secondary = new YUVToRGBAConverter(highestResolution);
 
 // Assign it a different shader.
 secondary.Shader = _postProcessShader;
 
-// Setup the camera forwarder, which will forward the camera frames in native memory to the converter.
-secondary.SetupCameraFrameForwarder(sessionObject.CameraFrameForwarder, resolution);
+// Link the capture session and the converter.
+capturePipeline.CaptureSession.OnFrameReady += secondary.OnFrameReady;
 
 // Set the second image to the post processed RenderTexture.
 _rawImagePostProcessed.texture = secondary.FrameRenderTexture;

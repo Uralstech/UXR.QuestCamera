@@ -8,3 +8,5 @@ items:
   href: QuickStart.md
 - name: Advanced Samples
   href: AdvancedSamples.md
+- name: V3 Migration
+  href: V3Migration.md

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-using System.IO;
+using System.Threading.Tasks;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.Android;
-using UnityEngine.Networking;
 using UnityEngine.UI;
 
 namespace Uralstech.UXR.QuestCamera.Samples
@@ -41,12 +40,12 @@ namespace Uralstech.UXR.QuestCamera.Samples
         [Tooltip("Button to stop the camera.")]
         [SerializeField] private Button _stopButton;
 
-        [Tooltip("Path to the model in StreamingAssets.")]
-        [SerializeField] private string _modelPathInStreamingAssets = "mnist-12.sentis";
+        [Tooltip("The model asset.")]
+        [SerializeField] private ModelAsset _modelAsset;
 
         private CameraInfo _cameraInfo; // Camera metadata.
         private CameraDevice _cameraDevice; // Camera device.
-        private CaptureSessionObject<ContinuousCaptureSession> _captureSession; // Camera capture session data.
+        private CapturePipeline<ContinuousCaptureSession> _captureSession; // Camera capture session data.
 
         private Worker _digitRecognitionWorker; // The model inference worker.
         private Tensor<float> _inputTensors; // The model input.
@@ -54,10 +53,10 @@ namespace Uralstech.UXR.QuestCamera.Samples
         private bool _isModelBusy; // Busy flag.
 
         // Start is called on the frame when a script is enabled for the first time.
-        protected async void Start()
+        protected void Start()
         {
             // Load the model.
-            Model model = await LoadModel();
+            Model model = ModelLoader.Load(_modelAsset);
             if (model is null)
                 return;
 
@@ -100,51 +99,26 @@ namespace Uralstech.UXR.QuestCamera.Samples
             }
         }
 
+        private bool _isQuitting;
+        // Called when the application is closing.
+        protected void OnApplicationQuit()
+        {
+            _isQuitting = true;
+
+            // Force synchronous closure of the camera to make sure they are closed.
+            if (_captureSession != null && _cameraDevice != null)
+                ForceCloseSync();
+        }
+
         // Destroying the attached Behaviour will result in the game or Scene receiving OnDestroy.
         protected void OnDestroy()
         {
             // Stop the camera and release the model worker and input tensors when the GameObject is destroyed.
 
-            StopCamera();
+            if (!_isQuitting)
+                StopCamera();
             _digitRecognitionWorker?.Dispose();
             _inputTensors?.Dispose();
-        }
-
-        /// <summary>
-        /// Loads the model from the StreamingAssets directory.
-        /// </summary>
-        /// <remarks>
-        /// The StreamingAssets folder is a part of the APK itself, which is a ZIP file,
-        /// so you can't use File.Read* for it. Thus, you have to use UnityWebRequest.
-        /// </remarks>
-        private async Awaitable<Model> LoadModel()
-        {
-            // Create a web request to download the contents at the model path.
-            using UnityWebRequest request = new()
-            {
-                uri = new System.Uri(Path.Combine(Application.streamingAssetsPath, _modelPathInStreamingAssets)),
-                downloadHandler = new DownloadHandlerBuffer(),
-                disposeDownloadHandlerOnDispose = true,
-            };
-
-            // Send it and check the request state.
-            await request.SendWebRequest();
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                Debug.LogError($"Could not load model through web request: {request.error}");
-                return null;
-            }
-
-            // Copy it to an accessible temporary file.
-            string tempPath = Path.Combine(Application.temporaryCachePath, "tempModelCopy.sentis");
-            File.WriteAllBytes(tempPath, request.downloadHandler.data);
-
-            // Load it from there.
-            Model sourceModel = ModelLoader.Load(tempPath);
-
-            // Delete the temporary file.
-            File.Delete(tempPath);
-            return sourceModel;
         }
 
         /// <summary>
@@ -190,51 +164,54 @@ namespace Uralstech.UXR.QuestCamera.Samples
             }
 
             // Open the camera.
-            _cameraDevice = UCameraManager.Instance.OpenCamera(_cameraInfo);
+            CameraDevice cameraDevice = UCameraManager.Instance.OpenCamera(_cameraInfo);
 
             // Wait for initialization and check its state.
-            NativeWrapperState state = await _cameraDevice.WaitForInitializationAsync();
+            NativeWrapperState state = await cameraDevice.WaitForInitializationAsync();
             if (state != NativeWrapperState.Opened)
             {
                 Debug.LogError("Failed to open camera.");
 
                 // Destroy the camera to release native resources.
-                _cameraDevice.Destroy();
-                _cameraDevice = null;
+                if (cameraDevice != null)
+                    await cameraDevice.DisposeAsync();
                 return;
             }
 
             Debug.Log("Camera opened.");
 
             // Open the capture session.
-            _captureSession = _cameraDevice.CreateContinuousCaptureSession(_cameraInfo.SupportedResolutions[^1]);
+            CapturePipeline<ContinuousCaptureSession> captureSession = cameraDevice.CreateContinuousCaptureSession(_cameraInfo.SupportedResolutions[^1]);
 
             // Wait for initialization and check its state.
-            state = await _captureSession.CaptureSession.WaitForInitializationAsync();
+            state = await captureSession.CaptureSession.WaitForInitializationAsync();
             if (state != NativeWrapperState.Opened)
             {
                 Debug.LogError("Failed to open capture session.");
 
                 // Destroy the camera AND capture session to release native resources.
-                _captureSession.Destroy();
-                _cameraDevice.Destroy();
-
-                (_cameraDevice, _captureSession) = (null, null);
+                if (captureSession != null)
+                    await captureSession.DisposeAsync();
+                await cameraDevice.DisposeAsync();
+                return;
             }
 
             // Set _cameraPreview to the texture.
-            _cameraPreview.texture = _captureSession.TextureConverter.FrameRenderTexture;
+            _cameraPreview.texture = captureSession.TextureConverter.FrameRenderTexture;
 
             // Set a callback for when each frame is ready for the AI.
-            _captureSession.TextureConverter.OnFrameProcessed.AddListener(OnFrameReady);
+            captureSession.TextureConverter.OnFrameProcessed += OnFrameReady;
             Debug.Log("Capture session opened.");
+
+            _cameraDevice = cameraDevice;
+            _captureSession = captureSession;
         }
 
         /// <summary>
         /// Callback for processing the image.
         /// </summary>
         /// <param name="renderTexture">The RenderTexture to process.</param>
-        private async void OnFrameReady(RenderTexture renderTexture)
+        private async void OnFrameReady(RenderTexture renderTexture, long _)
         {
             // If the model is already running, return.
             if (_isModelBusy)
@@ -291,21 +268,38 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// <summary>
         /// Stops the camera.
         /// </summary>
-        private void StopCamera()
+        private async void StopCamera()
         {
-            if (_captureSession != null)
+            if (_captureSession is CapturePipeline<ContinuousCaptureSession> pipeline)
             {
-                // Destroy the session to release native resources.
-                _captureSession.Destroy();
                 _captureSession = null;
+
+                // Destroy the session to release native resources.
+                await pipeline.DisposeAsync();
+                Debug.Log("Pipeline closed.");
             }
 
-            if (_cameraDevice != null)
+            if (_cameraDevice is CameraDevice device)
             {
-                // Destroy the camera to release native resources.
-                _cameraDevice.Destroy();
                 _cameraDevice = null;
+
+                // Destroy the camera to release native resources.
+                await device.DisposeAsync();
+                Debug.Log("Device closed.");
             }
+        }
+
+        /// <summary>
+        /// Closes the camera and session synchronously.
+        /// </summary>
+        private void ForceCloseSync()
+        {
+            Task.WhenAll(
+                _captureSession.DisposeAsync().AsTask(),
+                _cameraDevice.DisposeAsync().AsTask()
+            ).Wait();
+
+            Debug.Log("Synchronously closed resources.");
         }
     }
 }

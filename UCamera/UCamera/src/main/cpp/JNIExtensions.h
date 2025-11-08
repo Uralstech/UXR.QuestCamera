@@ -12,28 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.uralstech.ucamera
+#ifndef UCAMERA_JNIEXTENSIONS_H
+#define UCAMERA_JNIEXTENSIONS_H
 
-import java.nio.ByteBuffer
+#include <jni.h>
 
-/**
- * Callback receiver interface for Unity objects that
- * want to receive the individual frames from the camera.
- */
-interface CameraFrameCallback {
-    /**
-     * Called when a new YUV 4:2:0 encoded frame is ready.
-     */
-    fun onFrameReady(
-        yBuffer: ByteBuffer,
-        uBuffer: ByteBuffer,
-        vBuffer: ByteBuffer,
-        ySize: Int,
-        uSize: Int,
-        vSize: Int,
-        yRowStride: Int,
-        uvRowStride: Int,
-        uvPixelStride: Int,
-        timestamp: Long
-    )
-}
+bool HasJNIException(JNIEnv* env);
+
+JNIEnv* AttachEnv(JavaVM* javaVm, bool* shouldDetach);
+void DetachJNIEnv(JavaVM* javaVm);
+
+#endif //UCAMERA_JNIEXTENSIONS_H

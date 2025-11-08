@@ -30,19 +30,17 @@ import android.view.Surface
  * frame being captured.
  */
 class OnDemandCaptureSessionWrapper(
-    unityListener: String,
-    frameCallback: CameraFrameCallback,
-    width: Int, height: Int) : CaptureSessionWrapper(unityListener, frameCallback, width, height, 2) {
-
+    cameraDevice: CameraDevice, captureTemplate: Int,
+    callbacks: Callbacks, width: Int, height: Int) : CaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height) {
     companion object {
         const val TAG = "ODCaptureSessionWrapper"
     }
 
     /** Dummy surface texture for preview capture request. */
-    private lateinit var dummySurfaceTexture: SurfaceTexture
+    private var dummySurfaceTexture: SurfaceTexture? = null
 
     /** Dummy surface for preview capture request. */
-    private lateinit var dummySurface: Surface
+    private var dummySurface: Surface? = null
 
     /**
      * Creates a new capture session and sets the repeating capture request.
@@ -50,11 +48,24 @@ class OnDemandCaptureSessionWrapper(
     override fun startCaptureSession(camera: CameraDevice, captureTemplate: Int) {
         Log.i(TAG, "Setting up capture session for single-capture request.")
 
-        dummySurfaceTexture = SurfaceTexture(1)
-        dummySurface = Surface(dummySurfaceTexture)
+        val dummySurfaceTexture = SurfaceTexture(0)
+        val dummySurface = Surface(dummySurfaceTexture)
+        this.dummySurfaceTexture = dummySurfaceTexture
+        this.dummySurface = dummySurface
 
-        super.startRepeatingCaptureSession(camera, captureTemplate,
-            listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
+        try {
+            super.startRepeatingCaptureSession(camera, captureTemplate,
+                listOf(OutputConfiguration(dummySurface), OutputConfiguration(imageReader.surface)), dummySurface)
+        } catch (exp: Exception) {
+            dummySurface.release()
+            this.dummySurface = null
+
+            dummySurfaceTexture.release()
+            this.dummySurfaceTexture = null
+
+            Log.e(TAG, "Failed to start repeating capture session, cleaned up dummy surfaces.", exp)
+            throw exp
+        }
     }
 
     /**
@@ -62,7 +73,7 @@ class OnDemandCaptureSessionWrapper(
      */
     fun setSingleCaptureRequest(captureTemplate: Int): Boolean {
         val captureSession = this.captureSession
-        if (!isActiveAndUsable || captureSession == null) {
+        if (isDisposed || captureSession == null) {
             Log.e(TAG, "Tried to set non-repeating capture request for unusable capture session.")
             return false
         }
@@ -74,7 +85,7 @@ class OnDemandCaptureSessionWrapper(
                 addTarget(imageReader.surface)
             }.build()
 
-            captureSession.capture(captureRequest, null, imageReaderHandler)
+            captureSession.captureSingleRequest(captureRequest, captureSessionExecutor, object : CameraCaptureSession.CaptureCallback() { })
 
             Log.i(TAG, "Non-repeating capture request set for camera session of camera with ID \"${captureSession.device.id}\".")
             return true
@@ -88,17 +99,17 @@ class OnDemandCaptureSessionWrapper(
     }
 
     /**
-     * Same as [CaptureSessionWrapper.close], but also releases [dummySurfaceTexture].
+     * Same as [CaptureSessionWrapper.closeWork], but also releases [dummySurfaceTexture].
      */
-    override fun close() {
-        if (!isActiveAndUsable) {
-            return
-        }
+    override fun closeWork() {
+        super.closeWork()
 
-        super.close()
+        dummySurface?.release()
+        dummySurface = null
 
-        dummySurface.release()
-        dummySurfaceTexture.release()
+        dummySurfaceTexture?.release()
+        dummySurfaceTexture = null
+
         Log.i(TAG, "Dummy texture released.")
     }
 }

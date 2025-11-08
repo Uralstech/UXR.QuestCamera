@@ -13,20 +13,22 @@
 // limitations under the License.
 
 using System;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.Events;
 
-#if !UNITY_6000_0_OR_NEWER && UTILITIES_ASYNC
+#if !UNITY_6000_0_OR_NEWER
 using Utilities.Async;
 #endif
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
     /// The default YUV 4:2:0 to RGBA converter that uses a compute shader to convert the camera texture to RGBA.
     /// </summary>
-    public class YUVToRGBAConverter : MonoBehaviour
+    public class YUVToRGBAConverter : IDisposable
     {
         private static readonly int s_yBufferID = UnityEngine.Shader.PropertyToID("YBuffer");
         private static readonly int s_uBufferID = UnityEngine.Shader.PropertyToID("UBuffer");
@@ -42,11 +44,6 @@ namespace Uralstech.UXR.QuestCamera
         private static readonly int s_outputTextureID = UnityEngine.Shader.PropertyToID("OutputTexture");
 
         /// <summary>
-        /// The native camera frame forwarder.
-        /// </summary>
-        public CameraFrameForwarder CameraFrameForwarder { get; protected set; }
-
-        /// <summary>
         /// The RenderTexture which will contain the RGBA camera frames.
         /// </summary>
         public RenderTexture FrameRenderTexture { get; protected set; }
@@ -60,210 +57,208 @@ namespace Uralstech.UXR.QuestCamera
         /// The shader used to convert YUV 4:2:0 to an RGBA RenderTexture.
         /// Uses <see cref="UCameraManager.YUVToRGBAComputeShader"/> if not specified here.
         /// </summary>
-        public ComputeShader Shader;
-
-        /// <summary>
-        /// Called when a frame has been converted from YUV 4:2:0 to RGBA.
-        /// </summary>
-        public UnityEvent<RenderTexture> OnFrameProcessed = new();
-
-        /// <summary>
-        /// Called when a frame has been converted from YUV 4:2:0 to RGBA.
-        /// Also includes the timestamp the frame was captured at in nanoseconds.
-        /// </summary>
-        public UnityEvent<RenderTexture, long> OnFrameProcessedWithTimestamp = new();
-
-        /// <summary>
-        /// Pointer to the buffer containing Y (luminance) data of the frame being processed.
-        /// </summary>
-        protected ComputeBuffer _yComputeBuffer;
-
-        /// <summary>
-        /// Pointer to the buffer containing U (color) data of the frame being processed.
-        /// </summary>
-        protected ComputeBuffer _uComputeBuffer;
-
-        /// <summary>
-        /// Pointer to the buffer containing V (color) data of the frame being processed.
-        /// </summary>
-        protected ComputeBuffer _vComputeBuffer;
-
-        /// <summary>
-        /// Have the converter's resources been released?
-        /// </summary>
-#pragma warning disable IDE1006 // Naming Styles
-        protected bool _isReleased { get; private set; } = false;
-#pragma warning restore IDE1006 // Naming Styles
-
-        /// <summary>
-        /// The handle to the compute shader kernel that performs the YUV to RGBA conversion.
-        /// </summary>
-        private int _kernelHandle;
-
-        /// <summary>
-        /// Copies native (unmanaged) byte data to a compute buffer.
-        /// </summary>
-        /// <param name="computeBuffer">The buffer to copy to.</param>
-        /// <param name="nativeBufferPtr">The memory to copy from.</param>
-        /// <param name="nativeBufferSize">The number of bytes to copy.</param>
-        protected static unsafe void CopyNativeDataToComputeBuffer(ref ComputeBuffer computeBuffer, IntPtr nativeBufferPtr, int nativeBufferSize)
+        public ComputeShader Shader
         {
-            if (computeBuffer is null || !computeBuffer.IsValid() || computeBuffer.count < nativeBufferSize)
+            get => _shader;
+            set
             {
-                computeBuffer?.Release();
-                computeBuffer = new ComputeBuffer(nativeBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
+                if (value == null)
+                    throw new ArgumentNullException(nameof(value));
+
+                if (_shader == value)
+                    return;
+
+                _shader = value;
+                _kernelHandle = _shader.FindKernel("CSMain");
+            }
+        }
+
+        /// <summary>
+        /// Called when a capture is dispatched for conversion to RGBA, with the capture's timestamp in nanoseconds.
+        /// </summary>
+        public event Action<RenderTexture, long>? OnFrameProcessed;
+
+        /// <summary>
+        /// Buffer containing Y (luminance) data of the frame being processed.
+        /// </summary>
+        protected readonly ComputeBuffer _yComputeBuffer;
+
+        /// <summary>
+        /// Buffer containing U (color) data of the frame being processed.
+        /// </summary>
+        protected readonly ComputeBuffer _uComputeBuffer;
+
+        /// <summary>
+        /// Buffer containing V (color) data of the frame being processed.
+        /// </summary>
+        protected readonly ComputeBuffer _vComputeBuffer;
+
+        protected readonly int _threadGroupsX;
+        protected readonly int _threadGroupsY;
+        protected readonly int _yBufferSize;
+        protected readonly int _uvBufferSize;
+
+        private ComputeShader _shader;
+        protected int _kernelHandle;
+
+        public YUVToRGBAConverter(Resolution resolution)
+        {
+            if (_shader == null)
+            {
+                _shader = UCameraManager.Instance.YUVToRGBAComputeShader;
+                _kernelHandle = _shader.FindKernel("CSMain");
             }
 
-            Unity.Collections.NativeArray<byte> destination = computeBuffer.BeginWrite<byte>(0, nativeBufferSize);
-            fixed (byte* destinationPointer = destination.AsSpan())
+            FrameRenderTexture = new RenderTexture(resolution.width, resolution.height, 0, RenderTextureFormat.ARGB32)
             {
-                Buffer.MemoryCopy(nativeBufferPtr.ToPointer(), destinationPointer, nativeBufferSize, nativeBufferSize);
-            }
+                enableRandomWrite = true
+            };
 
-            computeBuffer.EndWrite<byte>(nativeBufferSize);
-        }
+            FrameRenderTexture.Create();
+            _threadGroupsX = Mathf.CeilToInt(FrameRenderTexture.width / 8.0f);
+            _threadGroupsY = Mathf.CeilToInt(FrameRenderTexture.height / 8.0f);
 
-        protected void Awake()
-        {
-            if (Shader == null)
-                Shader = UCameraManager.Instance.YUVToRGBAComputeShader;
+            _yBufferSize = resolution.width * resolution.height;
+            _uvBufferSize = _yBufferSize / 2;
 
-            _kernelHandle = Shader.FindKernel("CSMain");
-        }
-
-        protected void OnDestroy()
-        {
-            Release();
+            _yComputeBuffer = new ComputeBuffer(_yBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
+            _uComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
+            _vComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
         }
 
         /// <summary>
-        /// Sets the camera frame forwarder.
+        /// Copies an array to a compute buffer. If the array is bigger than the buffer, the extra content of the array is ignored.
         /// </summary>
-        public virtual void SetupCameraFrameForwarder(CameraFrameForwarder cameraFrameForwarder, Resolution textureResolution)
+        /// <param name="source">The array to copy from.</param>
+        /// <param name="target">The buffer to copy to.</param>
+        protected static unsafe void CopyArrayToComputeBuffer(byte[] source, ComputeBuffer target)
         {
-            CameraFrameForwarder = cameraFrameForwarder;
-            CameraFrameForwarder.OnFrameReady += OnFrameReady;
+            int length = Mathf.Min(source.Length, target.count);
+            Unity.Collections.NativeArray<byte> destination = target.BeginWrite<byte>(0, length);
 
-            if (FrameRenderTexture == null
-                || FrameRenderTexture.width != textureResolution.width
-                || FrameRenderTexture.height != textureResolution.height)
+            fixed (byte* sourcePtr = source)
             {
-                if (FrameRenderTexture != null)
-                    FrameRenderTexture.Release();
-
-                FrameRenderTexture = new RenderTexture(textureResolution.width, textureResolution.height, 0, RenderTextureFormat.ARGB32)
+                fixed (byte* destinationPtr = destination.AsSpan())
                 {
-                    enableRandomWrite = true
-                };
-
-                FrameRenderTexture.Create();
+                    Buffer.MemoryCopy(sourcePtr, destinationPtr, length, length);
+                }
             }
+
+            target.EndWrite<byte>(length);
         }
 
         /// <summary>
-        /// Releases the ComputeBuffers and RenderTextures associated with this converter.
-        /// </summary>
-        public void Release()
-        {
-            _isReleased = true;
-            if (CameraFrameForwarder is not null)
-            {
-                CameraFrameForwarder.OnFrameReady -= OnFrameReady;
-                CameraFrameForwarder = null;
-            }
-
-            if (FrameRenderTexture != null)
-            {
-                FrameRenderTexture.Release();
-                FrameRenderTexture = null;
-            }
-
-            _yComputeBuffer?.Release();
-            _yComputeBuffer = null;
-
-            _uComputeBuffer?.Release();
-            _uComputeBuffer = null;
-
-            _vComputeBuffer?.Release();
-            _vComputeBuffer = null;
-        }
-
-        /// <summary>
-        /// Callback for <see cref="CameraFrameForwarder"/>.
+        /// Processes a frame received from the native capture session.
         /// </summary>
         /// <param name="yBuffer">Pointer to the buffer containing Y (luminance) data of the frame.</param>
         /// <param name="uBuffer">Pointer to the buffer containing U (color) data of the frame.</param>
         /// <param name="vBuffer">Pointer to the buffer containing V (color) data of the frame.</param>
-        /// <param name="ySize">The size of <paramref name="yBuffer"/>.</param>
-        /// <param name="uSize">The size of <paramref name="uBuffer"/>.</param>
-        /// <param name="vSize">The size of <paramref name="vBuffer"/>.</param>
         /// <param name="yRowStride">The size of each row of the image in <paramref name="yBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
-        protected virtual async Task OnFrameReady(
+        public virtual async void OnFrameReady(
             IntPtr yBuffer,
             IntPtr uBuffer,
             IntPtr vBuffer,
-            int ySize,
-            int uSize,
-            int vSize,
             int yRowStride,
             int uvRowStride,
             int uvPixelStride,
             long timestamp)
         {
-#if UNITY_6000_0_OR_NEWER
-            await Awaitable.MainThreadAsync();
-#elif UTILITIES_ASYNC
-            await Awaiters.UnityMainThread;
-#endif
-            if (_isReleased)
+            if (_disposed)
                 return;
 
-            CopyNativeDataToComputeBuffer(ref _yComputeBuffer, yBuffer, ySize);
-            CopyNativeDataToComputeBuffer(ref _uComputeBuffer, uBuffer, uSize);
-            CopyNativeDataToComputeBuffer(ref _vComputeBuffer, vBuffer, vSize);
-            SendFrameToComputeBuffer(yRowStride, uvRowStride, uvPixelStride, timestamp);
-            FrameCaptureTimestamp = timestamp;
+            byte[] yCpuBuffer = ArrayPool<byte>.Shared.Rent(_yBufferSize);
+            byte[] uCpuBuffer = ArrayPool<byte>.Shared.Rent(_uvBufferSize);
+            byte[] vCpuBuffer = ArrayPool<byte>.Shared.Rent(_uvBufferSize);
+
+            try
+            {
+                Marshal.Copy(yBuffer, yCpuBuffer, 0, _yBufferSize);
+                Marshal.Copy(uBuffer, uCpuBuffer, 0, _uvBufferSize);
+                Marshal.Copy(vBuffer, vCpuBuffer, 0, _uvBufferSize);
+
+                await PrepareDataForComputeBuffer(yCpuBuffer, uCpuBuffer, vCpuBuffer,
+                    yRowStride, uvRowStride, uvPixelStride, timestamp);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(yCpuBuffer);
+                ArrayPool<byte>.Shared.Return(uCpuBuffer);
+                ArrayPool<byte>.Shared.Return(vCpuBuffer);
+            }
         }
 
         /// <summary>
-        /// Sends the camera frame stored in the compute buffers to the compute shader and dispatches it.
+        /// Copies the given data into the shader's buffers and dispatches it.
         /// </summary>
+        /// <param name="yCpuBuffer">Array containing Y (luminance) data of the frame.</param>
+        /// <param name="uCpuBuffer">Array containing U (color) data of the frame.</param>
+        /// <param name="vCpuBuffer">Array containing V (color) data of the frame.</param>
         /// <param name="yRowStride">The size of each row of the image in <see cref="_yComputeBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
-        /// <param name="timestampNs">The timestamp the frame was captured at in nanoseconds.</param>
-        protected virtual async void SendFrameToComputeBuffer(int yRowStride, int uvRowStride, int uvPixelStride, long timestampNs)
+        /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
+        protected virtual async Task PrepareDataForComputeBuffer(byte[] yCpuBuffer, byte[] uCpuBuffer, byte[] vCpuBuffer,
+            int yRowStride, int uvRowStride, int uvPixelStride, long timestamp)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
-#elif UTILITIES_ASYNC
+#else
             await Awaiters.UnityMainThread;
 #endif
-            if (_isReleased)
+            if (_disposed || _shader == null)
                 return;
 
-            Shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
-            Shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
-            Shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
+            CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
+            CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
+            CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
 
-            Shader.SetInt(s_yRowStrideID, yRowStride);
-            Shader.SetInt(s_uvRowStrideID, uvRowStride);
-            Shader.SetInt(s_uvPixelStrideID, uvPixelStride);
+            _shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
+            _shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
+            _shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
 
-            Shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
-            Shader.SetInt(s_targetHeightID, FrameRenderTexture.height);
+            _shader.SetBuffer(_kernelHandle, s_yBufferID, _yComputeBuffer);
+            _shader.SetBuffer(_kernelHandle, s_uBufferID, _uComputeBuffer);
+            _shader.SetBuffer(_kernelHandle, s_vBufferID, _vComputeBuffer);
 
-            Shader.SetTexture(_kernelHandle, s_outputTextureID, FrameRenderTexture);
+            _shader.SetInt(s_yRowStrideID, yRowStride);
+            _shader.SetInt(s_uvRowStrideID, uvRowStride);
+            _shader.SetInt(s_uvPixelStrideID, uvPixelStride);
+            _shader.Dispatch(_kernelHandle, _threadGroupsX, _threadGroupsY, 1);
 
-            int threadGroupsX = Mathf.CeilToInt(FrameRenderTexture.width / 8.0f);
-            int threadGroupsY = Mathf.CeilToInt(FrameRenderTexture.height / 8.0f);
-            Shader.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
+            FrameCaptureTimestamp = timestamp;
+            OnFrameProcessed?.Invoke(FrameRenderTexture, timestamp);
+        }
 
-            OnFrameProcessed?.Invoke(FrameRenderTexture);
-            OnFrameProcessedWithTimestamp?.Invoke(FrameRenderTexture, timestampNs);
+        private bool _disposed = false;
+
+        /// <summary>
+        /// Releases the frame RenderTexture and buffers.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            FrameRenderTexture.Release();
+            UnityEngine.Object.Destroy(FrameRenderTexture);
+
+            _yComputeBuffer.Dispose();
+            _uComputeBuffer.Dispose();
+            _vComputeBuffer.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
+        ~YUVToRGBAConverter()
+        {
+            Debug.LogWarning(
+                $"A {nameof(YUVToRGBAConverter)} object was finalized by the GC without being properly disposed.\n" +
+                "Its RenderTexture was NOT released — call Dispose() on the main thread."
+            );
         }
     }
 }

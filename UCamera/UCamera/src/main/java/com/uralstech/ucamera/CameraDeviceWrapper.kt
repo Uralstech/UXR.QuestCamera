@@ -18,179 +18,166 @@ import android.Manifest
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
-import android.os.Handler
-import android.os.HandlerThread
 import android.util.Log
 import androidx.annotation.RequiresPermission
-import com.unity3d.player.UnityPlayer
+import java.util.concurrent.Executors
 
 /**
  * Wrapper class for [CameraDevice].
  */
-class CameraDeviceWrapper(
-    val id: String,
-    private val unityListener: String) {
+class CameraDeviceWrapper private constructor(private val id: String, private val callbacks: Callbacks) {
+    interface Callbacks {
+        fun onDeviceOpened(id: String)
+        fun onDeviceClosed(id: String?)
+        fun onDeviceErred(id: String?, errorCode: Int)
+        fun onDeviceDisconnected(id: String)
+    }
 
     companion object {
         /** Logcat tag. */
         private const val TAG = "CameraDeviceWrapper"
 
-        private const val ON_DEVICE_OPENED          = "_onDeviceOpened"
-        private const val ON_DEVICE_CLOSED          = "_onDeviceClosed"
-
-        private const val ON_DEVICE_ERRED           = "_onDeviceErred"
-        private const val ON_DEVICE_DISCONNECTED    = "_onDeviceDisconnected"
+        private const val ERROR_CODE_CAMERA_ACCESS_EXCEPTION = 1000
+        private const val ERROR_CODE_SECURITY_EXCEPTION = 1001
     }
 
     /** Is this object active and usable? */
-    var isActiveAndUsable: Boolean = true
+    @Volatile
+    private var isDisposed = false
 
-    /** [HandlerThread] where all camera operations run. */
-    private val cameraThread = HandlerThread("CameraThread").apply { start() }
-
-    /** [Handler] corresponding to [cameraThread]. */
-    private val cameraHandler = Handler(cameraThread.looper)
+    /** [java.util.concurrent.ExecutorService] for [cameraDevice]. */
+    private val cameraExecutor = Executors.newSingleThreadExecutor()
 
     /** The camera device being wrapped by this object. */
     private var cameraDevice: CameraDevice? = null
 
-    /**
-     * Opens the camera with the required exception checking and callbacks.
-     */
     @RequiresPermission(Manifest.permission.CAMERA)
-    internal fun openDevice(cameraManager: CameraManager) {
-        try {
-            cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
-                override fun onOpened(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" opened.")
-                    UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_OPENED, "")
+    constructor(id: String, callbacks: Callbacks, cameraManager: CameraManager) : this(id, callbacks) {
+        cameraExecutor.submit {
+            try {
+                cameraManager.openCamera(id, cameraExecutor, object : CameraDevice.StateCallback() {
+                    override fun onOpened(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" opened.")
+                        cameraDevice = camera
 
-                    cameraDevice = camera
-                }
-
-                override fun onClosed(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" closed.")
-                    UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_CLOSED, "")
-                }
-
-                override fun onDisconnected(camera: CameraDevice) {
-                    Log.i(TAG, "Camera device with ID \"$id\" disconnected.")
-                    UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_DISCONNECTED, "")
-
-                    close()
-                }
-
-                override fun onError(camera: CameraDevice, error: Int) {
-                    val message = when (error) {
-                        ERROR_CAMERA_DEVICE -> "Fatal (device)"
-                        ERROR_CAMERA_DISABLED -> "Device policy"
-                        ERROR_CAMERA_IN_USE -> "Camera in use"
-                        ERROR_CAMERA_SERVICE -> "Fatal (service)"
-                        ERROR_MAX_CAMERAS_IN_USE -> "Maximum cameras in use"
-                        else -> "Unknown"
+                        callbacks.onDeviceOpened(camera.id)
                     }
 
-                    Log.i(TAG, "Camera device with ID \"$id\" erred out: $message")
-                    UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_ERRED, error.toString())
+                    override fun onClosed(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" closed.")
+                        callbacks.onDeviceClosed(camera.id)
+                    }
 
-                    close()
-                }
-            }, cameraHandler)
-        } catch (exp: CameraAccessException) {
-            Log.e(TAG, "Camera could not be opened due to a camera access exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_ERRED, "1000")
+                    override fun onDisconnected(camera: CameraDevice) {
+                        Log.i(TAG, "Camera device with ID \"$id\" disconnected.")
+                        close()
 
-            close()
-        } catch (exp: SecurityException) {
-            Log.e(TAG, "Camera could not be opened due to a security exception.", exp)
-            UnityPlayer.UnitySendMessage(unityListener, ON_DEVICE_ERRED, "1001")
+                        callbacks.onDeviceDisconnected(camera.id)
+                    }
 
-            close()
+                    override fun onError(camera: CameraDevice, error: Int) {
+                        Log.i(TAG, "Camera device with ID \"$id\" erred out, code: $error")
+                        close()
+
+                        callbacks.onDeviceErred(camera.id, error)
+                    }
+                })
+            } catch (exp: CameraAccessException) {
+                Log.e(TAG, "Camera could not be opened due to a camera access exception.", exp)
+                close()
+
+                callbacks.onDeviceErred(null, ERROR_CODE_CAMERA_ACCESS_EXCEPTION)
+            } catch (exp: SecurityException) {
+                Log.e(TAG, "Camera could not be opened due to a security exception.", exp)
+                close()
+
+                callbacks.onDeviceErred(null, ERROR_CODE_SECURITY_EXCEPTION)
+            }
         }
+    }
+
+    /**
+     * Gets the [CameraDevice] this object is wrapping, or logs an error and returns null if it was not found.
+     */
+    private fun getActiveDevice(): CameraDevice? {
+        if (isDisposed || cameraDevice == null) {
+            Log.e(TAG, "Tried to use an unusable CameraDeviceWrapper for camera ID \"$id\"!")
+            return null
+        }
+        return cameraDevice
     }
 
     /**
      * Creates a new capture session with a repeating capture request and a wrapper for it.
      */
     fun createContinuousCaptureSession(
-        unityListener: String,
-        frameCallback: CameraFrameCallback,
+        callbacks: CaptureSessionWrapper.Callbacks,
         width: Int, height: Int,
         captureTemplate: Int): RepeatingCaptureSessionWrapper? {
 
-        val cameraDevice = this.cameraDevice
-        if (!isActiveAndUsable || cameraDevice == null) {
-            Log.e(TAG, "Tried to call createContinuousCaptureSession on unusable CameraDeviceWrapper!")
-            return null
-        }
-
+        val cameraDevice = getActiveDevice() ?: return null
         Log.i(TAG, "Creating new repeating camera session for camera with ID \"$id\".")
-
-        val wrapper = RepeatingCaptureSessionWrapper(unityListener, frameCallback, width, height)
-        wrapper.startCaptureSession(cameraDevice, captureTemplate)
-
-        return wrapper
+        return RepeatingCaptureSessionWrapper(cameraDevice, captureTemplate, callbacks, width, height)
     }
 
     /**
      * Creates a new on-demand capture session and a wrapper for it.
      */
     fun createOnDemandCaptureSession(
-        unityListener: String,
-        frameCallback: CameraFrameCallback,
+        callbacks: CaptureSessionWrapper.Callbacks,
         width: Int, height: Int): OnDemandCaptureSessionWrapper? {
 
-        val cameraDevice = this.cameraDevice
-        if (!isActiveAndUsable || cameraDevice == null) {
-            Log.e(TAG, "Tried to call createOnDemandCaptureSession on unusable CameraDeviceWrapper!")
-            return null
-        }
-
+        val cameraDevice = getActiveDevice() ?: return null
         Log.i(TAG, "Creating new on-demand camera session for camera with ID \"$id\".")
-
-        val wrapper = OnDemandCaptureSessionWrapper(unityListener, frameCallback, width, height)
-        wrapper.startCaptureSession(cameraDevice, CameraDevice.TEMPLATE_PREVIEW)
-
-        return wrapper
+        return OnDemandCaptureSessionWrapper(cameraDevice, CameraDevice.TEMPLATE_PREVIEW, callbacks, width, height)
     }
 
     /**
      * Creates a new SurfaceTexture-based capture session and a wrapper for it.
      */
     fun createSurfaceTextureCaptureSession(
-        timeStamp: Long,
-        unityListener: String,
+        timeStamp: Long, callbacks: STCaptureSessionWrapper.Callbacks,
         width: Int, height: Int,
-        captureTemplate: Int): SurfaceTextureCaptureSession? {
+        captureTemplate: Int): STCaptureSessionWrapper? {
 
-        val cameraDevice = this.cameraDevice
-        if (!isActiveAndUsable || cameraDevice == null) {
-            Log.e(TAG, "Tried to call createSurfaceTextureCaptureSession on unusable CameraDeviceWrapper!")
+        val cameraDevice = getActiveDevice() ?: return null
+        Log.i(TAG, "Creating new SurfaceTexture-based camera session for camera with ID \"$id\".")
+
+        val session = STCaptureSessionWrapper(timeStamp, callbacks, cameraDevice, width, height, captureTemplate)
+        if (!session.tryRegister()) {
+            session.close()
             return null
         }
 
-        Log.i(TAG, "Creating new SurfaceTexture-based camera session for camera with ID \"$id\".")
-
-        val wrapper = SurfaceTextureCaptureSession(timeStamp, unityListener, cameraDevice, width, height, captureTemplate)
-        return wrapper
+        return session
     }
 
     /**
      * Releases associated resources and closes the camera device.
-     * This results in [isActiveAndUsable] being set to false.
      */
-    fun close() {
-        if (!isActiveAndUsable) {
-            return
+    fun close(): Boolean {
+        if (isDisposed) {
+            return false
         }
 
         Log.i(TAG, "Closing camera device wrapper for camera with ID \"$id\".")
-        isActiveAndUsable = false
+        isDisposed = true
 
-        cameraDevice?.close()
-        cameraDevice = null
+        cameraExecutor.submit {
+            try {
+                if (cameraDevice != null) {
+                    cameraDevice?.close()
+                    cameraDevice = null
+                } else {
+                    callbacks.onDeviceClosed(null)
+                }
 
-        cameraThread.quitSafely()
-        Log.i(TAG, "Camera device closed.")
+                Log.i(TAG, "Camera device closed.")
+            } finally {
+                cameraExecutor.shutdown()
+            }
+        }
+
+        return true
     }
 }

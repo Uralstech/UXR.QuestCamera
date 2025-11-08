@@ -13,29 +13,30 @@
 // limitations under the License.
 
 using System;
-using System.Text;
 using UnityEngine;
 
+#nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
     /// <summary>
     /// Wrapper for Camera2's CameraCharacteristics.
     /// </summary>
-    public class CameraInfo
+    public record CameraInfo : IDisposable
     {
+        #region Enums
         /// <summary>
         /// The camera eye.
         /// </summary>
         public enum CameraEye
         {
             /// <summary>Unknown.</summary>
-            Unknown = 0,
+            Unknown = -1,
 
             /// <summary>The leftmost camera.</summary>
-            Left = 1,
+            Left = 0,
 
             /// <summary>The rightmost camera.</summary>
-            Right = 2,
+            Right = 1,
         }
 
         /// <summary>
@@ -44,16 +45,17 @@ namespace Uralstech.UXR.QuestCamera
         public enum CameraSource
         {
             /// <summary>Unknown.</summary>
-            Unknown = 0,
+            Unknown = -1,
 
             /// <summary>Meta Quest Passthrough RGB cameras.</summary>
-            PassthroughRGB = 1,
+            PassthroughRGB = 0,
         }
+        #endregion
 
         /// <summary>
         /// Defines the camera's intrinsic properties. All values are in pixels.
         /// </summary>
-        public readonly struct CameraIntrinsics
+        public record CameraIntrinsics
         {
             /// <summary>Resolution in pixels.</summary>
             public readonly Vector2 Resolution;
@@ -74,142 +76,100 @@ namespace Uralstech.UXR.QuestCamera
                 PrincipalPoint = principalPoint;
                 Skew = skew;
             }
-
-            /// <inheritdoc/>
-            public readonly override string ToString()
-            {
-                return new StringBuilder()
-                    .Append('{')
-                    .Append($"{nameof(Resolution)}: {Resolution}, ")
-                    .Append($"{nameof(FocalLength)}: {FocalLength}, ")
-                    .Append($"{nameof(PrincipalPoint)}: {PrincipalPoint}, ")
-                    .Append($"{nameof(Skew)}: {Skew}")
-                    .Append('}')
-                    .ToString();
-            }
         }
 
         /// <summary>
         /// The actual device ID of this camera.
         /// </summary>
-        public string CameraId => _cameraInfo?.Get<string>("cameraId") ?? throw new ObjectDisposedException(nameof(CameraInfo));
-
-        /// <summary>
-        /// The native CameraCharacteristics object.
-        /// </summary>
-        public AndroidJavaObject NativeCameraCharacteristics => _cameraInfo?.Get<AndroidJavaObject>("characteristics") ?? throw new ObjectDisposedException(nameof(CameraInfo));
+        public readonly string CameraId;
 
         /// <summary>
         /// (Meta Quest) The source of the camera feed.
         /// </summary>
-        public CameraSource Source =>
-            _cameraInfo?.Get<int>("metaQuestCameraSource") is int value ? (CameraSource)(value + 1) : throw new ObjectDisposedException(nameof(CameraInfo));
+        public readonly CameraSource Source;
 
         /// <summary>
         /// (Meta Quest) The eye which the camera is closest to.
         /// </summary>
-        public CameraEye Eye =>
-            _cameraInfo?.Get<int>("metaQuestCameraEye") is int value ? (CameraEye)(value + 1) : throw new ObjectDisposedException(nameof(CameraInfo));
+        public readonly CameraEye Eye;
 
         /// <summary>
-        /// The position of the camera optical center.
+        /// The position of the camera's optical center.
         /// </summary>
-        public Vector3 LensPoseTranslation =>
-            _cameraInfo?.Get<float[]>("lensPoseTranslation") is float[] value ? new Vector3(value[0], value[1], -value[2]) : Vector3.zero;
+        public readonly Vector3? LensPoseTranslation;
 
         /// <summary>
         /// The orientation of the camera relative to the sensor coordinate system.
         /// </summary>
-        public Quaternion LensPoseRotation =>
-            _cameraInfo?.Get<float[]>("lensPoseRotation") is float[] value ? new Quaternion(-value[0], -value[1], value[2], value[3]) : Quaternion.identity;
+        public readonly Quaternion? LensPoseRotation;
 
         /// <summary>
         /// The resolutions supported by this camera.
         /// </summary>
-        public Resolution[] SupportedResolutions
-        {
-            get
-            {
-                if (_cameraInfo?.Get<AndroidJavaObject[]>("supportedResolutions") is not AndroidJavaObject[] value)
-                    throw new ObjectDisposedException(nameof(CameraInfo));
-
-                int resolutionsCount = value.Length;
-
-                Resolution[] resolutions = new Resolution[resolutionsCount];
-                for (int i = 0; i < resolutionsCount; i++)
-                {
-                    AndroidJavaObject nativeSize = value[i];
-                    resolutions[i] = new Resolution()
-                    {
-                        width = nativeSize.Call<int>("getWidth"),
-                        height = nativeSize.Call<int>("getHeight")
-                    };
-
-                    nativeSize.Dispose();
-                }
-
-                return resolutions;
-            }
-        }
+        public readonly Resolution[] SupportedResolutions;
 
         /// <summary>
-        /// The intrinsics for this camera.
+        /// The intrinsic data for this camera.
         /// </summary>
-        public CameraIntrinsics Intrinsics
-        {
-            get
-            {
-                int[] resolution = _cameraInfo?.Get<int[]>("intrinsicsResolution");
-                float[] focalLength = _cameraInfo?.Get<float[]>("intrinsicsFocalLength");
-                float[] principalPoint = _cameraInfo?.Get<float[]>("intrinsicsPrincipalPoint");
-                float? skew = _cameraInfo?.Get<float>("intrinsicsSkew");
+        public readonly CameraIntrinsics? Intrinsics;
 
-                return resolution is not null && focalLength is not null && principalPoint is not null && skew is not null && skew != float.NegativeInfinity
-                    ? new CameraIntrinsics(
-                        new Vector2(resolution[0], resolution[1]),
-                        new Vector2(focalLength[0], focalLength[1]),
-                        new Vector2(principalPoint[0], principalPoint[1]),
-                        skew.Value
-                    ) : default;
-            }
-        }
-
-        private AndroidJavaObject _cameraInfo;
+        /// <summary>
+        /// The native CameraCharacteristics object.
+        /// </summary>
+        public readonly AndroidJavaObject NativeCameraCharacteristics;
 
         public CameraInfo(AndroidJavaObject cameraInfo)
         {
-            _cameraInfo = cameraInfo;
+            CameraId = cameraInfo.Get<string>("cameraId");
+            Source = cameraInfo.GetNullableInt("metaQuestCameraSource") is int source ? (CameraSource)source : CameraSource.Unknown;
+            Eye = cameraInfo.GetNullableInt("metaQuestCameraEye") is int eye ? (CameraEye)eye : CameraEye.Unknown;
+            LensPoseTranslation = cameraInfo.Get<float[]>("lensPoseTranslation") is float[] translation
+                ? new Vector3(translation[0], translation[1], -translation[2]) : null;
+            LensPoseRotation = cameraInfo.Get<float[]>("lensPoseRotation") is float[] rotation
+                ? new Quaternion(-rotation[0], -rotation[1], rotation[2], rotation[3]) : null;
+            SupportedResolutions = Array.ConvertAll(cameraInfo.Get<AndroidJavaObject[]>("supportedResolutions"), size =>
+            {
+                int width = size.Call<int>("getWidth");
+                int height = size.Call<int>("getHeight");
+                size.Dispose();
+
+                return new Resolution()
+                {
+                    width = width,
+                    height = height
+                };
+            });
+
+            if (cameraInfo.Call<int[]>("getIntrinsicsResolution") is int[] intrinsicsResolution
+                && cameraInfo.Get<float[]>("intrinsicsFocalLength") is float[] intrinsicsFocalLength
+                && cameraInfo.Get<float[]>("intrinsicsPrincipalPoint") is float[] intrinsicsPrincipalPoint
+                && cameraInfo.GetNullableFloat("intrinsicsSkew") is float intrinsicsSkew)
+            {
+                Intrinsics = new CameraIntrinsics(
+                    new Vector2(intrinsicsResolution[0], intrinsicsResolution[1]),
+                    new Vector2(intrinsicsFocalLength[0], intrinsicsFocalLength[1]),
+                    new Vector2(intrinsicsPrincipalPoint[0], intrinsicsPrincipalPoint[1]),
+                    intrinsicsSkew
+                );
+            }
+
+            NativeCameraCharacteristics = cameraInfo.Get<AndroidJavaObject>("characteristics");
         }
 
-        public static implicit operator string(CameraInfo camera)
-        {
-            return camera.CameraId;
-        }
+        public static implicit operator string(CameraInfo camera) => camera.CameraId;
 
-        /// <inheritdoc/>
-        public override string ToString()
-        {
-            using AndroidJavaObject nativeObject = NativeCameraCharacteristics;
-            return new StringBuilder()
-                .Append('{')
-                .Append($"{nameof(CameraId)}: {CameraId}, ")
-                .Append($"{nameof(NativeCameraCharacteristics)}: {NativeCameraCharacteristics}, ")
-                .Append($"{nameof(Source)}: {Source}, ")
-                .Append($"{nameof(Eye)}: {Eye}, ")
-                .Append($"{nameof(LensPoseTranslation)}: {LensPoseTranslation}, ")
-                .Append($"{nameof(LensPoseRotation)}: {LensPoseRotation}, ")
-                .Append($"{nameof(SupportedResolutions)}: [{string.Join(", ", SupportedResolutions)}], ")
-                .Append($"{nameof(Intrinsics)}: {Intrinsics}")
-                .Append('}')
-                .ToString();
-        }
+        private bool _disposed = false;
 
-        /// <inheritdoc/>
-        internal void Dispose()
+        /// <summary>
+        /// Releases native plugin resources.
+        /// </summary>
+        public void Dispose()
         {
-            _cameraInfo?.Dispose();
-            _cameraInfo = null;
-
+            if (_disposed)
+                return;
+                
+            _disposed = true;
+            NativeCameraCharacteristics.Dispose();
             GC.SuppressFinalize(this);
         }
     }
