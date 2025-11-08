@@ -142,7 +142,7 @@ namespace Uralstech.UXR.QuestCamera
 
             try
             {
-                using CancellationTokenRegistration _ = token.Register(() => tcs.SetCanceled());
+                using CancellationTokenRegistration _ = token.Register(tcs.SetCanceled);
                 return await tcs.Task;
             }
             finally

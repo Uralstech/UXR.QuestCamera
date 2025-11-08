@@ -60,10 +60,6 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
         /// <summary>
         /// Called when the session could not be configured, and a boolean value indicating if the failure was caused due to a camera access/security exception.
         /// </summary>
-        /// <remarks>
-        /// If the failure was <b>not</b> caused by a camera access or security exception, the session has been closed and this callback should be treated the
-        /// same way as a <see cref="OnSessionClosed"/> callback.
-        /// </remarks>
         public event Action<bool>? OnSessionConfigurationFailed;
 
         /// <summary>
@@ -135,16 +131,15 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     return IntPtr.Zero;
 
                 case "onSessionConfigurationFailed":
-                    if (JNIExtensions.UnboxBoolElement(javaArgs, 0))
-                    {
-                        OnSessionConfigurationFailed.InvokeOnMainThread(true).HandleAnyException();
+                    bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
+                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
+                    if (isAccessOrSecurityError)
                         return IntPtr.Zero;
-                    }
 
                     if (_nativeTextureId == null)
                     {
                         SetCurrentState(NativeWrapperState.Closed);
-                        OnSessionConfigurationFailed.InvokeOnMainThread(false).HandleAnyException();
+                        OnSessionClosed?.InvokeOnMainThread().HandleAnyException();
                         return IntPtr.Zero;
                     }
                     
@@ -152,7 +147,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     {
                         DeregisterNativeUpdateCallbacks(textureId);
                         SetCurrentState(NativeWrapperState.Closed);
-                        OnSessionConfigurationFailed.InvokeOnMainThread(false).HandleAnyException();
+                        OnSessionClosed?.InvokeOnMainThread().HandleAnyException();
                     }).HandleAnyException();
                     return IntPtr.Zero;
 
@@ -328,27 +323,21 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 return CurrentState == NativeWrapperState.Opened;
 
             TaskCompletionSource<bool> wrapperState = new();
-            void OnEvent() => wrapperState.SetResult(CurrentState == NativeWrapperState.Opened);
-            void OnConfigError(bool isAccessOrSecurityError)
-            {
-                if (!isAccessOrSecurityError)
-                    wrapperState.SetResult(false);
-            }
+            void OnOpened() => wrapperState.SetResult(true);
+            void OnClosed() => wrapperState.SetResult(false);
 
-            OnSessionActive += OnEvent;
-            OnSessionClosed += OnEvent;
-            OnSessionConfigurationFailed += OnConfigError;
+            OnSessionActive += OnOpened;
+            OnSessionClosed += OnClosed;
 
             try
             {
-                using CancellationTokenRegistration _ = token.Register(() => wrapperState.SetCanceled());
+                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
                 return await wrapperState.Task;
             }
             finally
             {
-                OnSessionActive -= OnEvent;
-                OnSessionClosed -= OnEvent;
-                OnSessionConfigurationFailed -= OnConfigError;
+                OnSessionActive -= OnOpened;
+                OnSessionClosed -= OnClosed;
             }
         }
 

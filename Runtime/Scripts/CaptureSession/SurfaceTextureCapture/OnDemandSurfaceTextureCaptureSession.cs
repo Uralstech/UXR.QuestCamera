@@ -109,7 +109,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             ThrowIfDisposed();
 
             TaskCompletionSource<(Texture2D?, long)> tcs = new();
-            using (token.Register((tcs) => ((TaskCompletionSource<(Texture2D?, long)>)tcs).TrySetCanceled(), tcs))
+            using (token.Register(tcs.SetCanceled))
             {
                 return RequestCapture((texture, timestamp) => tcs.SetResult((texture, timestamp)))
                     ? await tcs.Task : (null, 0);
