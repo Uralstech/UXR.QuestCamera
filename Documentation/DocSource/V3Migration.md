@@ -1,7 +1,6 @@
 # Migrating to UXR.QuestCamera V3
 
-UXR.QuestCamera v3 introduces a soft rewrite of the package with several breaking changes. It's highly recommended to update to v3, as it includes fixes for many crashes and stutters.  
-This page documents all changes to the **public API** in v3.0.0 compared to v2.6.1.
+UXR.QuestCamera v3 introduces a soft rewrite of the package with several breaking changes. It's highly recommended to update to v3, as it includes fixes for many crashes and stutters. This page documents all changes to the **public API** in v3.0.0 compared to v2.6.1.
 
 ## Basic Sample
 

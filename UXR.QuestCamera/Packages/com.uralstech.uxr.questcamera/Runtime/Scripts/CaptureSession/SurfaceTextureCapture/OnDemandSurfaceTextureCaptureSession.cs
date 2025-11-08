@@ -89,12 +89,11 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 ? new WaitUntil(() => isDone) : null;
         }
 
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Updates the unity texture with the latest capture from the camera.
         /// </summary>
         /// <returns>The rendered texture and timestamp, or default values if the renderer could not be invoked.</returns>
-        public async Awaitable<(Texture2D?, long)> RequestCaptureAsync(CancellationToken token = default)
+        public async Task<(Texture2D?, long)> RequestCaptureAsync(CancellationToken token = default)
         {
             ThrowIfDisposed();
 
@@ -105,7 +104,6 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     ? await tcs.Task : (null, 0);
             }
         }
-#endif
 
         private void ThrowIfDisposed()
         {

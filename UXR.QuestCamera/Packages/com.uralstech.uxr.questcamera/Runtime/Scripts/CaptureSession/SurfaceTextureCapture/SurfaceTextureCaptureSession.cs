@@ -131,15 +131,16 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     return IntPtr.Zero;
 
                 case "onSessionConfigurationFailed":
-                    bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
-                    OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
-
-                    if (isAccessOrSecurityError)
+                    if (JNIExtensions.UnboxBoolElement(javaArgs, 0))
+                    {
+                        OnSessionConfigurationFailed.InvokeOnMainThread(true).HandleAnyException();
                         return IntPtr.Zero;
+                    }
 
                     if (_nativeTextureId == null)
                     {
                         SetCurrentState(NativeWrapperState.Closed);
+                        OnSessionConfigurationFailed.InvokeOnMainThread(false).HandleAnyException();
                         return IntPtr.Zero;
                     }
                     
@@ -147,6 +148,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                     {
                         DeregisterNativeUpdateCallbacks(textureId);
                         SetCurrentState(NativeWrapperState.Closed);
+                        OnSessionConfigurationFailed.InvokeOnMainThread(false).HandleAnyException();
                     }).HandleAnyException();
                     return IntPtr.Zero;
 
@@ -301,21 +303,40 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
-        /// Waits until the CaptureSession is open or erred out.
+        /// Waits until the CaptureSession opens or errs out.
         /// </summary>
-        /// <returns>The current state of the CaptureSession.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
+        /// <returns><see langword="true"/> if the session was opened successfully, <see langword="false"/> otherwise.</returns>
+        public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
         {
             ThrowIfDisposed();
-            await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
+            if (CurrentState != NativeWrapperState.Initializing)
+                return CurrentState == NativeWrapperState.Opened;
 
-            return CurrentState;
+            TaskCompletionSource<bool> wrapperState = new();
+            void OnEvent() => wrapperState.SetResult(CurrentState == NativeWrapperState.Opened);
+            void OnConfigError(bool isAccessOrSecurityError)
+            {
+                if (!isAccessOrSecurityError)
+                    wrapperState.SetResult(false);
+            }
+
+            OnSessionActive += OnEvent;
+            OnSessionClosed += OnEvent;
+            OnSessionConfigurationFailed += OnConfigError;
+
+            try
+            {
+                using CancellationTokenRegistration _ = token.Register(() => wrapperState.SetCanceled());
+                return await wrapperState.Task;
+            }
+            finally
+            {
+                OnSessionActive -= OnEvent;
+                OnSessionClosed -= OnEvent;
+                OnSessionConfigurationFailed -= OnConfigError;
+            }
         }
-#endif
 
         /// <summary>
         /// Sets <see cref="CurrentState"/> with a lock.
@@ -344,22 +365,24 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             {
                 TaskCompletionSource<bool> disposeTCS = new();
                 TaskCompletionSource<bool> cleanupTCS = new();
-                void OnDisposed() => disposeTCS.SetResult(true);
-                void OnCleanup() => cleanupTCS.SetResult(true);
+                void OnDisposed() => disposeTCS.TrySetResult(true);
+                void OnCleanup() => cleanupTCS.TrySetResult(true);
 
                 OnSessionClosed += OnCleanup;
                 OnDisposeCompleted += OnDisposed;
 
-                bool isClosing = _captureSession.Call<bool>("close");
-                if (isClosing)
-                    await disposeTCS.Task;
+                if (!_captureSession.Call<bool>("close"))
+                    disposeTCS.TrySetResult(true);
+                if (CurrentState == NativeWrapperState.Closed)
+                    cleanupTCS.TrySetResult(true);
+
+                await Task.WhenAll(disposeTCS.Task, cleanupTCS.Task);
 
                 OnDisposeCompleted -= OnDisposed;
+                OnSessionClosed -= OnCleanup;
+
                 _captureSession.Dispose();
                 _captureSession = null;
-
-                await cleanupTCS.Task;
-                OnSessionClosed -= OnCleanup;
             }
 
             GC.SuppressFinalize(this);
