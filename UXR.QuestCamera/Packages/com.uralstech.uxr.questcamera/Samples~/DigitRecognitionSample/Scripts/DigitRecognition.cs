@@ -167,8 +167,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
             CameraDevice cameraDevice = UCameraManager.Instance.OpenCamera(_cameraInfo);
 
             // Wait for initialization and check its state.
-            NativeWrapperState state = await cameraDevice.WaitForInitializationAsync();
-            if (state != NativeWrapperState.Opened)
+            if (cameraDevice == null || !await cameraDevice.WaitForInitializationAsync())
             {
                 Debug.LogError("Failed to open camera.");
 
@@ -184,8 +183,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
             CapturePipeline<ContinuousCaptureSession> captureSession = cameraDevice.CreateContinuousCaptureSession(_cameraInfo.SupportedResolutions[^1]);
 
             // Wait for initialization and check its state.
-            state = await captureSession.CaptureSession.WaitForInitializationAsync();
-            if (state != NativeWrapperState.Opened)
+            if (captureSession == null || !await captureSession.CaptureSession.WaitForInitializationAsync())
             {
                 Debug.LogError("Failed to open capture session.");
 

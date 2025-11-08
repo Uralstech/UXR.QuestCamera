@@ -6,12 +6,12 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Samples/UXR.QuestCamera/3.0.0/Digit Recognition with Unity Inference
+      Engine/Scenes/Main.unity
+    guid: d21f9028511979e4bbe9142830c1ea80
+  - enabled: 1
     path: Assets/test.unity
     guid: b5a0a63e0e2a441d9bece1500fac12ab
-  - enabled: 1
-    path: Assets/Samples/UXR.QuestCamera/3.0.0-preview.3/Digit Recognition with Unity
-      Inference Engine/Scenes/Main.unity
-    guid: d21f9028511979e4bbe9142830c1ea80
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 289c1b55c9541489481df5cc06664110, type: 3}
   m_UseUCBPForAssetBundles: 0
