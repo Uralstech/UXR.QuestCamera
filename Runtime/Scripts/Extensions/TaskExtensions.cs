@@ -86,5 +86,10 @@ namespace Uralstech.UXR.QuestCamera
         /// Allows for "yielding" a <see cref="ValueTask"/> using a <see cref="WaitUntil"/> object.
         /// </summary>
         public static WaitUntil Yield(this ValueTask current) => new(() => current.IsCompleted);
+
+        /// <summary>
+        /// Allows for "yielding" a <see cref="Task"/> using a <see cref="WaitUntil"/> object.
+        /// </summary>
+        public static WaitUntil Yield(this Task current) => new(() => current.IsCompleted);
     }
 }

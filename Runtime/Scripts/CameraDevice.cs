@@ -143,21 +143,34 @@ namespace Uralstech.UXR.QuestCamera
             return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CameraDevice opens or errs out.
         /// </summary>
-        /// <returns>The current state of the CameraDevice.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
+        /// <returns><see langword="true"/> if the device was opened successfully, <see langword="false"/> otherwise.</returns>
+        public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
         {
             ThrowIfDisposed();
-            await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
+            if (CurrentState != NativeWrapperState.Initializing)
+                return CurrentState == NativeWrapperState.Opened;
 
-            return CurrentState;
+            TaskCompletionSource<bool> wrapperState = new();
+            void OnOpened(string _) => wrapperState.SetResult(true);
+            void OnClosed(string? _) => wrapperState.SetResult(false);
+
+            OnDeviceOpened += OnOpened;
+            OnDeviceClosed += OnClosed;
+
+            try
+            {
+                using CancellationTokenRegistration _ = token.Register(() => wrapperState.SetCanceled());
+                return await wrapperState.Task;
+            }
+            finally
+            {
+                OnDeviceOpened -= OnOpened;
+                OnDeviceClosed -= OnClosed;
+            }
         }
-#endif
 
         private bool _disposed = false;
 
@@ -174,13 +187,13 @@ namespace Uralstech.UXR.QuestCamera
             if (_cameraDevice != null)
             {
                 TaskCompletionSource<bool> tcs = new();
-                void OnDisposed(string? _) => tcs.SetResult(true);
+                void OnDisposed(string? _) => tcs.TrySetResult(true);
 
                 OnDeviceClosed += OnDisposed;
-                bool isClosing = _cameraDevice.Call<bool>("close");
+                if (!_cameraDevice.Call<bool>("close"))
+                    tcs.TrySetResult(true);
 
-                if (isClosing)
-                    await tcs.Task;
+                await tcs.Task;
 
                 OnDeviceClosed -= OnDisposed;
                 _cameraDevice.Dispose();
