@@ -15,6 +15,7 @@
 using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -124,6 +125,30 @@ namespace Uralstech.UXR.QuestCamera
             _yComputeBuffer = new ComputeBuffer(_yBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
             _uComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
             _vComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
+        }
+
+        /// <summary>
+        /// Returns the next frame to be received by this processor.
+        /// </summary>
+        /// <returns>The frame's <see cref="RenderTexture"/> and capture timestamp, in nanoseconds..</returns>
+        public async Task<(RenderTexture, long)> GetNextFrameAsync(CancellationToken token = default)
+        {
+            ThrowIfDisposed();
+
+            TaskCompletionSource<(RenderTexture, long)> tcs = new();
+            void OnFrameReceived(RenderTexture texture, long timestamp) => tcs.SetResult((texture, timestamp));
+
+            OnFrameProcessed += OnFrameReceived;
+
+            try
+            {
+                using CancellationTokenRegistration _ = token.Register(() => tcs.SetCanceled());
+                return await tcs.Task;
+            }
+            finally
+            {
+                OnFrameProcessed -= OnFrameReceived;
+            }
         }
 
         /// <summary>
@@ -259,6 +284,12 @@ namespace Uralstech.UXR.QuestCamera
                 $"A {nameof(YUVToRGBAConverter)} object was finalized by the GC without being properly disposed.\n" +
                 "Its RenderTexture was NOT released — call Dispose() on the main thread."
             );
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(YUVToRGBAConverter));
         }
     }
 }

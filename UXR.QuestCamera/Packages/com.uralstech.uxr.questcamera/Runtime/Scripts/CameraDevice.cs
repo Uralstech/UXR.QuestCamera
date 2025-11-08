@@ -146,6 +146,18 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Waits until the CameraDevice opens or errs out.
         /// </summary>
+        /// <param name="timeout">Maximum time to wait.</param>
+        /// <param name="onTimeout">The action to perform when the <paramref name="timeout"/> is reached.</param>
+        /// <param name="timeoutMode">Mode in which to measure time to determine <paramref name="timeout"/>.</param>
+        public WaitUntil WaitForInitialization(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
+        {
+            ThrowIfDisposed();
+            return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
+        }
+
+        /// <summary>
+        /// Waits until the CameraDevice opens or errs out.
+        /// </summary>
         /// <returns><see langword="true"/> if the device was opened successfully, <see langword="false"/> otherwise.</returns>
         public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
         {

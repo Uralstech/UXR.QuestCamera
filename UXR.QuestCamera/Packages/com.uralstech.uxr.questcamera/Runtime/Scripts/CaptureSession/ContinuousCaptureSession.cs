@@ -42,6 +42,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>
         /// Called when the session could not be configured, and a boolean value indicating if the failure was caused due to a camera access/security exception.
         /// </summary>
+        /// <remarks>
+        /// If the failure was <b>not</b> caused by a camera access or security exception, the session has been closed and this callback should be treated the
+        /// same way as a <see cref="OnSessionClosed"/> callback.
+        /// </remarks>
         public event Action<bool>? OnSessionConfigurationFailed;
 
         /// <summary>
@@ -194,6 +198,16 @@ namespace Uralstech.UXR.QuestCamera
         {
             ThrowIfDisposed();
             return new(() => CurrentState != NativeWrapperState.Initializing);
+        }
+
+        /// <summary>
+        /// Waits until the CaptureSession opens or errs out.
+        /// </summary>
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public WaitUntil WaitForInitialization(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
+        {
+            ThrowIfDisposed();
+            return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
         }
 
         /// <summary>
