@@ -1,2 +1,12 @@
 fileFormatVersion: 2
 guid: cfe1b046d243a524aa171f4d1d110abc
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - YUVToRGBAComputeShader: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
