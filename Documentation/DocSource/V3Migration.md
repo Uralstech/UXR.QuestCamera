@@ -1,7 +1,6 @@
 # Migrating to UXR.QuestCamera V3
 
-UXR.QuestCamera v3 introduces a soft rewrite of the package with several breaking changes. It's highly recommended to update to v3, as it includes fixes for many crashes and stutters.  
-This page documents all changes to the **public API** in v3.0.0 compared to v2.6.1.
+UXR.QuestCamera v3 introduces a soft rewrite of the package with several breaking changes. It's highly recommended to update to v3, as it includes fixes for many crashes and stutters. This page documents all changes to the **public API** in v3.0.0 and v3.1.0 compared to v2.6.1.
 
 ## Basic Sample
 
@@ -84,6 +83,9 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
     - `CreateSurfaceTextureCaptureSession()` and `CreateOnDemandSurfaceTextureCaptureSession()` now have nullable return types and throw `ObjectDisposedException` if the `CameraDevice` was disposed at the time of calling.
     - `CameraId` is no longer a property and is now a cached value.
 
+- **v3.1.0 Specific Changes**
+    - `WaitForInitializationAsync()` now returns `Task<bool>` representing the open state of the device.
+
 ---
 
 ## CaptureSessionObject<T>
@@ -110,6 +112,9 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
     - `OnSessionConfigured`, `OnSessionRequestSet`, `OnSessionRequestFailed`: `Action`
     - `WaitForInitialization()` now returns a `WaitUntil` object and throws `ObjectDisposedException` if the `ContinuousCaptureSession` was disposed at the time of calling.
     - `WaitForInitializationAsync()` now accepts an optional `CancellationToken` and throws `ObjectDisposedException` if the `ContinuousCaptureSession` was disposed at the time of calling.
+
+- **v3.1.0 Specific Changes**
+    - `WaitForInitializationAsync()` now returns `Task<bool>` representing the open state of the session.
 
 ---
 
@@ -154,6 +159,9 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
     - `WaitForInitialization()` now returns a `WaitUntil` object and throws `ObjectDisposedException` if the `SurfaceTextureCaptureSession` was disposed at the time of calling.
     - `WaitForInitializationAsync()` now accepts an optional `CancellationToken` and throws `ObjectDisposedException` if the `SurfaceTextureCaptureSession` was disposed at the time of calling.
 
+- **v3.1.0 Specific Changes**
+    - `WaitForInitializationAsync()` now returns `Task<bool>` representing the open state of the session.
+
 ---
 
 ## OnDemandSurfaceTextureCaptureSession
@@ -164,6 +172,9 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
     - `RequestCapture(Action<Texture2D>)` is now `bool RequestCapture(Action<Texture2D, long>)` where the `long` callback parameter is the capture timestamp, returning the success of the capture, and throws `ObjectDisposedException` if the `OnDemandSurfaceTextureCaptureSession` was disposed at the time of calling.
     - `RequestCapture()` now returns a `WaitUntil?` object (`null` when the capture fails) and throws `ObjectDisposedException` if the `OnDemandSurfaceTextureCaptureSession` was disposed at the time of calling.
     - `RequestCaptureAsync()` is now `Awaitable<(Texture2D?, long)> RequestCaptureAsync()` (`Texture2D` is `null` when the capture fails), accepts an optional `CancellationToken`, and throws `ObjectDisposedException` if the `OnDemandSurfaceTextureCaptureSession` was disposed at the time of calling.
+
+- **v3.1.0 Specific Changes**
+    - `RequestCaptureAsync()` now returns `Task<(Texture2D?, long)>`.
 
 ---
 
@@ -198,13 +209,13 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ---
 
-## UCameraManager
-
-All methods and properties in [`UCameraManager`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml) are now nullable-aware with no breaking changes.
-
----
-
 ## CaptureTemplate
 
 - **Removed**
     - `ZeroShutterLag` — not compatible with capture sessions created by the plugin.
+
+---
+
+## UCameraManager
+
+All methods and properties in [`UCameraManager`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml) are now nullable-aware with no breaking changes.

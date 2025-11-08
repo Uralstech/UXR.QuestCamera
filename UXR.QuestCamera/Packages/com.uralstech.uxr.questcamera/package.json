@@ -3,7 +3,7 @@
   "displayName": "UXR.QuestCamera",
   "description": "A Unity package to use the new Meta Quest Passthrough Camera API.",
   "keywords": [],
-  "version": "3.0.0",
+  "version": "3.1.0",
   "unity": "2022.3",
   "hideInEditor": false,
   "documentationUrl": "https://uralstech.github.io/UXR.QuestCamera/",

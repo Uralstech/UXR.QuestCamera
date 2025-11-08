@@ -143,21 +143,46 @@ namespace Uralstech.UXR.QuestCamera
             return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CameraDevice opens or errs out.
         /// </summary>
-        /// <returns>The current state of the CameraDevice.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
+        /// <param name="timeout">Maximum time to wait.</param>
+        /// <param name="onTimeout">The action to perform when the <paramref name="timeout"/> is reached.</param>
+        /// <param name="timeoutMode">Mode in which to measure time to determine <paramref name="timeout"/>.</param>
+        public WaitUntil WaitForInitialization(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
         {
             ThrowIfDisposed();
-            await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
-
-            return CurrentState;
+            return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
         }
-#endif
+
+        /// <summary>
+        /// Waits until the CameraDevice opens or errs out.
+        /// </summary>
+        /// <returns><see langword="true"/> if the device was opened successfully, <see langword="false"/> otherwise.</returns>
+        public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
+        {
+            ThrowIfDisposed();
+            if (CurrentState != NativeWrapperState.Initializing)
+                return CurrentState == NativeWrapperState.Opened;
+
+            TaskCompletionSource<bool> wrapperState = new();
+            void OnOpened(string _) => wrapperState.SetResult(true);
+            void OnClosed(string? _) => wrapperState.SetResult(false);
+
+            OnDeviceOpened += OnOpened;
+            OnDeviceClosed += OnClosed;
+
+            try
+            {
+                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
+                return await wrapperState.Task;
+            }
+            finally
+            {
+                OnDeviceOpened -= OnOpened;
+                OnDeviceClosed -= OnClosed;
+            }
+        }
 
         private bool _disposed = false;
 
@@ -174,13 +199,13 @@ namespace Uralstech.UXR.QuestCamera
             if (_cameraDevice != null)
             {
                 TaskCompletionSource<bool> tcs = new();
-                void OnDisposed(string? _) => tcs.SetResult(true);
+                void OnDisposed(string? _) => tcs.TrySetResult(true);
 
                 OnDeviceClosed += OnDisposed;
-                bool isClosing = _cameraDevice.Call<bool>("close");
+                if (!_cameraDevice.Call<bool>("close"))
+                    tcs.TrySetResult(true);
 
-                if (isClosing)
-                    await tcs.Task;
+                await tcs.Task;
 
                 OnDeviceClosed -= OnDisposed;
                 _cameraDevice.Dispose();

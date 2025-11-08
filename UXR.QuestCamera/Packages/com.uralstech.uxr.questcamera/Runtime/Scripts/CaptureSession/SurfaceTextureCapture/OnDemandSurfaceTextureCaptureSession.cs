@@ -89,23 +89,32 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
                 ? new WaitUntil(() => isDone) : null;
         }
 
-#if UNITY_6000_0_OR_NEWER
+        /// <inheritdoc cref="RequestCapture()"/>
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public WaitUntil? RequestCapture(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
+        {
+            ThrowIfDisposed();
+
+            bool isDone = false;
+            return RequestCapture((_, _) => isDone = true)
+                ? new WaitUntil(() => isDone, timeout, onTimeout, timeoutMode) : null;
+        }
+
         /// <summary>
         /// Updates the unity texture with the latest capture from the camera.
         /// </summary>
         /// <returns>The rendered texture and timestamp, or default values if the renderer could not be invoked.</returns>
-        public async Awaitable<(Texture2D?, long)> RequestCaptureAsync(CancellationToken token = default)
+        public async Task<(Texture2D?, long)> RequestCaptureAsync(CancellationToken token = default)
         {
             ThrowIfDisposed();
 
             TaskCompletionSource<(Texture2D?, long)> tcs = new();
-            using (token.Register((tcs) => ((TaskCompletionSource<(Texture2D?, long)>)tcs).TrySetCanceled(), tcs))
+            using (token.Register(tcs.SetCanceled))
             {
                 return RequestCapture((texture, timestamp) => tcs.SetResult((texture, timestamp)))
                     ? await tcs.Task : (null, 0);
             }
         }
-#endif
 
         private void ThrowIfDisposed()
         {

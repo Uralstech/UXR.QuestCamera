@@ -128,10 +128,13 @@ namespace Uralstech.UXR.QuestCamera
 
                 case "onSessionConfigurationFailed":
                     bool isAccessOrSecurityError = JNIExtensions.UnboxBoolElement(javaArgs, 0);
-                    if (!isAccessOrSecurityError)
-                        CurrentState = NativeWrapperState.Closed;
-
                     OnSessionConfigurationFailed.InvokeOnMainThread(isAccessOrSecurityError).HandleAnyException();
+
+                    if (!isAccessOrSecurityError)
+                    {
+                        CurrentState = NativeWrapperState.Closed;
+                        OnSessionClosed.InvokeOnMainThread().HandleAnyException();
+                    }
                     return IntPtr.Zero;
 
                 case "onSessionRequestSet":
@@ -196,21 +199,44 @@ namespace Uralstech.UXR.QuestCamera
             return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
-#if UNITY_6000_0_OR_NEWER
         /// <summary>
-        /// Waits until the CaptureSession is open or erred out.
+        /// Waits until the CaptureSession opens or errs out.
         /// </summary>
-        /// <returns>The current state of the CaptureSession.</returns>
-        public async Awaitable<NativeWrapperState> WaitForInitializationAsync(CancellationToken token = default)
+        /// <inheritdoc cref="CameraDevice.WaitForInitialization(TimeSpan, Action, WaitTimeoutMode)"/>
+        public WaitUntil WaitForInitialization(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
         {
             ThrowIfDisposed();
-            await Awaitable.MainThreadAsync();
-            while (CurrentState == NativeWrapperState.Initializing && !token.IsCancellationRequested)
-                await Awaitable.NextFrameAsync(token);
-
-            return CurrentState;
+            return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
         }
-#endif
+
+        /// <summary>
+        /// Waits until the CaptureSession opens or errs out.
+        /// </summary>
+        /// <returns><see langword="true"/> if the session was opened successfully, <see langword="false"/> otherwise.</returns>
+        public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
+        {
+            ThrowIfDisposed();
+            if (CurrentState != NativeWrapperState.Initializing)
+                return CurrentState == NativeWrapperState.Opened;
+
+            TaskCompletionSource<bool> wrapperState = new();
+            void OnOpened() => wrapperState.SetResult(true);
+            void OnClosed() => wrapperState.SetResult(false);
+
+            OnSessionActive += OnOpened;
+            OnSessionClosed += OnClosed;
+
+            try
+            {
+                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
+                return await wrapperState.Task;
+            }
+            finally
+            {
+                OnSessionActive -= OnOpened;
+                OnSessionClosed -= OnClosed;
+            }
+        }
 
         private bool _disposed = false;
 
@@ -227,13 +253,13 @@ namespace Uralstech.UXR.QuestCamera
             if (_captureSession != null)
             {
                 TaskCompletionSource<bool> tcs = new();
-                void OnDisposed() => tcs.SetResult(true);
+                void OnDisposed() => tcs.TrySetResult(true);
 
                 OnDisposeCompleted += OnDisposed;
-                bool isClosing = _captureSession.Call<bool>("close");
+                if (!_captureSession.Call<bool>("close"))
+                    tcs.TrySetResult(true);
 
-                if (isClosing)
-                    await tcs.Task;
+                await tcs.Task;
 
                 OnDisposeCompleted -= OnDisposed;
                 _captureSession.Dispose();
