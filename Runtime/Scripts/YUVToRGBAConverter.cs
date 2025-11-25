@@ -13,10 +13,11 @@
 // limitations under the License.
 
 using System;
-using System.Buffers;
-using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
 #if !UNITY_6000_0_OR_NEWER
@@ -31,6 +32,83 @@ namespace Uralstech.UXR.QuestCamera
     /// </summary>
     public class YUVToRGBAConverter : IDisposable
     {
+        /// <summary>
+        /// Handles YUV frame data.
+        /// </summary>
+        /// <remarks>
+        /// The NativeArrays used by this object are allocated using <see cref="Allocator.TempJob"/>.
+        /// </remarks>
+        protected record CPUDepthFrame : IDisposable
+        {
+            /// <summary>
+            /// Represents YUV frame data on the CPU.
+            /// </summary>
+            public readonly NativeArray<byte> YBuffer, UBuffer, VBuffer;
+
+            private readonly object _lock = new();
+            private bool _disposed;
+
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            private static long Min(long a, long b) => a < b ? a : b;
+
+            public CPUDepthFrame(int yBufferSize, int uvBufferSize)
+            {
+                YBuffer = new NativeArray<byte>(yBufferSize, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+                UBuffer = new NativeArray<byte>(uvBufferSize, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+                VBuffer = new NativeArray<byte>(uvBufferSize, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            }
+
+            /// <summary>
+            /// Copies YUV data from native pointers.
+            /// </summary>
+            /// <param name="yNativeBuffer">The Y channel data.</param>
+            /// <param name="yLength">The length of the Y channel data in bytes.</param>
+            /// <param name="uNativeBuffer">The U channel data.</param>
+            /// <param name="vNativeBuffer">The V channel data.</param>
+            /// <param name="uvLength">The length of the U and V channel data in bytes.</param>
+            public unsafe void CopyFrom(IntPtr yNativeBuffer, long yLength, IntPtr uNativeBuffer, IntPtr vNativeBuffer, long uvLength)
+            {
+                lock (_lock)
+                {
+                    Buffer.MemoryCopy((void*)yNativeBuffer, YBuffer.GetUnsafePtr(), YBuffer.Length, Min(YBuffer.Length, yLength));
+                    Buffer.MemoryCopy((void*)uNativeBuffer, UBuffer.GetUnsafePtr(), UBuffer.Length, Min(UBuffer.Length, uvLength));
+                    Buffer.MemoryCopy((void*)vNativeBuffer, VBuffer.GetUnsafePtr(), VBuffer.Length, Min(VBuffer.Length, uvLength));
+                }
+            }
+
+            /// <summary>
+            /// Copies this data to ComputeBuffers.
+            /// </summary>
+            /// <param name="yComputeBuffer">The Y channel buffer.</param>
+            /// <param name="uComputeBuffer">The U channel buffer.</param>
+            /// <param name="vComputeBuffer">The V channel buffer.</param>
+            public void CopyTo(ComputeBuffer yComputeBuffer, ComputeBuffer uComputeBuffer, ComputeBuffer vComputeBuffer)
+            {
+                lock (_lock)
+                {
+                    yComputeBuffer.SetData(YBuffer);
+                    uComputeBuffer.SetData(UBuffer);
+                    vComputeBuffer.SetData(VBuffer);
+                }
+            }
+
+            /// <inheritdoc/>
+            public void Dispose()
+            {
+                lock (_lock)
+                {
+                    if (_disposed)
+                        return;
+
+                    YBuffer.Dispose();
+                    UBuffer.Dispose();
+                    VBuffer.Dispose();
+                    GC.SuppressFinalize(this);
+                    _disposed = true;
+                }
+            }
+        }
+
         private static readonly int s_yBufferID = UnityEngine.Shader.PropertyToID("YBuffer");
         private static readonly int s_uBufferID = UnityEngine.Shader.PropertyToID("UBuffer");
         private static readonly int s_vBufferID = UnityEngine.Shader.PropertyToID("VBuffer");
@@ -120,7 +198,7 @@ namespace Uralstech.UXR.QuestCamera
             _threadGroupsY = Mathf.CeilToInt(FrameRenderTexture.height / 8.0f);
 
             _yBufferSize = resolution.width * resolution.height;
-            _uvBufferSize = _yBufferSize / 2;
+            _uvBufferSize = Mathf.CeilToInt(_yBufferSize / 2f);
 
             _yComputeBuffer = new ComputeBuffer(_yBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
             _uComputeBuffer = new ComputeBuffer(_uvBufferSize, sizeof(byte), ComputeBufferType.Raw, ComputeBufferMode.SubUpdates);
@@ -152,40 +230,21 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>
-        /// Copies an array to a compute buffer. If the array is bigger than the buffer, the extra content of the array is ignored.
-        /// </summary>
-        /// <param name="source">The array to copy from.</param>
-        /// <param name="target">The buffer to copy to.</param>
-        protected static unsafe void CopyArrayToComputeBuffer(byte[] source, ComputeBuffer target)
-        {
-            int length = Mathf.Min(source.Length, target.count);
-            Unity.Collections.NativeArray<byte> destination = target.BeginWrite<byte>(0, length);
-
-            fixed (byte* sourcePtr = source)
-            {
-                fixed (byte* destinationPtr = destination.AsSpan())
-                {
-                    Buffer.MemoryCopy(sourcePtr, destinationPtr, length, length);
-                }
-            }
-
-            target.EndWrite<byte>(length);
-        }
-
-        /// <summary>
         /// Processes a frame received from the native capture session.
         /// </summary>
-        /// <param name="yBuffer">Pointer to the buffer containing Y (luminance) data of the frame.</param>
-        /// <param name="uBuffer">Pointer to the buffer containing U (color) data of the frame.</param>
-        /// <param name="vBuffer">Pointer to the buffer containing V (color) data of the frame.</param>
+        /// <param name="yBuffer">The pointer to this frame's Y (luminance) data.</param>
+        /// <param name="yBufferSize">The size of the Y buffer in bytes.</param>
+        /// <param name="uBuffer">The pointer to this frame's U (color) data.</param>
+        /// <param name="vBuffer">The pointer to this frame's V (color) data.</param>
+        /// <param name="uvBufferSize">The size of the U and V buffers in bytes.</param>
         /// <param name="yRowStride">The size of each row of the image in <paramref name="yBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <paramref name="uBuffer"/> and <paramref name="vBuffer"/> in bytes.</param>
         /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
-        public virtual async void OnFrameReady(
-            IntPtr yBuffer,
+        public virtual void OnFrameReady(
+            IntPtr yBuffer, long yBufferSize,
             IntPtr uBuffer,
-            IntPtr vBuffer,
+            IntPtr vBuffer, long uvBufferSize,
             int yRowStride,
             int uvRowStride,
             int uvPixelStride,
@@ -194,39 +253,30 @@ namespace Uralstech.UXR.QuestCamera
             if (_disposed)
                 return;
 
-            byte[] yCpuBuffer = ArrayPool<byte>.Shared.Rent(_yBufferSize);
-            byte[] uCpuBuffer = ArrayPool<byte>.Shared.Rent(_uvBufferSize);
-            byte[] vCpuBuffer = ArrayPool<byte>.Shared.Rent(_uvBufferSize);
+            CPUDepthFrame cpuFrame = new(_yBufferSize, _uvBufferSize);
 
             try
             {
-                Marshal.Copy(yBuffer, yCpuBuffer, 0, _yBufferSize);
-                Marshal.Copy(uBuffer, uCpuBuffer, 0, _uvBufferSize);
-                Marshal.Copy(vBuffer, vCpuBuffer, 0, _uvBufferSize);
-
-                await PrepareDataForComputeBuffer(yCpuBuffer, uCpuBuffer, vCpuBuffer,
-                    yRowStride, uvRowStride, uvPixelStride, timestamp);
+                cpuFrame.CopyFrom(yBuffer, yBufferSize, uBuffer, vBuffer, uvBufferSize);
+                _ = PrepareDataForComputeBuffer(cpuFrame, yRowStride, uvRowStride, uvPixelStride, timestamp)
+                    .ContinueWith(static (_, frame) => ((CPUDepthFrame)frame).Dispose(), cpuFrame);
             }
-            finally
+            catch (Exception ex)
             {
-                ArrayPool<byte>.Shared.Return(yCpuBuffer);
-                ArrayPool<byte>.Shared.Return(uCpuBuffer);
-                ArrayPool<byte>.Shared.Return(vCpuBuffer);
+                Debug.LogException(ex);
+                cpuFrame.Dispose();
             }
         }
 
         /// <summary>
         /// Copies the given data into the shader's buffers and dispatches it.
         /// </summary>
-        /// <param name="yCpuBuffer">Array containing Y (luminance) data of the frame.</param>
-        /// <param name="uCpuBuffer">Array containing U (color) data of the frame.</param>
-        /// <param name="vCpuBuffer">Array containing V (color) data of the frame.</param>
+        /// <param name="frame">The frame data on the CPU.</param>
         /// <param name="yRowStride">The size of each row of the image in <see cref="_yComputeBuffer"/> in bytes.</param>
         /// <param name="uvRowStride">The size of each row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="uvPixelStride">The size of a pixel in a row of the image in <see cref="_uComputeBuffer"/> and <see cref="_vComputeBuffer"/> in bytes.</param>
         /// <param name="timestamp">The timestamp the frame was captured at in nanoseconds.</param>
-        protected virtual async Task PrepareDataForComputeBuffer(byte[] yCpuBuffer, byte[] uCpuBuffer, byte[] vCpuBuffer,
-            int yRowStride, int uvRowStride, int uvPixelStride, long timestamp)
+        protected virtual async Task PrepareDataForComputeBuffer(CPUDepthFrame frame, int yRowStride, int uvRowStride, int uvPixelStride, long timestamp)
         {
 #if UNITY_6000_0_OR_NEWER
             await Awaitable.MainThreadAsync();
@@ -236,9 +286,7 @@ namespace Uralstech.UXR.QuestCamera
             if (_disposed || _shader == null)
                 return;
 
-            CopyArrayToComputeBuffer(yCpuBuffer, _yComputeBuffer);
-            CopyArrayToComputeBuffer(uCpuBuffer, _uComputeBuffer);
-            CopyArrayToComputeBuffer(vCpuBuffer, _vComputeBuffer);
+            frame.CopyTo(_yComputeBuffer, _uComputeBuffer, _vComputeBuffer);
 
             _shader.SetInt(s_targetWidthID, FrameRenderTexture.width);
             _shader.SetInt(s_targetHeightID, FrameRenderTexture.height);

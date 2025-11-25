@@ -75,16 +75,24 @@ namespace Uralstech.UXR.QuestCamera
         ///     </listheader>
         ///     <item>
         ///         <term>yBuffer (IntPtr)</term>
-        ///         <description>Pointer to the buffer containing Y (luminance) data of the frame.</description>
+        ///         <description>The pointer to this frame's Y (luminance) data.</description>
         ///     </item>
         ///     <item>
+        ///        <term>yBufferSize (long)</term>
+        ///        <description>The size of the Y buffer in bytes.</description>
+        ///    </item>
+        ///     <item>
         ///         <term>uBuffer (IntPtr)</term>
-        ///         <description>Pointer to the buffer containing U (color) data of the frame.</description>
+        ///         <description>The pointer to this frame's U (color) data.</description>
         ///     </item>
         ///     <item>
         ///         <term>vBuffer (IntPtr)</term>
-        ///         <description>Pointer to the buffer containing V (color) data of the frame.</description>
+        ///         <description>The pointer to this frame's V (color) data.</description>
         ///     </item>
+        ///     <item>
+        ///        <term>uvBufferSize (long)</term>
+        ///        <description>The size of the U and V buffers in bytes.</description>
+        ///    </item>
         ///     <item>
         ///         <term>yRowStride (int)</term>
         ///         <description>The size of each row of the image in yBuffer in bytes.</description>
@@ -103,7 +111,7 @@ namespace Uralstech.UXR.QuestCamera
         ///    </item>
         /// </list>
         /// </remarks>
-        public event Action<IntPtr, IntPtr, IntPtr, int, int, int, long>? OnFrameReady;
+        public event Action<IntPtr, long, IntPtr, IntPtr, long, int, int, int, long>? OnFrameReady;
 
         /// <summary>
         /// Called when the native wrapper has been completely disposed.
@@ -169,7 +177,9 @@ namespace Uralstech.UXR.QuestCamera
                     try
                     {
                         OnFrameReady?.Invoke(
-                            yBufferPtr, uBufferPtr, vBufferPtr,
+                            yBufferPtr, AndroidJNI.GetDirectBufferCapacity(yBufferObj),
+                            uBufferPtr,
+                            vBufferPtr, AndroidJNI.GetDirectBufferCapacity(uBufferObj),
                             yRowStride, uvRowStride,
                             uvPixelStride, timestampNs);
                     }
