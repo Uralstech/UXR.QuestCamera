@@ -302,6 +302,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             return new(() => CurrentState != NativeWrapperState.Initializing);
         }
 
+        #if UNITY_6000_0_OR_NEWER
         /// <summary>
         /// Waits until the CaptureSession opens or errs out.
         /// </summary>
@@ -311,6 +312,7 @@ namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
             ThrowIfDisposed();
             return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
         }
+        #endif
 
         /// <summary>
         /// Waits until the CaptureSession opens or errs out.
