@@ -45,6 +45,11 @@ namespace Uralstech.UXR.QuestCamera
             /// </summary>
             public readonly NativeArray<byte> YBuffer, UBuffer, VBuffer;
 
+            /// <summary>
+            /// Are all data buffers valid?
+            /// </summary>
+            public bool IsValid => YBuffer.IsCreated && UBuffer.IsCreated && VBuffer.IsCreated;
+
             private readonly object _lock = new();
             private bool _disposed;
 
@@ -70,6 +75,12 @@ namespace Uralstech.UXR.QuestCamera
             {
                 lock (_lock)
                 {
+                    if (!IsValid || _disposed)
+                    {
+                        Debug.LogWarning($"{nameof(CPUDepthFrame)}: {nameof(CopyFrom)} called after dispose.");
+                        return;
+                    }
+
                     Buffer.MemoryCopy((void*)yNativeBuffer, YBuffer.GetUnsafePtr(), YBuffer.Length, Min(YBuffer.Length, yLength));
                     Buffer.MemoryCopy((void*)uNativeBuffer, UBuffer.GetUnsafePtr(), UBuffer.Length, Min(UBuffer.Length, uvLength));
                     Buffer.MemoryCopy((void*)vNativeBuffer, VBuffer.GetUnsafePtr(), VBuffer.Length, Min(VBuffer.Length, uvLength));
@@ -86,6 +97,12 @@ namespace Uralstech.UXR.QuestCamera
             {
                 lock (_lock)
                 {
+                    if (!IsValid || _disposed)
+                    {
+                        Debug.LogWarning($"{nameof(CPUDepthFrame)}: {nameof(CopyTo)} called after dispose.");
+                        return;
+                    }
+
                     yComputeBuffer.SetData(YBuffer);
                     uComputeBuffer.SetData(UBuffer);
                     vComputeBuffer.SetData(VBuffer);

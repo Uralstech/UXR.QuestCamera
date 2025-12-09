@@ -11,7 +11,7 @@ A Unity package to use the new Meta Quest Passthrough Camera API.
 
 ## Installation
 
-This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.2.
+This *should* work on any reasonably modern Unity version. Built and tested in Unity 6.3.
 Versions older than Unity 6.0 **REQUIRE** [com.utilities.async](https://github.com/RageAgainstThePixel/com.utilities.async/).
 
 Since this package contains a native AAR plugin, it depends on the [External Dependency Manager for Unity (EDM4U)](https://github.com/googlesamples/unity-jar-resolver) to resolve native dependencies.
