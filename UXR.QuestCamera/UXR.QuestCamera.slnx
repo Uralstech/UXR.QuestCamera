@@ -1,5 +1,6 @@
 ﻿<Solution>
   <Project Path="UXR.QuestCamera.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="UXR.QuestCamera.Samples.DigitRecognition.csproj" />
   <Project Path="MessingAround.csproj" />
 </Solution>
