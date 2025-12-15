@@ -237,8 +237,13 @@ class STCaptureSessionWrapper(
     private fun closeWork() {
         if (captureSession != null) {
             captureSession?.stopRepeating()
+            captureSession?.close()
+            captureSession = null
+
+            Log.i(TAG, "Closing capture session.")
+
             try {
-                if (!requestCompletionLatch.await(1, TimeUnit.SECONDS)) {
+                if (!requestCompletionLatch.await(5, TimeUnit.SECONDS)) {
                     Log.w(TAG, "Could not wait for total request completion due to timeout.")
                 }
             } catch (e: InterruptedException) {
@@ -246,10 +251,7 @@ class STCaptureSessionWrapper(
             }
         }
 
-        captureSession?.close()
-        captureSession = null
-
-        if (executorSemaphore.tryAcquire(1, TimeUnit.SECONDS)) {
+        if (executorSemaphore.tryAcquire(5, TimeUnit.SECONDS)) {
             captureSessionExecutor.shutdown()
             executorSemaphore.release()
         } else {
