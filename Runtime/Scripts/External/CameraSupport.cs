@@ -27,8 +27,9 @@ namespace Uralstech.UXR.QuestCamera
     /// </summary>
     /// <remarks>
     /// Requires the Meta XR Core SDK.
+    /// This class has been deprecated in favour of <see cref="UCameraManager.IsSupported"/>.
     /// </remarks>
-    [System.Obsolete("Use " + nameof(UCameraManager.IsSupported) + ".")]
+    [System.Obsolete("Use " + nameof(UCameraManager) + "." + nameof(UCameraManager.IsSupported) + ".")]
     public static class CameraSupport
     {
 
@@ -43,6 +44,7 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         /// <remarks>
         /// Requires the Meta XR Core SDK.
+        /// This property has been deprecated with no replacement.
         /// </remarks>
         [System.Obsolete("This property has been deprecated with no replacement.")]
         public static int? HorizonOSVersion
@@ -72,8 +74,10 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         /// <remarks>
         /// Requires the Meta XR Core SDK.
+        /// This property has been deprecated, and does not reflect actual Passthrough Camera API support for Meta Quest Link.
+        /// Use <see cref="UCameraManager.IsSupported"/> instead.
         /// </remarks>
-        [System.Obsolete("Use " + nameof(UCameraManager.IsSupported) + ".")]
+        [System.Obsolete("Use " + nameof(UCameraManager) + "." + nameof(UCameraManager.IsSupported) + ".")]
         public static bool IsSupported
         {
             get
