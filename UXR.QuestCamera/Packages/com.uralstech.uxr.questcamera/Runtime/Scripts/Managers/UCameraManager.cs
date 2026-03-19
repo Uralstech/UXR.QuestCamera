@@ -34,6 +34,40 @@ namespace Uralstech.UXR.QuestCamera
         /// </summary>
         public const string AvatarCameraPermission = "android.permission.CAMERA";
 
+        private const int MinHorizonOSVersion = 74;
+
+        /// <summary>Returns <see langword="true"/> if the current runtime supports the Passthrough Camera API.</summary>
+        public static bool IsSupported => GetPassthroughCameraSupport();
+
+        private static bool GetPassthroughCameraSupport()
+        {
+            #if META_XR_SDK_CORE
+
+            OVRPlugin.SystemHeadset headset = OVRPlugin.GetSystemHeadsetType();
+            if (Application.isEditor)
+            {
+                return headset is OVRPlugin.SystemHeadset.Meta_Link_Quest_3
+                               or OVRPlugin.SystemHeadset.Meta_Link_Quest_3S
+                               or OVRPlugin.SystemHeadset.None;
+            }
+            
+            if (headset is not OVRPlugin.SystemHeadset.Meta_Quest_3
+                        and not OVRPlugin.SystemHeadset.Meta_Quest_3S)
+            {
+                return false;
+            }
+
+            using AndroidJavaClass osBuild = new("vros.os.VrosBuild");
+            int version = osBuild.CallStatic<int>("getSdkVersion");
+            return version >= MinHorizonOSVersion;
+
+            #else
+
+            return false;
+            
+            #endif
+        }
+
         /// <summary>
         /// The compute shader to use to convert the camera's YUV 4:2:0 images to RGBA.
         /// </summary>
