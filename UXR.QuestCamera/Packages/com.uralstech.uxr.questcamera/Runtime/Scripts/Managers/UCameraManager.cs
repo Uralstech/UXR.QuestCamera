@@ -47,8 +47,7 @@ namespace Uralstech.UXR.QuestCamera
             if (Application.isEditor)
             {
                 return headset is OVRPlugin.SystemHeadset.Meta_Link_Quest_3
-                               or OVRPlugin.SystemHeadset.Meta_Link_Quest_3S
-                               or OVRPlugin.SystemHeadset.None;
+                               or OVRPlugin.SystemHeadset.Meta_Link_Quest_3S;
             }
             
             if (headset is not OVRPlugin.SystemHeadset.Meta_Quest_3
