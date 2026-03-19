@@ -46,7 +46,7 @@ if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermissi
 ### Device Support
 
 The Passthrough Camera API is restricted to the Quest 3 family and newer devices on Horizon OS version >= 74.
-Check if the current device is supported with the [`CameraSupport.IsSupported`](~/api/Uralstech.UXR.QuestCamera.CameraSupport.yml) static property.
+Check if the current device is supported with the [`UCameraManager.IsSupported`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml#Uralstech_UXR_QuestCamera_UCameraManager_IsSupported) static property.
 
 ### Choosing the Camera
 
@@ -227,9 +227,9 @@ public class CameraTest : MonoBehaviour
     private IEnumerator Start()
     {
         // Check if the current device is supported.
-        if (!CameraSupport.IsSupported)
+        if (!UCameraManager.IsSupported)
         {
-            Debug.LogError("Device does not support the Passthrough Camera API!");
+            Debug.LogError("Runtime does not support the Passthrough Camera API!");
             yield break;
         }
 
