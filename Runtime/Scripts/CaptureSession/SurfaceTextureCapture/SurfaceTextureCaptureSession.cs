@@ -29,7 +29,7 @@ using Utilities.Async;
 namespace Uralstech.UXR.QuestCamera.SurfaceTextureCapture
 {
     /// <summary>
-    /// This experimental capture session uses a native OpenGL texture to capture images for better performance.
+    /// This capture session uses a native OpenGL texture to capture images for better performance.
     /// </summary>
     /// <remarks>
     /// Requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.

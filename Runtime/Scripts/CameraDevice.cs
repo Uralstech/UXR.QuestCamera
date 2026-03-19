@@ -245,7 +245,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+                _ = session.DisposeAsync();
                 return null;
             }
 
@@ -267,7 +267,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", session, resolution.width, resolution.height);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+                _ = session.DisposeAsync();
                 return null;
             }
 
@@ -282,7 +282,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Creates a new OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="ContinuousCaptureSession"/>.
         /// </summary>
         /// <remarks>
-        /// This experimental capture session uses a native OpenGL texture to capture images for better performance and
+        /// This capture session uses a native OpenGL texture to capture images for better performance and
         /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
         /// 
         /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.DisposeAsync()"/>
@@ -301,7 +301,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+                _ = session.DisposeAsync();
                 return null;
             }
 
@@ -324,7 +324,7 @@ namespace Uralstech.UXR.QuestCamera
             AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
             if (nativeObject is null)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+                _ = session.DisposeAsync();
                 return null;
             }
 
