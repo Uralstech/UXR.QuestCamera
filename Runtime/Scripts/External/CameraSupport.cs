@@ -28,6 +28,7 @@ namespace Uralstech.UXR.QuestCamera
     /// <remarks>
     /// Requires the Meta XR Core SDK.
     /// </remarks>
+    [System.Obsolete("Use " + nameof(UCameraManager.IsSupported) + ".")]
     public static class CameraSupport
     {
 
@@ -43,6 +44,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <remarks>
         /// Requires the Meta XR Core SDK.
         /// </remarks>
+        [System.Obsolete("This property has been deprecated with no replacement.")]
         public static int? HorizonOSVersion
         {
             get
@@ -71,6 +73,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <remarks>
         /// Requires the Meta XR Core SDK.
         /// </remarks>
+        [System.Obsolete("Use " + nameof(UCameraManager.IsSupported) + ".")]
         public static bool IsSupported
         {
             get
