@@ -44,4 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cfe1b046d243a524aa171f4d1d110abc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  YUVToRGBAComputeShader: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}
+  ConversionKernel:
+    <Shader>k__BackingField: {fileID: 7200000, guid: 33a2078621338e548bada15b083db82e, type: 3}
+    <Name>k__BackingField: CSMain

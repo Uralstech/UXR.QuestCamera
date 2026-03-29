@@ -1,0 +1,16 @@
+{
+    "name": "UXR.QuestCamera.Runtime",
+    "rootNamespace": "Uralstech.UXR.QuestCamera",
+    "references": [
+        "Utils.Singleton"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

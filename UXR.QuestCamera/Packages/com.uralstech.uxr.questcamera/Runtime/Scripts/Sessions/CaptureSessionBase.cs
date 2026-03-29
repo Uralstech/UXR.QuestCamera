@@ -1,0 +1,239 @@
+// Copyright 2026 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+using System;
+using System.Threading.Tasks;
+using UnityEngine;
+
+#nullable enable
+namespace Uralstech.UXR.QuestCamera
+{
+    /// <summary>Base class for all capture session types.</summary>
+    /// <typeparam name="TProxy">The proxy type.</typeparam>
+    public abstract class CaptureSessionBase<TProxy> : StatefulResource, IAsyncDisposable
+        where TProxy : CaptureSessionBase<TProxy>.ProxyBase
+    {
+        /// <summary>Error codes from the native plugin.</summary>
+        public enum ErrorCode
+        {
+            /// <summary>In case the session configuration is invalid, if the captureTemplate is not supported by this device, or other illegal arguments were passed.</summary>
+            IllegalArgumentError    = 1000,
+
+            /// <summary>In case the camera device is no longer connected or has encountered a fatal error.</summary>
+            CameraAccessError       = 1001,
+
+            /// <summary>In case the camera device or session has been closed.</summary>
+            IllegalStateError       = 1003,
+
+            /// <summary>If the surface or surfaceTexture for the session could not be created due to an out-of-resources error.</summary>
+            OutOfResourcesError     = 1004,
+
+            /// <summary>The session could not be configured.</summary>
+            ConfigurationFailed     = 2000,
+
+            /// <summary>The Kotlin session could not bind to its C++ job.</summary>
+            NativeJobBindingFailed  = 3000,
+        }
+
+        /// <summary>Java proxy to handle native callbacks.</summary>
+        /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
+        public abstract class ProxyBase : AndroidJavaProxy
+        {
+            private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
+
+            /// <inheritdoc cref="OnSessionConfigured"/>
+            public event Action? OnConfigured;
+
+            /// <inheritdoc cref="OnSessionConfigurationFailed"/>
+            public event Action<ErrorCode>? OnConfigureFailed;
+
+            /// <inheritdoc cref="OnSessionRequestSet"/>
+            public event Action? OnRequestSet;
+
+            /// <inheritdoc cref="OnSessionRequestFailed"/>
+            public event Action<ErrorCode>? OnRequestFailed;
+
+            /// <inheritdoc cref="OnSessionClosed"/>
+            public event Action? OnClosed;
+
+            public ProxyBase() : base(ClassName) { }
+
+            protected ProxyBase(string className) : base(className) { }
+
+            /// <inheritdoc/>
+            /// <exclude />
+            public override IntPtr Invoke(string methodName, IntPtr javaArgs)
+            {
+                int errorCode;
+                switch (methodName)
+                {
+                    case "onConfigured":
+                        OnConfigured?.Invoke(); break;
+
+                    case "onConfigureFailed":
+                        errorCode = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        OnConfigureFailed?.Invoke((ErrorCode)errorCode); break;
+                    
+                    case "onRequestSet":
+                        OnRequestSet?.Invoke(); break;
+
+                    case "onRequestFailed":
+                        errorCode = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        OnRequestFailed?.Invoke((ErrorCode)errorCode); break;
+
+                    case "onClosed":
+                        OnClosed?.Invoke(); break;
+
+                    default:
+                        return base.Invoke(methodName, javaArgs);
+                }
+
+                return IntPtr.Zero;
+            }
+        }
+
+        /// <summary>Called when the session has been configured.</summary>
+        public event Action? OnSessionConfigured;
+
+        /// <summary>Called when the session could not be configured.</summary>
+        public event Action<ErrorCode>? OnSessionConfigurationFailed;
+
+        /// <summary>Called when the session request has been set.</summary>
+        public event Action? OnSessionRequestSet;
+
+        /// <summary>Called when the session request could not be set.</summary>
+        public event Action<ErrorCode>? OnSessionRequestFailed;
+
+        /// <summary>Called when the session is closed.</summary>
+        public event Action? OnSessionClosed;
+        
+        /// <summary>Native callback handler.</summary>
+        public readonly TProxy NativeProxy;
+
+        internal protected readonly AndroidJavaObject _native;
+        protected bool _disposed;
+
+        protected CaptureSessionBase(TProxy proxy, AndroidJavaObject native)
+        {
+            NativeProxy = proxy;
+            _native = native;
+
+            NativeProxy.OnConfigured         += OnConfiguredNative;
+            NativeProxy.OnConfigureFailed    += OnConfigureFailedNative;
+            NativeProxy.OnRequestSet         += OnRequestSetNative;
+            NativeProxy.OnRequestFailed      += OnRequestFailedNative;
+            NativeProxy.OnClosed             += OnClosedNative;
+        }
+
+        /// <summary>Discard all captures currently pending and in-progress as fast as possible.</summary>
+        /// <param name="errorCode">Error code if the operation was unsuccessful.</param>
+        /// <returns><see langword="true"/> if successful; <see langword="false"/> otherwise.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public bool TryAbortCaptures(out ErrorCode errorCode)
+        {
+            ThrowIfDisposed();
+            
+            int result = _native.Call<int>("abortCaptures");
+            errorCode = (ErrorCode)result;
+            return result == 0;
+        }
+        
+        /// <summary>Closes the session (if not already closed) and releases native resources.</summary>
+        public virtual async ValueTask DisposeAsync()
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            State = ResourceState.Invalid;
+
+            await CloseWork();
+            GC.SuppressFinalize(this);
+        }
+
+        protected async ValueTask CloseWork()
+        {
+            TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnClosed() => tcs.TrySetResult(true);
+            NativeProxy.OnClosed += OnClosed;
+
+            try
+            {
+                if (_native.Call<bool>("close"))
+                    await tcs.Task;
+            }
+            finally
+            {
+                NativeProxy.OnClosed -= OnClosed;
+                
+                // Final deregistration
+                NativeProxy.OnConfigured        -= OnConfiguredNative;
+                NativeProxy.OnConfigureFailed   -= OnConfigureFailedNative;
+                NativeProxy.OnRequestSet        -= OnRequestSetNative;
+                NativeProxy.OnRequestFailed     -= OnRequestFailedNative;
+                NativeProxy.OnClosed            -= OnClosedNative;
+
+                _native.Dispose();
+            }
+        }
+
+        #region Callbacks
+
+        private void OnConfiguredNative() =>
+            OnSessionConfigured?.OnMainThread().Forget();
+
+        private void OnConfigureFailedNative(ErrorCode errorCode)
+        {
+            State = ResourceState.Invalid;
+            OnSessionConfigurationFailed?.OnMainThread(errorCode).Forget();
+        }
+
+        private void OnRequestSetNative()
+        {
+            State = ResourceState.Valid;
+            OnSessionRequestSet?.OnMainThread().Forget();
+        }
+
+        private void OnRequestFailedNative(ErrorCode errorCode)
+        {
+            State = ResourceState.Invalid;
+            OnSessionRequestFailed?.OnMainThread(errorCode).Forget();
+        }
+
+        private void OnClosedNative()
+        {
+            State = ResourceState.Invalid;
+            OnSessionClosed?.OnMainThread().Forget();
+        }
+
+        #endregion
+
+        protected override void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(GetType().Name);
+        }
+
+        ~CaptureSessionBase()
+        {
+            Debug.LogWarning(
+                $"A capture session object was finalized by the garbage collector without being properly disposed.\n" +
+                $"The native camera capture session **may not be closed** and resources may still be held.\n\n" +
+                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
+                $"    await using var session = cameraDevice.CreateContinuousSession(...);\n" +
+                $"This ensures that the capture session is closed on the correct Unity thread."
+            );
+        }
+    }
+}
