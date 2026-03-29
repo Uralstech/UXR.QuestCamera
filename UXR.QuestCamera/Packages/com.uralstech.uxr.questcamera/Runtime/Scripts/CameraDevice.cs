@@ -177,7 +177,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
         /// <param name="template">The template to use for the captures.</param>
         /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
-        /// <returns>Returns the session. Check <see cref="ContinuousCaptureSession.State"/> for the state of the session.</returns>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="ContinuousCaptureSession"/>) for the state of the session.</returns>
         /// <exception cref="ObjectDisposedException"/>
         public ContinuousCaptureSession CreateContinuousSession(Resolution resolution, CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None)
         {
@@ -197,12 +197,12 @@ namespace Uralstech.UXR.QuestCamera
 
             return session;
         }
-        
+
         /// <summary>Creates an on-demand capture session for use.</summary>
         /// <remarks>To shut down and dispose the session, use <see cref="CaptureSessionBase{T}.DisposeAsync()"/> (inherited by <see cref="OnDemandCaptureSession"/>).</remarks>
         /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
         /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
-        /// <returns>Returns the session. Check <see cref="ContinuousCaptureSession.State"/> (inherited by <see cref="OnDemandCaptureSession"/>) for the state of the session.</returns>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="OnDemandCaptureSession"/>) for the state of the session.</returns>
         /// <exception cref="ObjectDisposedException"/>
         public OnDemandCaptureSession CreateOnDemandSession(Resolution resolution, StreamUseCase streamUseCase = StreamUseCase.None)
         {
@@ -233,7 +233,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="template">The template to use for the captures.</param>
         /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
         /// <param name="textureFormat">The output texture format for the converted frames.</param>
-        /// <returns>Returns the session. Check <see cref="GLESCaptureSession.State"/> for the state of the session.</returns>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="GLESCaptureSession"/>) for the state of the session.</returns>
         /// <exception cref="ObjectDisposedException"/>
         public async ValueTask<GLESCaptureSession> CreateGLESSessionAsync(Resolution resolution,
             CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
