@@ -2,7 +2,8 @@
     "name": "UXR.QuestCamera.Runtime",
     "rootNamespace": "Uralstech.UXR.QuestCamera",
     "references": [
-        "Utils.Singleton"
+        "GUID:2281fe9ed9abb88469162fc481fcc7a1",
+        "GUID:a6609af893242c7438d701ddd4cce46a"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
