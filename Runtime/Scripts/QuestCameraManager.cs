@@ -83,7 +83,14 @@ namespace Uralstech.UXR.QuestCamera
             const string ClassName = "com.uralstech.uxr.questcamera.CameraDeviceProvider";
             using AndroidJavaClass deviceProviderCls = new(ClassName);
 
-            _native = deviceProviderCls.CallStatic<AndroidJavaObject>("getInstance", AndroidApplication.currentContext);
+#if UNITY_6000_0_OR_NEWER
+            AndroidJavaObject currentContext = AndroidApplication.currentContext;
+#else
+            using AndroidJavaClass unityPlayer = new("com.unity3d.player.UnityPlayer");
+            using AndroidJavaObject currentContext = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+#endif
+
+            _native = deviceProviderCls.CallStatic<AndroidJavaObject>("getInstance", currentContext);
         }
 
         private void OnDestroy()
