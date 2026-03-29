@@ -137,6 +137,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Opens a camera device for use.</summary>
         /// <remarks>Once you have finished using the camera, close and dispose of it using <see cref="CameraDevice.DisposeAsync()"/>.</remarks>
         /// <param name="camera">The camera to open.</param>
+        /// <returns>The camera device. Check <see cref="StatefulResource.State"/> (inherited by <see cref="CameraDevice"/>) for the state of the device.</returns>
         public CameraDevice OpenCamera(CameraInfo cameraInfo) => OpenCamera(cameraInfo.CameraId);
 
         /// <inheritdoc cref="OpenCamera(CameraInfo)"/>
