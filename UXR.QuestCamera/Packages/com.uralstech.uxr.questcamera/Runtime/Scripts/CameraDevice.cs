@@ -235,12 +235,12 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
         /// <param name="template">The template to use for the captures.</param>
         /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
-        /// <param name="textureFormat">The output texture format for the converted frames.</param>
+        /// <param name="textureFormat">The output texture format for the converted frames. See <see cref="GLESCaptureSession(Resolution, GraphicsFormat)"/> for default.</param>
         /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="GLESCaptureSession"/>) for the state of the session.</returns>
         /// <exception cref="ObjectDisposedException"/>
         public async ValueTask<GLESCaptureSession> CreateGLESSessionAsync(Resolution resolution,
             CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
-            TextureFormat textureFormat = TextureFormat.ARGB32)
+            GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
             long[] streamUseCases = streamUseCase is not StreamUseCase.None
