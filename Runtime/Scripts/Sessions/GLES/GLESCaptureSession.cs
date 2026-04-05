@@ -122,30 +122,29 @@ namespace Uralstech.UXR.QuestCamera.GLES
                 _eventsSemaphore.Release();
             }
         }
-
-        /// <summary>Starts the job run loop. Ensure this is ONLY called after <see cref="SetupJobAsync"/> successfully creates a texture.</summary>
+        /// <summary>Starts continuous frame processing.</summary>
         /// <param name="maxFramerate">The maximum rate at which frames will be processed by the GLES pipeline.</param>
-        /// <exception cref="InvalidOperationException">If an existing run loop is active.</exception>
-        public void StartRunLoop(int maxFramerate = 60)
+        /// <exception cref="InvalidOperationException">Thrown if continuous processing is already active.</exception>
+        public void StartContinuousProcessing(int maxFramerate = 60)
         {
             ThrowIfDisposed();
             if (_runsLoop != null)
-                throw new InvalidOperationException($"Cannot call {nameof(StartRunLoop)} twice!");
+                throw new InvalidOperationException($"Cannot call {nameof(StartContinuousProcessing)} twice!");
 
             GLESAPI.RunCallbacksRegistry[_textureId] = OnFrameProcessedNative;
             _runsLoop = RunsLoopAsync(maxFramerate, _runsCancellation.Token);
         }
 
-        /// <summary>Dispatches a single capture and awaits the resulting frame.</summary>
+        /// <summary>Processes a single frame and returns the result.</summary>
         /// <returns>Capture timestamp and updated texture. Timestamp will be -1 if the capture could not be processed.</returns>
-        /// <exception cref="InvalidOperationException">If the run loop is active.</exception>
+        /// <exception cref="InvalidOperationException">Thrown if continuous processing is active.</exception>
         /// <exception cref="ObjectDisposedException"/>
         /// <exception cref="TimeoutException"/>
-        public async ValueTask<(long, Texture2D)> SingleRunAsync(CancellationToken token = default)
+        public async ValueTask<(long, Texture2D)> ProcessSingleFrameAsync(CancellationToken token = default)
         {
             ThrowIfDisposed();
             if (_runsLoop != null)
-                throw new InvalidOperationException($"Cannot call {nameof(SingleRunAsync)} on a looping session!");
+                throw new InvalidOperationException($"Cannot call {nameof(ProcessSingleFrameAsync)} on a looping session!");
 
             TaskCompletionSource<long> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
             void OnComplete(long timestamp, uint _) => tcs.TrySetResult(timestamp);
