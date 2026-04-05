@@ -128,13 +128,8 @@ namespace Uralstech.UXR.QuestCamera
             if (textureFormat == GraphicsFormat.None)
                 textureFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
 
-#if UNITY_6000_0_OR_NEWER
-            if (!SystemInfo.IsFormatSupported(textureFormat, GraphicsFormatUsage.Render))
+            if (!GraphicsUtils.IsGraphicsFormatSupportedForRender(textureFormat))
                 throw new ArgumentException($"Format {textureFormat} is not supported on device conversion.", nameof(textureFormat));
-#else
-            if (!SystemInfo.IsFormatSupported(textureFormat, FormatUsage.Render))
-                throw new ArgumentException($"Format {textureFormat} is not supported on device conversion.", nameof(textureFormat));
-#endif
 
             _kernel = kernel;
             Texture = new RenderTexture(resolution.width, resolution.height, 0, textureFormat)

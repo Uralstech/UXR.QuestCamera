@@ -17,6 +17,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 #nullable enable
@@ -59,13 +60,20 @@ namespace Uralstech.UXR.QuestCamera.GLES
 
         private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
 
-        private static int MakeTexture(Resolution resolution, TextureFormat textureFormat, out Texture2D texture, out uint textureId)
+        private static int MakeTexture(Resolution resolution, GraphicsFormat textureFormat, out Texture2D texture, out uint textureId)
         {
-            texture = new Texture2D(resolution.width, resolution.height, textureFormat, false);
+            if (textureFormat == GraphicsFormat.None)
+                textureFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+
+            if (!GraphicsUtils.IsGraphicsFormatSupportedForRender(textureFormat))
+                throw new ArgumentException($"Format {textureFormat} is not supported on device.", nameof(textureFormat));
+
+            texture = new Texture2D(resolution.width, resolution.height, textureFormat, TextureCreationFlags.DontUploadUponCreate | TextureCreationFlags.DontInitializePixels);
             return (int)(textureId = (uint)texture.GetNativeTexturePtr());
         }
 
-        public GLESCaptureSession(Resolution resolution, TextureFormat textureFormat)
+        /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        public GLESCaptureSession(Resolution resolution, GraphicsFormat textureFormat = GraphicsFormat.None)
             : base(MakeProxy(out Proxy proxy), new(ClassName, MakeTexture(resolution, textureFormat, out Texture2D texture, out uint textureId), proxy))
         {
             Texture = texture;
