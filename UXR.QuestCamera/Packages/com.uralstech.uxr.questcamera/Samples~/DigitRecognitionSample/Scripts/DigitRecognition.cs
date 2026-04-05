@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Linq;
 using System.Threading.Tasks;
 using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.Android;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.UI;
 
 namespace Uralstech.UXR.QuestCamera.Samples
@@ -55,6 +57,13 @@ namespace Uralstech.UXR.QuestCamera.Samples
         // Start is called on the frame when a script is enabled for the first time.
         protected void Start()
         {
+            // Check PCA support.
+            if (QuestCameraManager.Support == PCASupport.Unsupported)
+            {
+                Debug.LogError("Runtime does not support the Quest PCA API.");
+                return;
+            }
+
             // Load the model.
             Model model = ModelLoader.Load(_modelAsset);
             if (model is null)
@@ -67,7 +76,7 @@ namespace Uralstech.UXR.QuestCamera.Samples
             // Initialize the input tensors, the inference worker and the input texture.
             _inputTensors = new Tensor<float>(shape);
             _digitRecognitionWorker = new Worker(model, BackendType.GPUCompute);
-            _imageTexture = new Texture2D(28, 28, TextureFormat.ARGB32, false);
+            _imageTexture = new Texture2D(28, 28, TextureFormat.R8, false);
 
             // Set that as the _modelInputPreview image.
             _modelInputPreview.texture = _imageTexture;
@@ -77,26 +86,32 @@ namespace Uralstech.UXR.QuestCamera.Samples
             _stopButton.onClick.AddListener(StopCamera);
 
             // Check if the camera permission has been given.
-            if (Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
+            if (Permission.HasUserAuthorizedPermission(QuestCameraManager.HeadsetCameraPermission))
             {
-                // Get the left eye camera.
-                _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
-                Debug.Log($"Got camera info: {_cameraInfo}");
+                GetCameraInfo();
+                return;
             }
-            else
-            {
-                // Callback to set _cameraInfo when the permission is granted.
-                PermissionCallbacks callbacks = new();
-                callbacks.PermissionGranted += _ =>
-                {
-                    _cameraInfo = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
-                    Debug.Log($"Got new camera info after camera permission was granted: {_cameraInfo}");
-                };
+            
+            // Callback to set _cameraInfo when the permission is granted.
+            PermissionCallbacks callbacks = new();
+            callbacks.PermissionGranted += _ => GetCameraInfo();
 
-                // Request the permission and set the flag to true.
-                Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission, callbacks);
-                Debug.Log("Camera permission requested.");
+            // Request the permission and set the flag to true.
+            Permission.RequestUserPermission(QuestCameraManager.HeadsetCameraPermission, callbacks);
+            Debug.Log("Camera permission requested.");
+        }
+
+        // Sets _cameraInfo
+        private void GetCameraInfo()
+        {
+            // Get the left eye camera.
+            if (!QuestCameraManager.Instance.TryGetDevice(CameraInfo.CameraEye.Left, out _cameraInfo))
+            {
+                Debug.LogError("Could not find left eye camera.");
+                return;
             }
+
+            Debug.Log($"Got camera info: {_cameraInfo}");
         }
 
         private bool _isQuitting;
@@ -164,45 +179,56 @@ namespace Uralstech.UXR.QuestCamera.Samples
             }
 
             // Open the camera.
-            CameraDevice cameraDevice = UCameraManager.Instance.OpenCamera(_cameraInfo);
+            _cameraDevice = QuestCameraManager.Instance.OpenCamera(_cameraInfo);
 
             // Wait for initialization and check its state.
-            if (cameraDevice == null || !await cameraDevice.WaitForInitializationAsync())
+            if (!await _cameraDevice.WaitForInitializationAsync())
             {
                 Debug.LogError("Failed to open camera.");
 
                 // Destroy the camera to release native resources.
-                if (cameraDevice != null)
-                    await cameraDevice.DisposeAsync();
+                await _cameraDevice.DisposeAsync();
+                _cameraDevice = null;
                 return;
             }
 
             Debug.Log("Camera opened.");
 
+            // Stream use cases can improve performance, but you have to check if the device supports them.
+            StreamUseCase useCase = _cameraInfo.SupportedStreamUseCases.Contains(StreamUseCase.Preview)
+                ? StreamUseCase.Preview : StreamUseCase.None;
+
             // Open the capture session.
-            CapturePipeline<ContinuousCaptureSession> captureSession = cameraDevice.CreateContinuousCaptureSession(_cameraInfo.SupportedResolutions[^1]);
+
+            // If you're on Vulkan, you can use GraphicsFormat.R8_SNorm in this case to reduce VRAM usage.
+            // _captureSession = _cameraDevice.CreateContinuousPipeline(_cameraInfo.SupportedResolutions[^1],
+            //     streamUseCase: useCase, textureFormat: GraphicsFormat.R8_SNorm);
+
+            _captureSession = _cameraDevice.CreateContinuousPipeline(_cameraInfo.SupportedResolutions[^1], streamUseCase: useCase);
 
             // Wait for initialization and check its state.
-            if (captureSession == null || !await captureSession.CaptureSession.WaitForInitializationAsync())
+            if (_captureSession == null || !await _captureSession.Session.WaitForInitializationAsync())
             {
                 Debug.LogError("Failed to open capture session.");
 
                 // Destroy the camera AND capture session to release native resources.
-                if (captureSession != null)
-                    await captureSession.DisposeAsync();
-                await cameraDevice.DisposeAsync();
+                if (_captureSession != null)
+                {
+                    await _captureSession.DisposeAsync();
+                    _captureSession = null;
+                }
+
+                await _cameraDevice.DisposeAsync();
+                _cameraDevice = null;
                 return;
             }
 
             // Set _cameraPreview to the texture.
-            _cameraPreview.texture = captureSession.TextureConverter.FrameRenderTexture;
+            _cameraPreview.texture = _captureSession.Converter.Texture;
 
             // Set a callback for when each frame is ready for the AI.
-            captureSession.TextureConverter.OnFrameProcessed += OnFrameReady;
+            _captureSession.Converter.OnFrameProcessed += OnFrameReady;
             Debug.Log("Capture session opened.");
-
-            _cameraDevice = cameraDevice;
-            _captureSession = captureSession;
         }
 
         /// <summary>
@@ -270,20 +296,20 @@ namespace Uralstech.UXR.QuestCamera.Samples
         {
             if (_captureSession is CapturePipeline<ContinuousCaptureSession> pipeline)
             {
-                _captureSession = null;
-
                 // Destroy the session to release native resources.
                 await pipeline.DisposeAsync();
                 Debug.Log("Pipeline closed.");
+                
+                _captureSession = null;
             }
 
             if (_cameraDevice is CameraDevice device)
             {
-                _cameraDevice = null;
-
                 // Destroy the camera to release native resources.
                 await device.DisposeAsync();
                 Debug.Log("Device closed.");
+
+                _cameraDevice = null;
             }
         }
 
@@ -292,10 +318,10 @@ namespace Uralstech.UXR.QuestCamera.Samples
         /// </summary>
         private void ForceCloseSync()
         {
-            Task.WhenAll(
+            Task.WaitAll(
                 _captureSession.DisposeAsync().AsTask(),
                 _cameraDevice.DisposeAsync().AsTask()
-            ).Wait();
+            );
 
             Debug.Log("Synchronously closed resources.");
         }
