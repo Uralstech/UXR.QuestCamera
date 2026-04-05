@@ -15,6 +15,7 @@
 using System;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using Uralstech.UXR.QuestCamera.GLES;
 
 #nullable enable
@@ -139,10 +140,11 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Creates a continuous capture pipeline (session + linked YUV to RGBA converter) for use.</summary>
+        /// <param name="textureFormat">See <see cref="YUVConverter(Resolution, ComputeShaderKernel, GraphicsFormat)"/> for default texture format.</param>
         /// <returns>The created pipeline, or <see langword="null"/> if creation failed.</returns>
         /// <inheritdoc cref="CreateContinuousSession"/>
         public CapturePipeline<ContinuousCaptureSession>? CreateContinuousPipeline(Resolution resolution,
-            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None, RenderTextureFormat textureFormat = RenderTextureFormat.ARGB32)
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None, GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
             ContinuousCaptureSession session = CreateContinuousSession(resolution, template, streamUseCase);
@@ -156,10 +158,11 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Creates an on-demand capture pipeline (session + linked YUV to RGBA converter) for use.</summary>
+        /// <param name="textureFormat">See <see cref="YUVConverter(Resolution, ComputeShaderKernel, GraphicsFormat)"/> for default texture format.</param>
         /// <returns>The created pipeline, or <see langword="null"/> if creation failed.</returns>
         /// <inheritdoc cref="CreateOnDemandSession"/>
         public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandPipeline(Resolution resolution,
-            StreamUseCase streamUseCase = StreamUseCase.None, RenderTextureFormat textureFormat = RenderTextureFormat.ARGB32)
+            StreamUseCase streamUseCase = StreamUseCase.None, GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
             OnDemandCaptureSession session = CreateOnDemandSession(resolution, streamUseCase);

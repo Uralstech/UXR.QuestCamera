@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
+using UnityEngine.Experimental.Rendering;
 using UnityEngine.Rendering;
 
 #if !UNITY_6000_0_OR_NEWER
@@ -112,9 +113,11 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Creates a new converter with the shader and kernel described in the scene instance of <see cref="QuestCameraManager"/>.</summary>
-        public YUVConverter(Resolution resolution, RenderTextureFormat textureFormat) : this(resolution, textureFormat, GetDefaultKernel()) { }
+        /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        public YUVConverter(Resolution resolution, GraphicsFormat textureFormat = GraphicsFormat.None) : this(resolution, GetDefaultKernel(), textureFormat) { }
 
-        public YUVConverter(Resolution resolution, RenderTextureFormat textureFormat, ComputeShaderKernel kernel)
+        /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        public YUVConverter(Resolution resolution, ComputeShaderKernel kernel, GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             if (kernel == null)
                 throw new ArgumentNullException(nameof(kernel));
@@ -122,13 +125,25 @@ namespace Uralstech.UXR.QuestCamera
             if (!kernel.Validate())
                 throw new ArgumentException("Provided kernel is invalid.", nameof(kernel));
 
+            if (textureFormat == GraphicsFormat.None)
+                textureFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
+
+#if UNITY_6000_0_OR_NEWER
+            if (!SystemInfo.IsFormatSupported(textureFormat, GraphicsFormatUsage.Render))
+                throw new ArgumentException($"Format {textureFormat} is not supported on device conversion.", nameof(textureFormat));
+#else
+            if (!SystemInfo.IsFormatSupported(textureFormat, FormatUsage.Render))
+                throw new ArgumentException($"Format {textureFormat} is not supported on device conversion.", nameof(textureFormat));
+#endif
+
             _kernel = kernel;
             Texture = new RenderTexture(resolution.width, resolution.height, 0, textureFormat)
             {
                 enableRandomWrite = true
             };
 
-            Texture.Create();
+            if (!Texture.Create())
+                throw new UnityException("Could not create RenderTexture.");
 
             _yBufferSize = resolution.width * resolution.height;
             _uvBufferSize = Mathf.CeilToInt(_yBufferSize / 2f);
