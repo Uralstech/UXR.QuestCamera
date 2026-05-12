@@ -4,100 +4,93 @@ This page contains some samples for advanced use-cases, like custom texture conv
 
 ## Custom Texture Converters
 
-The texture converter in `CapturePipeline<T>.TextureConverter` allows you to easily change the conversion compute shader to custom
-ones. All you have to do is set `CapturePipeline<T>.TextureConverter.Shader` to your shader. You can also change the compute shader
-for all new capture sessions by changing `UCameraManager.YUVToRGBAComputeShader`.
+The texture converter in `CapturePipeline<T>.Converter` allows you to easily change the conversion compute shader to custom
+ones. All you have to do is assign a new `ComputeShaderKernel` to `Converter.ShaderKernel`. `ComputeShaderKernel` references
+the compute shader and the name of the shader kernel to use.
+
+You can also change the compute shader for all new capture sessions by changing `QuestCameraManager.ConversionKernel`.
 
 For example, the following compute shader ignores the U and V values of the YUV stream to provide a Luminance-only image:
 
 ```hlsl
 #pragma kernel CSMain
 
-// Input buffers (read-only)
+// ---------------- YUVConverter *required* parameters ----------------
+
+// Camera frame
 ByteAddressBuffer YBuffer;
 ByteAddressBuffer UBuffer;
 ByteAddressBuffer VBuffer;
 
-// Row strides
-uint YRowStride;
-uint UVRowStride;
+cbuffer StrideParams {
+    // Row strides
+    uint YRowStride;
+    uint UVRowStride;
 
-// Pixel strides
-uint UVPixelStride;
+    // Pixel strides
+    uint UVPixelStride;
+    uint StrideParamsPadding;
+}
 
-// Image dimensions
-uint TargetWidth;
-uint TargetHeight;
-
-// Output texture (read-write)
+uniform uint OutputTextureWidth;
+uniform uint OutputTextureHeight;
 RWTexture2D<float4> OutputTexture;
 
-// Helper function to get a byte from a ByteAddressBuffer.
-//  buffer: The ByteAddressBuffer.
-//  byteIndex: The *byte* index (offset) into the buffer.
-uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
-{
-    // Calculate the 32-bit word offset (each word is 4 bytes).
-    uint wordOffset = byteIndex / 4;
+// ----------------     End of required parameters     ----------------
 
-    // Load the 32-bit word containing the byte.
-    uint word = buffer.Load(wordOffset * 4); // MUST multiply by 4 for ByteAddressBuffer.Load()
+// Converts byte array indexing to ByteAddressBuffer indexing and returns the value
+uint GetByteFromBuffer(const ByteAddressBuffer buffer, const uint byteIndex) {
+    
+    const uint word = buffer.Load(byteIndex & ~3);
+    const uint byteInWord = byteIndex & 3;
 
-    // Calculate the byte position *within* the word (0, 1, 2, or 3).
-    uint byteInWord = byteIndex % 4;
-
-    // Extract the correct byte using bit shifts and masking.
     return (word >> (byteInWord * 8)) & 0xFF;
 }
 
 [numthreads(8, 8, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= TargetWidth || id.y >= TargetHeight)
+void CSMain(uint3 id : SV_DispatchThreadID) {
+
+    if (id.x >= OutputTextureWidth || id.y >= OutputTextureHeight)
         return;
-    
+
     // The YUV stream is flipped, so we have to un-flip it.
-    uint flippedY = TargetHeight - 1 - id.y;
+    const uint flippedY = OutputTextureHeight - 1 - id.y;
 
     // Index of Y value in buffer.
-    uint yIndex = flippedY * YRowStride + id.x;
-    uint yValue = GetByteFromBuffer(YBuffer, yIndex);
+    const uint yIndex = flippedY * YRowStride + id.x;
+
+    // Get the Y (luminance) value.
+    const uint y = GetByteFromBuffer(YBuffer, yIndex);
     
-    float3 luminance = float3(yValue, yValue, yValue) / 255.0;
-    OutputTexture[id.xy] = float4(luminance.rgb, 1.0);
+    // Convert the value from 0-255 to 0-1 and set the output texture.
+    const float3 color = float3(y, y, y) / 255.0;
+    OutputTexture[id.xy] = float4(color, 1.0);
 }
 ```
 
-## Multiple Streams From One Camera
+## Multiple Streams from One Camera
 
 By adding multiple texture converters to the same request, you can emulate the effect of having more than one image stream from a
 single camera. For example, you can have one converter stream the camera image as-is, and another streaming with a simple Sepia
 post-processing effect:
 
 ```csharp
-// Create a capture session with the camera, at the chosen resolution.
-CapturePipeline<ContinuousCaptureSession> capturePipeline = camera.CreateContinuousCaptureSession(highestResolution);
-if (capturePipeline == null...
+// Create the session.
+await using ContinuousCaptureSession session = camera.CreateContinuousSession(highestResolution, CaptureTemplate.Preview, useCase);
+if (!await session.WaitForInitializationAsync()) return;
 
-yield return capturePipeline.CaptureSession.WaitForInitialization();
+// Primary converter, defaults to the shader set in QuestCameraManager.
+using YUVConverter primaryConverter = new(highestResolution);
 
-// Check if it opened successfully.
-if (capturePipeline.CaptureSession.CurrentState...
+// Secondary converter with the sepia effect, ComputeShaderKernel uses "CSMain" by default.
+using YUVConverter secondaryConverter = new(highestResolution, new ComputeShaderKernel(_sepiaShader));
 
-// Set the image texture.
-_rawImage.texture = capturePipeline.TextureConverter.FrameRenderTexture;
+// Register converters to session.
+session.NativeProxy.OnFrameReady += primaryConverter.OnFrameReady;
+session.NativeProxy.OnFrameReady += secondaryConverter.OnFrameReady;
 
-// Create a new YUVToRGBAConverter.
-YUVToRGBAConverter secondary = new YUVToRGBAConverter(highestResolution);
-
-// Assign it a different shader.
-secondary.Shader = _postProcessShader;
-
-// Link the capture session and the converter.
-capturePipeline.CaptureSession.OnFrameReady += secondary.OnFrameReady;
-
-// Set the second image to the post processed RenderTexture.
-_rawImagePostProcessed.texture = secondary.FrameRenderTexture;
+_rawImagePrimary.texture = primaryConverter.Texture;
+_rawImageSecondary.texture = secondaryConverter.Texture;
 ```
 
 ### YUV To RGBA Converter With Sepia Effect
@@ -105,68 +98,47 @@ _rawImagePostProcessed.texture = secondary.FrameRenderTexture;
 ```hlsl
 #pragma kernel CSMain
 
-// Input buffers (read-only)
 ByteAddressBuffer YBuffer;
 ByteAddressBuffer UBuffer;
 ByteAddressBuffer VBuffer;
 
-// Row strides
-uint YRowStride;
-uint UVRowStride;
+cbuffer StrideParams {
+    uint YRowStride;
+    uint UVRowStride;
 
-// Pixel strides
-uint UVPixelStride;
+    uint UVPixelStride;
+    uint StrideParamsPadding;
+}
 
-// Image dimensions
-uint TargetWidth;
-uint TargetHeight;
-
-// Output texture (read-write)
+uniform uint OutputTextureWidth;
+uniform uint OutputTextureHeight;
 RWTexture2D<float4> OutputTexture;
 
-// Helper function to get a byte from a ByteAddressBuffer.
-//  buffer: The ByteAddressBuffer.
-//  byteIndex: The *byte* index (offset) into the buffer.
-uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
-{
-    // Calculate the 32-bit word offset (each word is 4 bytes).
-    uint wordOffset = byteIndex / 4;
+uint GetByteFromBuffer(const ByteAddressBuffer buffer, const uint byteIndex) {
+    
+    const uint word = buffer.Load(byteIndex & ~3);
+    const uint byteInWord = byteIndex & 3;
 
-    // Load the 32-bit word containing the byte.
-    uint word = buffer.Load(wordOffset * 4); // MUST multiply by 4 for ByteAddressBuffer.Load()
-
-    // Calculate the byte position *within* the word (0, 1, 2, or 3).
-    uint byteInWord = byteIndex % 4;
-
-    // Extract the correct byte using bit shifts and masking.
     return (word >> (byteInWord * 8)) & 0xFF;
 }
 
 [numthreads(8, 8, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= TargetWidth || id.y >= TargetHeight)
+void CSMain(uint3 id : SV_DispatchThreadID) {
+
+    if (id.x >= OutputTextureWidth || id.y >= OutputTextureHeight)
         return;
-    
-    // The YUV stream is flipped, so we have to un-flip it.
-    uint flippedY = TargetHeight - 1 - id.y;
 
-    // Index of Y value in buffer.
-    uint yIndex = flippedY * YRowStride + id.x;
-    uint yValue = GetByteFromBuffer(YBuffer, yIndex);
-    
-    float3 luminance = float3(yValue, yValue, yValue) / 255.0;
+    const uint flippedY = OutputTextureHeight - 1 - id.y;
+    const uint yIndex = flippedY * YRowStride + id.x;
 
-    // --- Post-processing (Sepia Tone) ---
-    float4 color = float4(luminance.rgb, 1.0);
+    const uint y = GetByteFromBuffer(YBuffer, yIndex);
+    const float3 color = float3(y, y, y) / 255.0;
 
-    //Simple Sepia.  Could also do a vignette, bloom, etc. here.
-    float4 sepiaColor;
+    float3 sepiaColor;
     sepiaColor.r = dot(color.rgb, float3(0.393, 0.769, 0.189));
     sepiaColor.g = dot(color.rgb, float3(0.349, 0.686, 0.168));
     sepiaColor.b = dot(color.rgb, float3(0.272, 0.534, 0.131));
-    sepiaColor.a = 1.0;
 
-    OutputTexture[id.xy] = sepiaColor;
+    OutputTexture[id.xy] = float4(sepiaColor, 1.0);
 }
 ```

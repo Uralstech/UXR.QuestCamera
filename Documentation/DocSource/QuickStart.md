@@ -26,7 +26,7 @@ steps here: <https://github.com/RageAgainstThePixel/com.utilities.async>
 
 ### AndroidManifest.xml
 
-> [!NOTE]
+> [!TIP]
 > You can skip this step if you're using the Meta XR Core SDK v81 or higher by enabling the ‘Enabled Passthrough Camera Access' setting in your `OVR Manager` instance and regenerating your AndroidManifest using the SDK's tools.
 
 Add the following to your project's `AndroidManifest.xml` file:
@@ -86,10 +86,11 @@ it's referenced in, and it can be used in any scene loaded thereafter.
 supported resolutions, intrinsic information, and **supported stream use cases** of the physical camera device. You can get a camera associated with the left or right eye using
 `QuestCameraManager.TryGetDevice(CameraInfo.CameraEye, out CameraInfo)`. You can use `CameraInfo.CameraEye.Unknown` to get the Avatar Camera.
 
-Even though `CameraInfo` is an `IDisposable`, `QuestCameraManager` manages the disposal of the objects returned by the above APIs.
-You can get independently managed `CameraInfo` objects using `QuestCameraManager.GetDevices()`.
-
 If the device state changes, you can force the manager to query the hardware again and update the cached list by calling `QuestCameraManager.RefreshDevices()`.
+
+> [!NOTE]
+> Even though `CameraInfo` is an `IDisposable`, `QuestCameraManager` manages the disposal of the objects returned by the above APIs.
+> You can get independently managed `CameraInfo` objects using `QuestCameraManager.GetDevices()`.
 
 ### Opening the Camera
 
@@ -161,7 +162,8 @@ session.NativeProxy.OnFrameReady += (yBuf, ySize, uBuf, vBuf, uvSize, yRowStride
 };
 ```
 
-All callbacks triggered by `NativeProxy` (including `OnFrameReady`, `OnClosed`, `OnErred`, etc.) are invoked directly on a background Kotlin/Java thread for maximum performance.
+> [!WARNING]
+> All callbacks triggered by `NativeProxy` (including `OnFrameReady`, `OnClosed`, `OnErred`, etc.) are invoked directly on a background Kotlin/Java thread for maximum performance.
 
 #### Aborting Captures
 
@@ -210,7 +212,7 @@ public async Task TakePicture()
       ? StreamUseCase.StillCapture : StreamUseCase.None;
 
     await using CapturePipeline<OnDemandCaptureSession>? capturePipeline = cameraDevice.CreateOnDemandPipeline(resolution, useCase);
-    if (capturePipeline == null ||!await capturePipeline.Session.WaitForInitializationAsync())
+    if (capturePipeline == null || !await capturePipeline.Session.WaitForInitializationAsync())
     {
         Debug.LogError("Could not open capture session!");
         return;
@@ -252,7 +254,7 @@ Resolution resolution =...;
 
 // Create a GLES capture session with the camera at the chosen resolution.
 GLESCaptureSession session = await camera.CreateGLESSessionAsync(resolution, streamUseCase: StreamUseCase.Preview);
-if (!await session.WaitForInitializationAsync() || session.State!= ResourceState.Valid)
+if (!await session.WaitForInitializationAsync() || session.State != ResourceState.Valid)
 {
     Debug.LogError("Could not open camera session!");
 
@@ -326,7 +328,7 @@ public class CameraTest : MonoBehaviour
           ? StreamUseCase.Preview : StreamUseCase.None;
 
         _pipeline = _camera.CreateContinuousPipeline(highestResolution, CaptureTemplate.Preview, useCase);
-        if (_pipeline == null ||!await _pipeline.Session.WaitForInitializationAsync())
+        if (_pipeline == null || !await _pipeline.Session.WaitForInitializationAsync())
         {
             Debug.LogError("Could not create pipeline!");
             
@@ -343,8 +345,8 @@ public class CameraTest : MonoBehaviour
 
     private async void OnDestroy()
     {
-        if (_pipeline!= null) await _pipeline.DisposeAsync();
-        if (_camera!= null) await _camera.DisposeAsync();
+        if (_pipeline != null) await _pipeline.DisposeAsync();
+        if (_camera != null) await _camera.DisposeAsync();
     }
 }
 ```
