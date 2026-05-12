@@ -137,6 +137,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Discard all captures currently pending and in-progress as fast as possible.</summary>
+        /// <remarks>This makes the session unusable for the future, so call <see cref="DisposeAsync()"/> afterwards.</remarks>
         /// <param name="errorCode">Error code if the operation was unsuccessful.</param>
         /// <returns><see langword="true"/> if successful; <see langword="false"/> otherwise.</returns>
         /// <exception cref="ObjectDisposedException"/>
