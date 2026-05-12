@@ -1,11 +1,14 @@
 # Quick Start
 
 The example code provided in this quick start guide is for educational and demonstration purposes only. It may not represent best practices for production use.
-This quick start was last updated for **UXR.QuestCamera v3.1.0**.
+This quick start was last updated for **UXR.QuestCamera v4.0.0**.
 
 ## Breaking Changes Notice
 
-If you've just updated the package to v3.0.0 or later, it's recommended to check the [migration guide](~/DocSource/V3Migration.md) for information on breaking changes from v2.6.1, including async disposal patterns, renamed types (e.g., `CaptureSessionObject<T>` → `CapturePipeline<T>`), and nullable-aware APIs.
+If you've just updated the package to v4.0.0 or later, please re-read this guide for information on breaking changes from v3.1.3, as v4 is a complete rewrite of the package.
+For details regarding specific APIs, please check the reference manual.
+
+> **Important:** The `Yield()` extension used in v3 has been removed. All disposables are now true `IAsyncDisposable` and **MUST** be awaited (`await DisposeAsync()` or `await using`). Do not call them from a fire-and-forget coroutine.
 
 ## Setup
 
@@ -24,7 +27,7 @@ steps here: <https://github.com/RageAgainstThePixel/com.utilities.async>
 ### AndroidManifest.xml
 
 > [!NOTE]
-> You can skip this step if you're using the Meta XR Core SDK v81 or higher by enabling the ‘Enabled Passthrough Camera Access’ setting in your `OVR Manager` instance and regenerating your AndroidManifest using the SDK's tools.
+> You can skip this step if you're using the Meta XR Core SDK v81 or higher by enabling the ‘Enabled Passthrough Camera Access' setting in your `OVR Manager` instance and regenerating your AndroidManifest using the SDK's tools.
 
 Add the following to your project's `AndroidManifest.xml` file:
 
@@ -37,8 +40,27 @@ The `HEADSET_CAMERA` permission is required by Horizon OS for apps to access the
 You must request it at runtime before using any of this package's APIs, like so:
 
 ```csharp
-if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
-    Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
+if (!Permission.HasUserAuthorizedPermission(QuestCameraManager.HeadsetCameraPermission))
+    Permission.RequestUserPermission(QuestCameraManager.HeadsetCameraPermission);
+```
+
+> [!NOTE] 
+> If you are trying to access Meta's Avatar cameras instead of passthrough cameras, you should request `QuestCameraManager.AvatarCameraPermission` (`android.permission.CAMERA`) instead and add the appropriate `uses-permission` tag to your Manifest.
+
+### Gradle Template Setup
+
+Since this package aims to use the latest stable version of the Camera2 package, your app's launcher must be compiled against API level 36 or higher.
+This is not an issue if your app's Target API Level is 36 (Android 16) or higher. If you cannot update your Target API Level, like due to Meta's
+API Level 34 requirement, you can use this workaround:
+
+- Under Player -> Publishing Settings check "Custom Launcher Gradle Template" if it is unchecked.
+- Open the `launcherTemplate.gradle` file created in Assets->Plugins->Android, and change this line:
+```gradle
+compileSdk **APIVERSION**
+```
+to
+```gradle
+compileSdk 36
 ```
 
 ## Usage
@@ -46,175 +68,212 @@ if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermissi
 ### Device Support
 
 The Passthrough Camera API is restricted to the Quest 3 family and newer devices on Horizon OS version >= 74.
-Check if the current device is supported with the [`UCameraManager.IsSupported`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml#Uralstech_UXR_QuestCamera_UCameraManager_IsSupported) static property.
+Check support with [`QuestCameraManager.Support`](~/api/Uralstech.UXR.QuestCamera.QuestCameraManager.yml#Uralstech_UXR_QuestCamera_QuestCameraManager_Support).
+
+The property returns `PCASupport.Unsupported` on all non-Android platforms *and* **confirmed** unsupported Quest devices, `PCASupport.Supported` on Android **only**
+if the device is confirmed to support the API, and `PCASupport.Unknown` on Android if the Meta XR Core SDK is not included in your project.
+If you do not use the Meta XR Core SDK, it's recommended to manually confirm support.
 
 ### Choosing the Camera
 
-[`UCameraManager`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml) allows you to access [`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml)
-objects and create [`CameraDevice`](~/api/Uralstech.UXR.QuestCamera.CameraDevice.yml) objects. It's a persistent singleton, so add it to a GameObject
-in the first scene it's referenced in, and it can be used in any scene loaded thereafter.
+[`QuestCameraManager`](~/api/Uralstech.UXR.QuestCamera.QuestCameraManager.yml) allows you to access [`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml)
+objects and create [`CameraDevice`](~/api/Uralstech.UXR.QuestCamera.CameraDevice.yml) objects.
 
-`UCameraManager` creates a `CameraInfo` object for each camera the native plugin detects. Each `CameraInfo` then exposes the
-supported resolutions and intrinsic information of the physical camera device. You can get an array of all detected cameras in
-`UCameraManager.Cameras`, or request a camera associated with the left or right eye using `UCameraManager.GetCamera(CameraInfo.CameraEye)`.
+The package provides a prefab which includes the script and references the built-in conversion shader. It's a persistent singleton, so add it to the first scene
+it's referenced in, and it can be used in any scene loaded thereafter.
 
-Even though `CameraInfo` is an `IDisposable`, `UCameraManager` manages the disposal of the objects returned by the above APIs.
-You can get independently managed `CameraInfo` objects using `UCameraManager.GetCameraInfos()`.
+`QuestCameraManager` creates a `CameraInfo` object for each camera the native plugin detects. Each `CameraInfo` then exposes the
+supported resolutions, intrinsic information, and **supported stream use cases** of the physical camera device. You can get a camera associated with the left or right eye using
+`QuestCameraManager.TryGetDevice(CameraInfo.CameraEye, out CameraInfo)`. You can use `CameraInfo.CameraEye.Unknown` to get the Avatar Camera.
+
+Even though `CameraInfo` is an `IDisposable`, `QuestCameraManager` manages the disposal of the objects returned by the above APIs.
+You can get independently managed `CameraInfo` objects using `QuestCameraManager.GetDevices()`.
+
+If the device state changes, you can force the manager to query the hardware again and update the cached list by calling `QuestCameraManager.RefreshDevices()`.
 
 ### Opening the Camera
 
-You can open a camera device using `UCameraManager.OpenCamera(cameraId)`. Pass the `CameraInfo` object to this function
-(it is implicitly converted to the ID of the camera it represents). This method returns a `CameraDevice?`.
+You can open a camera device using `QuestCameraManager.OpenCamera(cameraInfo)`. This method returns a `CameraDevice`.
 
-`CameraDevice` is a wrapper for the native Camera2 `CameraDevice` class. It allows you to create capture sessions, which provide
+`CameraDevice` is a wrapper for the native Camera2 `CameraDevice` class. It allows you to create capture pipelines, which provide
 actual images from the camera. It takes a bit for the camera device to open, so you need to wait for it using
 `CameraDevice.WaitForInitialization()` (Coroutine) or `CameraDevice.WaitForInitializationAsync()` (Task).
 
-The task returns a boolean confirming that the camera opened successfully. When using the coroutine method, use the `CurrentState` property
-after yielding to confirm the camera opened. To get specific error reasons, check logcat or add listeners to
+The async task returns a boolean confirming that the camera opened successfully (`State == ResourceState.Valid`). When using the coroutine method, check `State` after yielding. To get specific error reasons, check logcat or add listeners to
 `CameraDevice.OnDeviceDisconnected` and `CameraDevice.OnDeviceErred`.
 
-If the camera couldn't open, release its native resources by awaiting `camera.DisposeAsync()`.
-You can yield async calls in coroutines using the package-provided `.Yield()` extension.
+If the camera couldn't open, release its native resources by awaiting `CameraDevice.DisposeAsync()`.
 
 ### Creating a Capture Session
 
-After opening a camera device, you can start a capture session. Keep in mind that you can't close the camera device while the
-capture session is still active.
+After opening a camera device, you can start a capture pipeline.
 
-You can create two kinds of capture sessions: continuous and on-demand. A continuous session streams a sequence of frames
-to Unity, each converted from YUV to RGBA. If you don’t need a live feed, you can save resources by using an on-demand capture session.
-On-demand sessions only process frames when explicitly requested.
+You can create two kinds of capture pipelines: continuous and on-demand. A continuous pipeline streams a sequence of frames
+to Unity, each converted from YUV to RGBA. If you don't need a live feed, you can save resources by using an on-demand capture pipeline.
 
-To create a new continuous session, use `CameraDevice.CreateContinuousCaptureSession(resolution)`.
-To create an on-demand session, use `CameraDevice.CreateOnDemandCaptureSession(resolution)`. Supported resolutions for the camera
-are exposed in `CameraInfo.SupportedResolutions` as an array of Unity’s `Resolution` objects. The last value in the array is usually
+To create a new continuous pipeline, use `CameraDevice.CreateContinuousPipeline(resolution)`.
+To create an on-demand pipeline, use `CameraDevice.CreateOnDemandPipeline(resolution)`. Supported resolutions for the camera
+are exposed in `CameraInfo.SupportedResolutions` as an array of Unity's `Resolution` objects. The last value in the array is usually
 the highest resolution.
 
 These methods return [`CapturePipeline<ContinuousCaptureSession>?`](~/api/Uralstech.UXR.QuestCamera.ContinuousCaptureSession.yml) and
 [`CapturePipeline<OnDemandCaptureSession>?`](~/api/Uralstech.UXR.QuestCamera.OnDemandCaptureSession.yml) objects respectively.
-Each contains the session object (`CapturePipeline<T>.CaptureSession`) and a YUV-to-RGBA texture converter (`CapturePipeline<T>.TextureConverter`).
+Each contains the session object (`CapturePipeline<T>.Session`) and a YUV-to-RGBA texture converter (`CapturePipeline<T>.Converter`).
 
-As with `CameraDevice`, wait for the session to open using `CaptureSession.WaitForInitialization()` or
-`CaptureSession.WaitForInitializationAsync()`, and check `CurrentState` when using the coroutine method.
-If the session could not be started successfully, release its native resources by awaiting `CapturePipeline<T>.DisposeAsync()`.
-For error details, check logcat or add listeners to `CaptureSession.OnSessionConfigurationFailed` and `CaptureSession.OnSessionRequestFailed`.
+As with `CameraDevice`, wait for the pipeline to open using `CaptureSession.WaitForInitialization()` or
+`CaptureSession.WaitForInitializationAsync()`, and check `State == ResourceState.Valid` when using the coroutine method.
+If the pipeline could not be started successfully, release its native resources by awaiting `CapturePipeline<T>.DisposeAsync()`.
 
-Once started, you’ll get frames from the camera in an ARGB32 `RenderTexture` stored in `TextureConverter.FrameRenderTexture`.
-For on-demand sessions, the `RenderTexture` remains black until you call `CaptureSession.RequestCapture()`, which can be called
-any number of times. The method returns a boolean indicating whether the request succeeded.
-You can then await `TextureConverter.GetNextFrameAsync()` to get the requested frame, along with the capture timestamp.
+Once started, you'll get frames from the camera in an ARGB32 `RenderTexture` accessible via `CapturePipeline<T>.Converter.Texture`.
+The latest timestamp is in `Converter.CaptureTimestamp`, and you can subscribe to `Converter.OnFrameProcessed` for a callback.
+For on-demand pipelines, call `CaptureSession.TryRequestCapture(out var error)` when you need a new frame.
 
-When you’re done with the session, dispose of it by awaiting `CapturePipeline<T>.DisposeAsync()`.
-This disposes both the texture converter and capture session simultaneously. You can then dispose of the camera device,
-ensuring you close the capture session *before* closing the camera.
+When you're done with the pipeline, dispose of it by awaiting `CapturePipeline<T>.DisposeAsync()`.
+This disposes both the converter and capture session simultaneously.
 
-See Unity’s `RenderTexture` documentation for information on reading pixel data to the CPU:
-[https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/RenderTexture.html)
+If you're also done using the `CameraDevice`, you can actually dispose of it before disposing the pipeline, as recommended by Android.
 
-#### Capture Templates
+#### Capture Template
 
-UXR.QuestCamera supports a subset of Camera2’s capture templates. By default,
-`CameraDevice.CreateContinuousCaptureSession` uses
-[TEMPLATE_PREVIEW](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW), and
-`OnDemandCaptureSession.RequestCapture()` uses
-[TEMPLATE_STILL_CAPTURE](https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_STILL_CAPTURE).
-You can change them by specifying one of the templates defined in the [`CaptureTemplate`](~/api/Uralstech.UXR.QuestCamera.CaptureTemplate.yml) enum.
+The optional `template` parameter maps directly to Android Camera2 capture templates. It provides the HAL with a baseline configuration. See the official documentation for the available values and guidance: <https://developer.android.com/reference/android/hardware/camera2/CameraDevice#TEMPLATE_PREVIEW>
+
+Note that only a subset of all Camera2 capture templates are supported by the package.
+
+#### Stream Use Case
+
+The optional `streamUseCase` parameter is a Camera2 performance hint that allows the camera HAL to optimize for your workload. Check `CameraInfo.SupportedStreamUseCases` to see what the device reports. See the official documentation: <https://developer.android.com/reference/android/hardware/camera2/params/OutputConfiguration#setStreamUseCase(long)>
+
+#### Graphics Format
+
+The optional `textureFormat` parameter overrides the Unity `GraphicsFormat` used for the pipeline's output `RenderTexture`. If not specified, the converter defaults to an ARGB32-compatible format.
+
+#### Accessing Raw YUV Data & Threading
+
+If you want to handle the raw YUV data yourself to avoid the overhead of RGBA conversion, you can skip the converter entirely and create just the session using `CreateContinuousSession()` or `CreateOnDemandSession()`.
+
+You can access the raw frame data by subscribing to the session's native proxy:
+
+```csharp
+ContinuousCaptureSession session = cameraDevice.CreateContinuousSession(resolution);
+session.NativeProxy.OnFrameReady += (yBuf, ySize, uBuf, vBuf, uvSize, yRowStride, uvRowStride, uvPixelStride, ts) => 
+{
+    // Process raw pointers here!
+};
+```
+
+All callbacks triggered by `NativeProxy` (including `OnFrameReady`, `OnClosed`, `OnErred`, etc.) are invoked directly on a background Kotlin/Java thread for maximum performance.
+
+#### Aborting Captures
+
+If you need to discard all pending and in-progress captures as fast as possible (for example, if a request hangs or the user cancels an action), you can call `CaptureSession.TryAbortCaptures(out ErrorCode errorCode)`.
+
+>[!WARNING]
+> **Capture sessions are NOT reusable after aborting.** Once you call `TryAbortCaptures()`, you must dispose of the current pipeline/session and create a new one to capture frames again.
 
 ### Releasing Resources
 
-Make sure to dispose of all camera resources *immediately* after you finish using them so the native camera device and
+Make sure to dispose of all camera resources as soon as possible after you finish using them so the native camera device and
 capture session are properly closed. You can also force closure synchronously, for example in `OnApplicationQuit`,
-where Unity won’t wait for async methods:
+where Unity won't wait for async methods:
 
 ```csharp
-Task.WhenAll(
-    captureSession.DisposeAsync().AsTask(),
+Task.WaitAll(
+    capturePipeline.DisposeAsync().AsTask(),
     cameraDevice.DisposeAsync().AsTask()
-).Wait();
+);
 
 Debug.Log("Synchronously closed resources.");
 ```
 
 ### Using the `await using` Pattern
 
-If you can use C#’s `await using` statement, you can simplify the entire process significantly. For example:
+If you can use C#'s `await using` statement, you can simplify the entire process significantly. For example:
 
 ```csharp
 public async Task TakePicture()
 {
-    if (UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left) is not CameraInfo cameraInfo)
+    if (!QuestCameraManager.Instance.TryGetDevice(CameraInfo.CameraEye.Left, out CameraInfo cameraInfo))
     {
         Debug.LogError("Could not get camera info!");
         return;
     }
 
-    await using CameraDevice? cameraDevice = UCameraManager.Instance.OpenCamera(cameraInfo);
-    if (cameraDevice == null || !await cameraDevice.WaitForInitializationAsync())
+    await using CameraDevice cameraDevice = QuestCameraManager.Instance.OpenCamera(cameraInfo);
+    if (!await cameraDevice.WaitForInitializationAsync())
     {
         Debug.LogError("Could not open camera!");
         return;
     }
 
     Resolution resolution = cameraInfo.SupportedResolutions[^1];
-    await using CapturePipeline<OnDemandCaptureSession>? capturePipeline = cameraDevice.CreateOnDemandCaptureSession(resolution);
-    if (capturePipeline == null || !await capturePipeline.CaptureSession.WaitForInitializationAsync())
+    StreamUseCase useCase = cameraInfo.SupportedStreamUseCases.Contains(StreamUseCase.StillCapture)
+      ? StreamUseCase.StillCapture : StreamUseCase.None;
+
+    await using CapturePipeline<OnDemandCaptureSession>? capturePipeline = cameraDevice.CreateOnDemandPipeline(resolution, useCase);
+    if (capturePipeline == null ||!await capturePipeline.Session.WaitForInitializationAsync())
     {
         Debug.LogError("Could not open capture session!");
         return;
     }
 
-    if (!capturePipeline.CaptureSession.RequestCapture())
+    if (!capturePipeline.Session.TryRequestCapture(out var error))
     {
-        Debug.LogError("Could not capture frame!");
+        Debug.LogError($"Could not capture frame! {error}");
         return;
     }
 
-    (RenderTexture texture, long timestamp) = await capturePipeline.TextureConverter.GetNextFrameAsync();
+    // Wait for the converter callback
+    var tcs = new TaskCompletionSource<(RenderTexture, long)>();
+    void OnFrame(RenderTexture tex, long ts) => tcs.TrySetResult((tex, ts));
+    capturePipeline.Converter.OnFrameProcessed += OnFrame;
+
+    (RenderTexture texture, long timestamp) = await tcs.Task;
+    capturePipeline.Converter.OnFrameProcessed -= OnFrame;
+
     // Process the RenderTexture here!
 }
 ```
 
-### Better Performance in OpenGL
+Note that an awaiter of `TakePicture` also has to wait for the camera device and pipeline to close.
 
-If your app uses the OpenGL Graphics API, you can use `SurfaceTextureCaptureSession` and `OnDemandSurfaceTextureCaptureSession`
-(in the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace) instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`.
-This can improve performance since SurfaceTexture-based sessions use low-level OpenGL shaders for YUV-to-RGBA conversion.
+### Save Memory in OpenGL
 
-They’re also simpler to use, as they don’t require additional components like texture converters or frame forwarders.
-Both provide a read-only `Texture` property that stores the camera images.
+If your app uses the OpenGL Graphics API, you can use `GLESCaptureSession`, in the `Uralstech.UXR.QuestCamera.GLES` namespace,
+instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage as it uses low-level OpenGL shaders
+for YUV-to-RGBA conversion on the GPU, without any copies.
 
-You can create them by calling `CameraDevice.CreateSurfaceTextureCaptureSession()` or
-`CameraDevice.CreateOnDemandSurfaceTextureCaptureSession()`, like so:
+It's also simpler to use, as it doesn't require an additional texture converter and provides a read-only `Texture` property (a `Texture2D`) that stores the camera images.
+
+You can create them by calling `CameraDevice.CreateGLESSessionAsync()`, like so:
 
 ```csharp
-CameraDevice camera = ...;
-Resolution resolution = ...;
+CameraDevice camera =...;
+Resolution resolution =...;
 
-// Create a capture session with the camera at the chosen resolution.
-SurfaceTextureCaptureSession? session = camera.CreateSurfaceTextureCaptureSession(resolution);
-if (session == null) { /* Handle error */ }
-yield return session.WaitForInitialization();
-
-// Check if it opened successfully
-if (session.CurrentState != NativeWrapperState.Opened)
+// Create a GLES capture session with the camera at the chosen resolution.
+GLESCaptureSession session = await camera.CreateGLESSessionAsync(resolution, streamUseCase: StreamUseCase.Preview);
+if (!await session.WaitForInitializationAsync() || session.State!= ResourceState.Valid)
 {
     Debug.LogError("Could not open camera session!");
 
-    // Release camera and session resources.
-    yield return session.DisposeAsync().Yield();
-    yield return camera.DisposeAsync().Yield();
-    yield break;
+    // Release camera and session resources - MUST be awaited
+    await session.DisposeAsync();
+    await camera.DisposeAsync();
+    return;
 }
+
+// Start continuous processing
+session.StartContinuousProcessing();
 
 // Set the image texture.
 _rawImage.texture = session.Texture;
 ```
 
+For on-demand capture, use `await session.ProcessSingleFrameAsync()` instead of `StartContinuousProcessing()`.
+
 ## Example Script
 
 ```csharp
-using System.Collections;
 using UnityEngine;
 using UnityEngine.Android;
 using UnityEngine.UI;
@@ -224,95 +283,78 @@ public class CameraTest : MonoBehaviour
 {
     [SerializeField] private RawImage _rawImage;
 
-    private IEnumerator Start()
+    private CameraDevice _camera;
+    private CapturePipeline<ContinuousCaptureSession> _pipeline;
+
+    private async void Start()
     {
         // Check if the current device is supported.
-        if (!UCameraManager.IsSupported)
+        if (QuestCameraManager.Support == PCASupport.Unsupported)
         {
             Debug.LogError("Runtime does not support the Passthrough Camera API!");
-            yield break;
+            return;
         }
 
         // Check for permission.
-        if (!Permission.HasUserAuthorizedPermission(UCameraManager.HeadsetCameraPermission))
+        if (!Permission.HasUserAuthorizedPermission(QuestCameraManager.HeadsetCameraPermission))
         {
-            // If the has not yet given the permission, request it and exit out of this function.
-            Permission.RequestUserPermission(UCameraManager.HeadsetCameraPermission);
-            yield break;
+            Permission.RequestUserPermission(QuestCameraManager.HeadsetCameraPermission);
+            return;
         }
 
         // Get a camera device.
-        CameraInfo? currentCamera = UCameraManager.Instance.GetCamera(CameraInfo.CameraEye.Left);
-        if (currentCamera == null)
+        if (!QuestCameraManager.Instance.TryGetDevice(CameraInfo.CameraEye.Left, out CameraInfo currentCamera))
         {
             Debug.LogError("No camera available!");
-            yield break;
+            return;
         }
 
-        // Get the supported resolutions of the camera and choose the highest resolution.
-        Resolution highestResolution = default;
-        foreach (Resolution resolution in currentCamera.SupportedResolutions)
-        {
-            if (resolution.width * resolution.height > highestResolution.width * highestResolution.height)
-                highestResolution = resolution;
-        }
+        // Choose the highest resolution.
+        Resolution highestResolution = currentCamera.SupportedResolutions[^1];
 
         // Open the camera.
-        CameraDevice? camera = UCameraManager.Instance.OpenCamera(currentCamera);
-        if (camera == null)
+        _camera = QuestCameraManager.Instance.OpenCamera(currentCamera);
+        if (!await _camera.WaitForInitializationAsync())
         {
             Debug.LogError("Could not open camera!");
-            yield break;
+            await _camera.DisposeAsync();
+            return;
         }
 
-        yield return camera.WaitForInitialization();
+        // Create a capture pipeline with StreamUseCase for best performance
+        StreamUseCase useCase = System.Array.Exists(currentCamera.SupportedStreamUseCases, u => u == StreamUseCase.Preview)
+          ? StreamUseCase.Preview : StreamUseCase.None;
 
-        // Check if it opened successfully
-        if (camera.CurrentState != NativeWrapperState.Opened)
+        _pipeline = _camera.CreateContinuousPipeline(highestResolution, CaptureTemplate.Preview, useCase);
+        if (_pipeline == null ||!await _pipeline.Session.WaitForInitializationAsync())
         {
-            Debug.LogError("Could not open camera!");
+            Debug.LogError("Could not create pipeline!");
+            
+            if (_pipeline != null)
+                await _pipeline.DisposeAsync();
 
-            // Very important, this frees up any resources held by the camera.
-            yield return camera.DisposeAsync().Yield();
-            yield break;
-        }
-
-        // Create a capture session with the camera, at the chosen resolution.
-        CapturePipeline<ContinuousCaptureSession>? sessionPipeline = camera.CreateContinuousCaptureSession(highestResolution);
-        if (sessionPipeline == null)
-        {
-            Debug.LogError("Could not create session!");
-            yield return camera.DisposeAsync().Yield();
-            yield break;
-        }
-
-        yield return sessionPipeline.CaptureSession.WaitForInitialization();
-
-        // Check if it opened successfully
-        if (sessionPipeline.CaptureSession.CurrentState != NativeWrapperState.Opened)
-        {
-            Debug.LogError("Could not open camera session!");
-
-            // Both of these are important for releasing the camera and session resources.
-            yield return sessionPipeline.DisposeAsync().Yield();
-            yield return camera.DisposeAsync().Yield();
-            yield break;
+            await _camera.DisposeAsync();
+            return;
         }
 
         // Set the image texture.
-        _rawImage.texture = sessionPipeline.TextureConverter.FrameRenderTexture;
+        _rawImage.texture = _pipeline.Converter.Texture;
+    }
 
-        // Optional: Dispose at end of use (e.g., in StopCoroutine or OnDestroy)
-        // yield return sessionPipeline.DisposeAsync().Yield();
-        // yield return camera.DisposeAsync().Yield();
+    private async void OnDestroy()
+    {
+        if (_pipeline!= null) await _pipeline.DisposeAsync();
+        if (_camera!= null) await _camera.DisposeAsync();
     }
 }
 ```
 
-## Sample - Digit Recognition with Unity Inference Engine
+## Sample - Digit Recognition with Unity Sentis
 
 The package contains a Computer Vision sample that uses an MNIST trained model to recognize handwritten digits, through the Camera API.
 
 ### Package Dependencies
 
-This sample requires the Unity Inference Engine package (`com.unity.ai.inference`) and was built with version 2.3.0 of the package.
+This sample requires the Unity Sentis (formerly known as Unity Inference Engine (formerly known as Unity Sentis)) package (`com.unity.ai.inference`) and was built with version 2.6.1 of the package.
+
+This sample also uses the old input system. There is no code that references it, but you will have to change the UI input module in the scenes.

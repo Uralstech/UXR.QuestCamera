@@ -8,7 +8,7 @@
       "url": "https://package.openupm.com"
     },
     "com.unity.ai.inference": {
-      "version": "2.6.0",
+      "version": "2.6.1",
       "depth": 0,
       "source": "registry",
       "dependencies": {

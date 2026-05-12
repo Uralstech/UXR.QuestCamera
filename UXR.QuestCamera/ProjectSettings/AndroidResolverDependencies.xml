@@ -1,6 +1,6 @@
 <dependencies>
   <packages>
-    <package>androidx.camera:camera-camera2:1.6.0</package>
+    <package>androidx.camera:camera-camera2:1.6.1</package>
   </packages>
   <files />
   <settings>
