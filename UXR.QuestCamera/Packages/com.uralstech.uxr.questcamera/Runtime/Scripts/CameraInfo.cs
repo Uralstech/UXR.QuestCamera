@@ -51,10 +51,10 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>The eye the camera is closest to.</summary>
         public readonly CameraEye Eye;
 
-        /// <summary>The position of the camera's optical center.</summary>
+        /// <summary>The position of the camera's optical center, converted from Android sensor space to Unity space.</summary>
         public readonly Vector3? LensPoseTranslation;
 
-        /// <summary>The orientation of the camera relative to the sensor coordinate system.</summary>
+        /// <summary>The orientation of the camera relative to the sensor coordinate system, converted from Android sensor rotation space to Unity rotation space.</summary>
         public readonly Quaternion? LensPoseRotation;
 
         /// <summary>The resolutions supported by this camera.</summary>
