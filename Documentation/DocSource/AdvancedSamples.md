@@ -74,23 +74,43 @@ By adding multiple texture converters to the same request, you can emulate the e
 single camera. For example, you can have one converter stream the camera image as-is, and another streaming with a simple Sepia
 post-processing effect:
 
+> [!WARNING]
+> This is not the best way to do this! Creating multiple `YUVConverter`s duplicates almost all conversion resources for each instance!
+>
+> Each `YUVConverter` allocates its own:
+> - CPU-side `NativeArray` copy buffers
+> - GPU-side `GraphicsBuffer`s
+> - Output `RenderTexture`
+> - Conversion `CommandBuffer`
+>
+> The CPU-side copy buffers and GPU-side graphics buffers are each approximately the size of one frame of
+> YUV image data. The output `RenderTexture` size depends on the selected texture format, but is usually
+> larger than an equivalent YUV texture.
+>
+> Please implement a custom converter which shares the above data between different consumers.
+
 ```csharp
 // Create the session.
-await using ContinuousCaptureSession session = camera.CreateContinuousSession(highestResolution, CaptureTemplate.Preview, useCase);
-if (!await session.WaitForInitializationAsync()) return;
+_session = _camera.CreateContinuousSession(highestResolution, CaptureTemplate.Preview, useCase);
+if (!await _session.WaitForInitializationAsync())
+{
+    await _session.DisposeAsync();
+    await _camera.DisposeAsync();
+    return;
+}
 
 // Primary converter, defaults to the shader set in QuestCameraManager.
-using YUVConverter primaryConverter = new(highestResolution);
+_primaryConverter = new YUVConverter(highestResolution);
 
 // Secondary converter with the sepia effect, ComputeShaderKernel uses "CSMain" by default.
-using YUVConverter secondaryConverter = new(highestResolution, new ComputeShaderKernel(_sepiaShader));
+_secondaryConverter = new YUVConverter(highestResolution, new ComputeShaderKernel(_sepiaShader));
 
 // Register converters to session.
-session.NativeProxy.OnFrameReady += primaryConverter.OnFrameReady;
-session.NativeProxy.OnFrameReady += secondaryConverter.OnFrameReady;
+_session.NativeProxy.OnFrameReady += _primaryConverter.OnFrameReady;
+_session.NativeProxy.OnFrameReady += _secondaryConverter.OnFrameReady;
 
-_rawImagePrimary.texture = primaryConverter.Texture;
-_rawImageSecondary.texture = secondaryConverter.Texture;
+_rawImagePrimary.texture = _primaryConverter.Texture;
+_rawImageSecondary.texture = _secondaryConverter.Texture;
 ```
 
 ### YUV To RGBA Converter With Sepia Effect
