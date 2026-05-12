@@ -66,7 +66,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## CameraDevice
 
-[`CameraDevice`](~/api/Uralstech.UXR.QuestCamera.CameraDevice.yml) is no longer a `MonoBehavior` and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
+`CameraDevice` is no longer a `MonoBehavior` and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
 
 - **Removed**
     - `Release()`, `Destroy()` — replaced by `DisposeAsync()`.
@@ -90,7 +90,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## CaptureSessionObject<T>
 
-`CaptureSessionObject<T>` has been replaced by [`CapturePipeline<T>`](~/api/Uralstech.UXR.QuestCamera.CapturePipeline-1.yml), which implements `IAsyncDisposable`.
+`CaptureSessionObject<T>` has been replaced by `CapturePipeline<T>`, which implements `IAsyncDisposable`.
 
 - **Removed**
     - `GameObject`
@@ -101,7 +101,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## ContinuousCaptureSession
 
-[`ContinuousCaptureSession`](~/api/Uralstech.UXR.QuestCamera.ContinuousCaptureSession.yml) is no longer a `MonoBehavior` and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
+`ContinuousCaptureSession` is no longer a `MonoBehavior` and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
 
 - **Removed**
     - `Release()` — replaced by `DisposeAsync()`.
@@ -120,7 +120,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## OnDemandCaptureSession
 
-[`OnDemandCaptureSession`](~/api/Uralstech.UXR.QuestCamera.OnDemandCaptureSession.yml) inherits from `ContinuousCaptureSession` and includes the same breaking changes, plus the following:
+`OnDemandCaptureSession` inherits from `ContinuousCaptureSession` and includes the same breaking changes, plus the following:
 
 - **Changed**
     - `RequestCapture()` now throws `ObjectDisposedException` if the `OnDemandCaptureSession` was disposed at the time of calling.
@@ -129,7 +129,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## YUVToRGBAConverter
 
-[`YUVToRGBAConverter`](~/api/Uralstech.UXR.QuestCamera.YUVToRGBAConverter.yml) is no longer a `MonoBehavior` and now implements `IDisposable`.
+`YUVToRGBAConverter` is no longer a `MonoBehavior` and now implements `IDisposable`.
 
 - **Removed**
     - `Release()` — replaced by `Dispose()`.
@@ -145,7 +145,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## SurfaceTextureCaptureSession
 
-[`SurfaceTextureCaptureSession`](~/api/Uralstech.UXR.QuestCamera.SurfaceTextureCapture.SurfaceTextureCaptureSession.yml) has been moved to the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace, no longer inherits from `ContinuousCaptureSession`, and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
+`SurfaceTextureCaptureSession` has been moved to the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace, no longer inherits from `ContinuousCaptureSession`, and now implements `AndroidJavaProxy` and `IAsyncDisposable`.
 
 - **Removed**
     - `Release()` — replaced by `DisposeAsync()`.
@@ -166,7 +166,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## OnDemandSurfaceTextureCaptureSession
 
-[`OnDemandSurfaceTextureCaptureSession`](~/api/Uralstech.UXR.QuestCamera.SurfaceTextureCapture.OnDemandSurfaceTextureCaptureSession.yml) (moved to the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace) inherits from `SurfaceTextureCaptureSession` and includes the same breaking changes, plus the following:
+`OnDemandSurfaceTextureCaptureSession` (moved to the `Uralstech.UXR.QuestCamera.SurfaceTextureCapture` namespace) inherits from `SurfaceTextureCaptureSession` and includes the same breaking changes, plus the following:
 
 - **Changed**
     - `RequestCapture(Action<Texture2D>)` is now `bool RequestCapture(Action<Texture2D, long>)` where the `long` callback parameter is the capture timestamp, returning the success of the capture, and throws `ObjectDisposedException` if the `OnDemandSurfaceTextureCaptureSession` was disposed at the time of calling.
@@ -180,7 +180,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## CameraInfo
 
-[`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml) is now a record type and implements `IDisposable`.
+`CameraInfo` is now a record type and implements `IDisposable`.
 
 - **Changed**
     - `CameraEye` now defines the following enumeration values:
@@ -205,7 +205,7 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 - **Changed**
     - `OnFrameReady`: `Action<IntPtr, IntPtr, IntPtr, int, int, int, long>` — moved to `ContinuousCaptureSession`.  
-      See the [`OnFrameReady` documentation](~/api/Uralstech.UXR.QuestCamera.ContinuousCaptureSession.yml#Uralstech_UXR_QuestCamera_ContinuousCaptureSession_OnFrameReady) for parameter details.
+      See the `OnFrameReady` documentation for parameter details.
 
 ---
 
@@ -218,4 +218,4 @@ _rawImage.texture = sessionObject.TextureConverter.FrameRenderTexture;
 
 ## UCameraManager
 
-All methods and properties in [`UCameraManager`](~/api/Uralstech.UXR.QuestCamera.UCameraManager.yml) are now nullable-aware with no breaking changes.
+All methods and properties in `UCameraManager` are now nullable-aware with no breaking changes.

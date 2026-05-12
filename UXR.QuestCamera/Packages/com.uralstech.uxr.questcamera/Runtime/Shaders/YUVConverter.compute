@@ -1,4 +1,4 @@
-// Copyright 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+// Copyright 2026 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,83 +14,72 @@
 
 #pragma kernel CSMain
 
-// Input buffers (read-only)
+// Camera frame
 ByteAddressBuffer YBuffer;
 ByteAddressBuffer UBuffer;
 ByteAddressBuffer VBuffer;
 
-// Row strides
-uint YRowStride;
-uint UVRowStride;
+cbuffer StrideParams {
+    // Row strides
+    uint YRowStride;
+    uint UVRowStride;
 
-// Pixel strides
-uint UVPixelStride;
+    // Pixel strides
+    uint UVPixelStride;
+    uint StrideParamsPadding;
+}
 
-// Image dimensions
-uint TargetWidth;
-uint TargetHeight;
-
-// Output texture (read-write)
+uniform uint OutputTextureWidth;
+uniform uint OutputTextureHeight;
 RWTexture2D<float4> OutputTexture;
 
-// Helper function to get a byte from a ByteAddressBuffer.
-//  buffer: The ByteAddressBuffer.
-//  byteIndex: The *byte* index (offset) into the buffer.
-uint GetByteFromBuffer(ByteAddressBuffer buffer, uint byteIndex)
-{
-    // Calculate the 32-bit word offset (each word is 4 bytes).
-    uint wordOffset = byteIndex / 4;
+// Converts byte array indexing to ByteAddressBuffer indexing and returns the value
+uint GetByteFromBuffer(const ByteAddressBuffer buffer, const uint byteIndex) {
+    
+    const uint word = buffer.Load(byteIndex & ~3);
+    const uint byteInWord = byteIndex & 3;
 
-    // Load the 32-bit word containing the byte.
-    uint word = buffer.Load(wordOffset * 4); // MUST multiply by 4 for ByteAddressBuffer.Load()
-
-    // Calculate the byte position *within* the word (0, 1, 2, or 3).
-    uint byteInWord = byteIndex % 4;
-
-    // Extract the correct byte using bit shifts and masking.
     return (word >> (byteInWord * 8)) & 0xFF;
 }
 
-// Helper function to convert YUV to RGB.
-float3 YUVtoRGB(uint y, uint u, uint v)
-{
-    // ITU-R BT.601 standard convertion
-    
-    float yf = float(y) +  16.0;
-    float uf = float(u) - 128.0;
-    float vf = float(v) - 128.0;
-    
-    float3 rgb = float3(
-        yf + 1.402 * vf,
-        yf - 0.344136 * uf - 0.714136 * vf,
-        yf + 1.772 * uf
+// Converts Full Range BT.601 YUV data to RGB, 0-1 range
+// as per https://www.ecma-international.org/wp-content/uploads/ECMA_TR-98_1st_edition_june_2009.pdf
+float3 BT601ToRGB(const uint y, const uint u, const uint v) {
+
+    const float yf = float(y);
+    const float cb = float(u) - 128;
+    const float cr = float(v) - 128;
+
+    const float3 rgb = float3(
+        yf + 1.402 * cr,
+        yf - 0.34414 * cb - 0.71414 * cr,
+        yf + 1.772 * cb
     );
-    
-    return saturate(rgb / 255.0);
+
+    return saturate(rgb / 255);
 }
 
 [numthreads(8, 8, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
-{
-    if (id.x >= TargetWidth || id.y >= TargetHeight)
+void CSMain(uint3 id : SV_DispatchThreadID) {
+
+    if (id.x >= OutputTextureWidth || id.y >= OutputTextureHeight)
         return;
-    
+
     // The YUV stream is flipped, so we have to un-flip it.
-    uint flippedY = TargetHeight - 1 - id.y;
+    const uint flippedY = OutputTextureHeight - 1 - id.y;
 
     // Index of Y value in buffer.
-    uint yIndex = flippedY * YRowStride + id.x;
-    
+    const uint yIndex = flippedY * YRowStride + id.x;
+
     // Index of the U and V values in the buffer. They are the same for YUV_420_888:
     // https://developer.android.com/reference/android/graphics/ImageFormat#YUV_420_888
-    uint uvIndex = (flippedY / 2) * UVRowStride + (id.x / 2) * UVPixelStride;
-   
+    const uint uvIndex = (flippedY / 2) * UVRowStride + (id.x / 2) * UVPixelStride;
+
     // Get Y, U, and V values.
-    uint yValue = GetByteFromBuffer(YBuffer, yIndex);
-    uint uValue = GetByteFromBuffer(UBuffer, uvIndex);
-    uint vValue = GetByteFromBuffer(VBuffer, uvIndex);
+    const uint y = GetByteFromBuffer(YBuffer, yIndex);
+    const uint u = GetByteFromBuffer(UBuffer, uvIndex);
+    const uint v = GetByteFromBuffer(VBuffer, uvIndex);
     
-    // Convert them and set the output texture.
-    float3 converted = YUVtoRGB(yValue, uValue, vValue);
-    OutputTexture[id.xy] = float4(converted.rgb, 1.0);
+    const float3 color = BT601ToRGB(y, u, v);
+    OutputTexture[id.xy] = float4(color, 1.0);
 }

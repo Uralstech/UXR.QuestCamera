@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "UCamera"
-include(":UCamera")
+rootProject.name = "UXR.QuestCamera"
+include(":app")

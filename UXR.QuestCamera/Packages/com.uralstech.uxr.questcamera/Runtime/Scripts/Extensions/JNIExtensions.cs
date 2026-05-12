@@ -24,18 +24,15 @@ namespace Uralstech.UXR.QuestCamera
     public static class JNIExtensions
     {
         /// <summary>
-        /// Unboxes and creates a global ref of a native ByteBuffer from a native Object array, and returns its direct buffer address.
+        /// Retrieves a ByteBuffer object from a native object array and obtains its direct memory address.
         /// </summary>
-        /// <param name="args">The native array to take the buffer from.</param>
-        /// <param name="index">The index of the buffer object in the native array.</param>
-        /// <returns>The global reference and the direct buffer address.</returns>
-        public static unsafe (IntPtr obj, IntPtr ptr) UnboxAndCreateGlobalRefForByteBufferElement(IntPtr args, int index)
+        /// <param name="args">JNI object array containing the ByteBuffer.</param>
+        /// <param name="index">Index of the ByteBuffer within the array.</param>
+        /// <returns>A tuple containing the local JNI reference to the ByteBuffer, and the pointer to its direct buffer memory.</returns>
+        public static unsafe (IntPtr obj, IntPtr ptr) UnboxByteBufferElement(IntPtr args, int index)
         {
             IntPtr localRef = AndroidJNI.GetObjectArrayElement(args, index);
-            IntPtr globalRef = AndroidJNI.NewGlobalRef(localRef);
-            AndroidJNI.DeleteLocalRef(localRef);
-
-            return (globalRef, (IntPtr)AndroidJNI.GetDirectBufferAddress(globalRef));
+            return (localRef, (IntPtr)AndroidJNI.GetDirectBufferAddress(localRef));
         }
 
         /// <summary>
@@ -96,27 +93,6 @@ namespace Uralstech.UXR.QuestCamera
 
             AndroidJNI.DeleteLocalRef(ptr);
             return value;
-        }
-
-        /// <summary>
-        /// Unboxes a native nullable integer field into an int?.
-        /// </summary>
-        /// <param name="fieldName">The field to unbox.</param>
-        /// <returns>The unboxed value.</returns>
-        public static int? GetNullableInt(this AndroidJavaObject current, string fieldName)
-        {
-            using AndroidJavaObject? nullable = current.Get<AndroidJavaObject>(fieldName);
-            return nullable?.Call<int>("intValue");
-        }
-
-        /// <summary>
-        /// Unboxes a native nullable float field into an float?.
-        /// </summary>
-        /// <inheritdoc cref="GetNullableInt(AndroidJavaObject, string)"/>
-        public static float? GetNullableFloat(this AndroidJavaObject current, string fieldName)
-        {
-            using AndroidJavaObject? nullable = current.Get<AndroidJavaObject>(fieldName);
-            return nullable?.Call<float>("floatValue");
         }
     }
 }

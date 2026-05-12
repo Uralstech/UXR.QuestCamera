@@ -1,4 +1,4 @@
-// Copyright 2025 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+// Copyright 2026 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -13,330 +13,335 @@
 // limitations under the License.
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
-using Uralstech.UXR.QuestCamera.SurfaceTextureCapture;
+using UnityEngine.Experimental.Rendering;
+using Uralstech.UXR.QuestCamera.GLES;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
-    /// <summary>
-    /// A wrapper for a native Camera2 CameraDevice.
-    /// </summary>
-    public class CameraDevice : AndroidJavaProxy, IAsyncDisposable
+    /// <summary>Manages a camera device.</summary>
+    public sealed class CameraDevice : StatefulResource, IAsyncDisposable
     {
-        /// <summary>
-        /// Error codes that can be returned by the native CameraDevice wrapper.
-        /// </summary>
+        /// <summary>Error codes from the native plugin.</summary>
         public enum ErrorCode
         {
-            /// <summary>Unknown error.</summary>
-            Unknown = 0,
+            Unknown                 = 0,
 
             /// <summary>The camera device is in use already.</summary>
-            CameraInUse = 1,
+            CameraInUse             = 1,
 
             /// <summary>The camera device could not be opened because there are too many other open camera devices.</summary>
-            MaxCamerasInUse = 2,
+            MaxCamerasInUse         = 2,
 
             /// <summary>The camera device could not be opened due to a device policy.</summary>
-            CameraDisabled = 3,
+            CameraDisabled          = 3,
 
             /// <summary>The camera device has encountered a fatal error.</summary>
-            CameraDeviceError = 4,
+            CameraDeviceError       = 4,
 
             /// <summary>The camera service has encountered a fatal error.</summary>
-            CameraServiceError = 5,
+            CameraServiceError      = 5,
 
-            /// <summary>The native code encountered a CameraAccessException.</summary>
-            CameraAccessException = 1000,
+            /// <summary>
+            /// cameraId was null, or the cameraId does not match any currently or previously available camera device.
+            /// </summary>
+            IllegalArgumentError    = 1000,
 
-            /// <summary>The native code encountered a SecurityException.</summary>
-            SecurityException = 1001,
+            /// <summary>The camera is disabled by device policy, has been disconnected, or is being used by a higher-priority camera API client.</summary>
+            CameraAccessError       = 1001,
+
+            /// <summary>The application does not have permission to access the camera.</summary>
+            SecurityError           = 1002,
         }
 
-        /// <summary>
-        /// The current assumed state of the native CameraDevice wrapper.
-        /// </summary>
-        public NativeWrapperState CurrentState { get; private set; }
-
-        /// <summary>
-        /// The ID of the camera being wrapped.
-        /// </summary>
-        public readonly string CameraId;
-
-        /// <summary>
-        /// Invoked when the CameraDevice is opened, along with the camera ID.
-        /// </summary>
-        public event Action<string>? OnDeviceOpened;
-
-        /// <summary>
-        /// Invoked when the CameraDevice is closed, along with the camera ID.
-        /// </summary>
-        /// <remarks>
-        /// The camera ID may be <see langword="null"/> if the camera could not be opened in the first place.
-        /// </remarks>
-        public event Action<string?>? OnDeviceClosed;
-
-        /// <summary>
-        /// Invoked when the CameraDevice encounters an error, along with the camera ID.
-        /// </summary>
-        /// <remarks>
-        /// The camera ID may be <see langword="null"/> if the camera could not be opened in the first place.
-        /// </remarks>
-        public event Action<string?, ErrorCode>? OnDeviceErred;
-
-        /// <summary>
-        /// Invoked when the CameraDevice is disconnected, along with the camera ID.
-        /// </summary>
-        public event Action<string>? OnDeviceDisconnected;
-
-        internal protected AndroidJavaObject? _cameraDevice;
-
-        public CameraDevice(string id) : base("com.uralstech.ucamera.CameraDeviceWrapper$Callbacks")
+        /// <summary>Java proxy to handle native callbacks.</summary>
+        /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
+        public sealed class Proxy : AndroidJavaProxy
         {
-            CameraId = id;
-        }
+            private const string ClassName = "com.uralstech.uxr.questcamera.CameraDeviceManager$Callbacks";
 
-        /// <inheritdoc/>
-        public override IntPtr Invoke(string methodName, IntPtr javaArgs)
-        {
-            string? cameraId;
-            switch (methodName)
+            /// <summary>Invoked when the camera is opened.</summary>
+            public event Action? OnOpened;
+
+            /// <summary>Invoked when the camera is closed.</summary>
+            public event Action? OnClosed;
+
+            /// <summary>Invoked when the camera encounters an error.</summary>
+            public event Action<ErrorCode>? OnErred;
+            
+            /// <summary>Invoked when the camera is disconnected.</summary>
+            public event Action? OnDisconnected;
+
+            public Proxy() : base(ClassName) { }
+
+            /// <inheritdoc/>
+            /// <exclude />
+            public override IntPtr Invoke(string methodName, IntPtr javaArgs)
             {
-                case "onDeviceOpened":
-                    CurrentState = NativeWrapperState.Opened;
+                switch (methodName)
+                {
+                    case "onOpened":
+                        OnOpened?.Invoke(); break;
+                    
+                    case "onClosed":
+                        OnClosed?.Invoke(); break;
 
-                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceOpened.InvokeOnMainThread(cameraId!).HandleAnyException();
-                    return IntPtr.Zero;
+                    case "onErred":
+                        int errorCode = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        OnErred?.Invoke((ErrorCode)errorCode); break;
 
-                case "onDeviceClosed":
-                    CurrentState = NativeWrapperState.Closed;
+                    case "onDisconnected":
+                        OnDisconnected?.Invoke(); break;
 
-                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceClosed.InvokeOnMainThread(cameraId).HandleAnyException();
-                    return IntPtr.Zero;
+                    default:
+                        return base.Invoke(methodName, javaArgs);
+                }
 
-                case "onDeviceDisconnected":
-                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    OnDeviceDisconnected.InvokeOnMainThread(cameraId!).HandleAnyException();
-                    return IntPtr.Zero;
-
-                case "onDeviceErred":
-                    cameraId = JNIExtensions.UnboxStringElement(javaArgs, 0);
-                    int errorCode = JNIExtensions.UnboxIntElement(javaArgs, 1);
-                    OnDeviceErred.InvokeOnMainThread(cameraId, (ErrorCode)errorCode).HandleAnyException();
-                    return IntPtr.Zero;
+                return IntPtr.Zero;
             }
-
-            return base.Invoke(methodName, javaArgs);
-        }
-
-        /// <summary>
-        /// Waits until the CameraDevice opens or errs out.
-        /// </summary>
-        public WaitUntil WaitForInitialization()
-        {
-            ThrowIfDisposed();
-            return new(() => CurrentState != NativeWrapperState.Initializing);
-        }
-
-        #if UNITY_6000_0_OR_NEWER
-        /// <summary>
-        /// Waits until the CameraDevice opens or errs out.
-        /// </summary>
-        /// <param name="timeout">Maximum time to wait.</param>
-        /// <param name="onTimeout">The action to perform when the <paramref name="timeout"/> is reached.</param>
-        /// <param name="timeoutMode">Mode in which to measure time to determine <paramref name="timeout"/>.</param>
-        public WaitUntil WaitForInitialization(TimeSpan timeout, Action onTimeout, WaitTimeoutMode timeoutMode = WaitTimeoutMode.Realtime)
-        {
-            ThrowIfDisposed();
-            return new(() => CurrentState != NativeWrapperState.Initializing, timeout, onTimeout, timeoutMode);
-        }
-        #endif
-
-        /// <summary>
-        /// Waits until the CameraDevice opens or errs out.
-        /// </summary>
-        /// <returns><see langword="true"/> if the device was opened successfully, <see langword="false"/> otherwise.</returns>
-        public async Task<bool> WaitForInitializationAsync(CancellationToken token = default)
-        {
-            ThrowIfDisposed();
-            if (CurrentState != NativeWrapperState.Initializing)
-                return CurrentState == NativeWrapperState.Opened;
-
-            TaskCompletionSource<bool> wrapperState = new();
-            void OnOpened(string _) => wrapperState.SetResult(true);
-            void OnClosed(string? _) => wrapperState.SetResult(false);
-
-            OnDeviceOpened += OnOpened;
-            OnDeviceClosed += OnClosed;
-
-            try
-            {
-                using CancellationTokenRegistration _ = token.Register(wrapperState.SetCanceled);
-                return await wrapperState.Task;
-            }
-            finally
-            {
-                OnDeviceOpened -= OnOpened;
-                OnDeviceClosed -= OnClosed;
-            }
-        }
-
-        private bool _disposed = false;
-
-        /// <summary>
-        /// Closes and disposes the camera device.
-        /// </summary>
-        public async ValueTask DisposeAsync()
-        {
-            if (_disposed)
-                return;
-
-            _disposed = true;
-
-            if (_cameraDevice != null)
-            {
-                TaskCompletionSource<bool> tcs = new();
-                void OnDisposed(string? _) => tcs.TrySetResult(true);
-
-                OnDeviceClosed += OnDisposed;
-                if (!_cameraDevice.Call<bool>("close"))
-                    tcs.TrySetResult(true);
-
-                await tcs.Task;
-
-                OnDeviceClosed -= OnDisposed;
-                _cameraDevice.Dispose();
-                _cameraDevice = null;
-            }
-
-            GC.SuppressFinalize(this);
         }
         
-        ~CameraDevice()
+        /// <summary>Invoked when the camera is opened, along with the camera ID.</summary>
+        public event Action<string>? OnDeviceOpened;
+
+        /// <summary>Invoked when the camera is closed, along with the camera ID.</summary>
+        public event Action<string>? OnDeviceClosed;
+
+        /// <summary>Invoked when the camera encounters an error, along with the camera ID.</summary>
+        public event Action<string, ErrorCode>? OnDeviceErred;
+
+        /// <summary>Invoked when the camera is disconnected, along with the camera ID.</summary>
+        public event Action<string>? OnDeviceDisconnected;
+
+        /// <summary>The ID of the camera.</summary>
+        public readonly string CameraId;
+
+        /// <summary>Native callback handler.</summary>
+        public readonly Proxy NativeProxy;
+
+        internal readonly AndroidJavaObject _native;
+        private bool _disposed;
+
+        public CameraDevice(string cameraId)
         {
-            Debug.LogWarning(
-                $"A {nameof(CameraDevice)} object was finalized by the garbage collector without being properly disposed.\n" +
-                $"The native camera device was **not closed** and resources may still be held.\n\n" +
-                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
-                $"    await using var camera = UCameraManager.Instance.OpenCamera(...);\n" +
-                $"This ensures that the camera is closed on the correct Unity thread."
-            );
+            const string ClassName = "com.uralstech.uxr.questcamera.CameraDeviceManager";
+
+            CameraId = cameraId;
+
+            NativeProxy = new Proxy();
+            NativeProxy.OnOpened        += OnOpenedNative;
+            NativeProxy.OnClosed        += OnClosedNative;
+            NativeProxy.OnErred         += OnErredNative;
+            NativeProxy.OnDisconnected  += OnDisconnectedNative;
+
+            _native = new AndroidJavaObject(ClassName, NativeProxy);
         }
 
-        /// <summary>
-        /// Creates a new repeating/continuous capture session for use.
-        /// </summary>
-        /// <remarks>
-        /// Once you have finished using the capture session, call <see cref="CapturePipeline{T}.DisposeAsync()"/>
-        /// to close and dispose the session to free up native and compute shader resources.
-        /// </remarks>
-        /// <param name="resolution">The resolution of the capture.</param>
-        /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
-        public CapturePipeline<ContinuousCaptureSession>? CreateContinuousCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        /// <summary>Creates a continuous capture pipeline (session + linked YUV to RGBA converter) for use.</summary>
+        /// <param name="textureFormat">See <see cref="YUVConverter(Resolution, ComputeShaderKernel, GraphicsFormat)"/> for default texture format.</param>
+        /// <returns>The created pipeline, or <see langword="null"/> if creation failed.</returns>
+        /// <inheritdoc cref="CreateContinuousSession"/>
+        public CapturePipeline<ContinuousCaptureSession>? CreateContinuousPipeline(Resolution resolution,
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None, GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
-            ContinuousCaptureSession session = new();
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createContinuousCaptureSession", session, resolution.width, resolution.height, (int)captureTemplate);
-            if (nativeObject is null)
-            {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+            ContinuousCaptureSession session = CreateContinuousSession(resolution, template, streamUseCase);
+            if (session.State == ResourceState.Invalid)
                 return null;
-            }
 
-            YUVToRGBAConverter converter = new(resolution);
-            session.OnFrameReady += converter.OnFrameReady;
-            session._captureSession = nativeObject;
+            YUVConverter converter = new(resolution, textureFormat);
+            session.NativeProxy.OnFrameReady += converter.OnFrameReady;
 
             return new CapturePipeline<ContinuousCaptureSession>(session, converter);
         }
 
-        /// <summary>
-        /// Creates a new on-demand capture session for use.
-        /// </summary>
-        /// <inheritdoc cref="CreateContinuousCaptureSession(Resolution, CaptureTemplate)"/>
-        public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandCaptureSession(Resolution resolution)
+        /// <summary>Creates an on-demand capture pipeline (session + linked YUV to RGBA converter) for use.</summary>
+        /// <param name="textureFormat">See <see cref="YUVConverter(Resolution, ComputeShaderKernel, GraphicsFormat)"/> for default texture format.</param>
+        /// <returns>The created pipeline, or <see langword="null"/> if creation failed.</returns>
+        /// <inheritdoc cref="CreateOnDemandSession"/>
+        public CapturePipeline<OnDemandCaptureSession>? CreateOnDemandPipeline(Resolution resolution,
+            StreamUseCase streamUseCase = StreamUseCase.None, GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
-            OnDemandCaptureSession session = new();
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createOnDemandCaptureSession", session, resolution.width, resolution.height);
-            if (nativeObject is null)
-            {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
+            OnDemandCaptureSession session = CreateOnDemandSession(resolution, streamUseCase);
+            if (session.State == ResourceState.Invalid)
                 return null;
-            }
 
-            YUVToRGBAConverter converter = new(resolution);
-            session.OnFrameReady += converter.OnFrameReady;
-            session._captureSession = nativeObject;
+            YUVConverter converter = new(resolution, textureFormat);
+            session.NativeProxy.OnFrameReady += converter.OnFrameReady;
 
             return new CapturePipeline<OnDemandCaptureSession>(session, converter);
         }
 
-        /// <summary>
-        /// Creates a new OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="ContinuousCaptureSession"/>.
-        /// </summary>
+        /// <summary>Creates a continuous capture session for use.</summary>
+        /// <remarks>To shut down and dispose the session, use <see cref="CaptureSessionBase{T}.DisposeAsync()"/> (inherited by <see cref="ContinuousCaptureSession"/>).</remarks>
+        /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
+        /// <param name="template">The template to use for the captures.</param>
+        /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="ContinuousCaptureSession"/>) for the state of the session.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public ContinuousCaptureSession CreateContinuousSession(Resolution resolution, CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None)
+        {
+            ThrowIfDisposed();
+            long[] streamUseCases = streamUseCase is not StreamUseCase.None
+                ? new long[] { (long)streamUseCase }
+                : Array.Empty<long>();
+
+            ContinuousCaptureSession session = new(resolution);
+
+            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)template, streamUseCases);
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
+            return session;
+        }
+
+        /// <summary>Creates an on-demand capture session for use.</summary>
+        /// <remarks>To shut down and dispose the session, use <see cref="CaptureSessionBase{T}.DisposeAsync()"/> (inherited by <see cref="OnDemandCaptureSession"/>).</remarks>
+        /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
+        /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="OnDemandCaptureSession"/>) for the state of the session.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public OnDemandCaptureSession CreateOnDemandSession(Resolution resolution, StreamUseCase streamUseCase = StreamUseCase.None)
+        {
+            ThrowIfDisposed();
+            long[] streamUseCases = streamUseCase is not StreamUseCase.None
+                ? new long[] { (long)StreamUseCase.Preview, (long)streamUseCase }
+                : Array.Empty<long>();
+
+            OnDemandCaptureSession session = new(resolution);
+
+            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)CaptureTemplate.Preview, streamUseCases);
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
+            return session;
+        }
+
+        /// <summary>Creates a generic OpenGL-ES based capture session.</summary>
         /// <remarks>
-        /// This experimental capture session uses a native OpenGL texture to capture images for better performance and
-        /// requires OpenGL ES 3.0 as the project's graphics API. Works with single and multi-threaded rendering.
-        /// 
-        /// Once you have finished using the capture session, call <see cref="SurfaceTextureCaptureSession.DisposeAsync()"/>
-        /// to dispose the session to free up native resources.
+        /// This initializes a native capture session backed by a SurfaceTexture and a GLES conversion job.
+        /// The returned session must be started manually (e.g., via its run loop or single-run methods)
+        /// and disposed using <see cref="GLESCaptureSession.DisposeAsync"/>.
         /// </remarks>
-        /// <param name="resolution">The resolution of the capture.</param>
-        /// <param name="captureTemplate">The capture template to use for the capture</param>
-        /// <returns>A new capture session wrapper, or <see langword="null"/> if any errors occurred.</returns>
-        public SurfaceTextureCaptureSession? CreateSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
+        /// <param name="template">The template to use for the captures.</param>
+        /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
+        /// <param name="textureFormat">The output texture format for the converted frames. See <see cref="GLESCaptureSession(Resolution, GraphicsFormat)"/> for default.</param>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="GLESCaptureSession"/>) for the state of the session.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public async ValueTask<GLESCaptureSession> CreateGLESSessionAsync(Resolution resolution,
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
+            GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
+            long[] streamUseCases = streamUseCase is not StreamUseCase.None
+                ? new long[] { (long)streamUseCase }
+                : Array.Empty<long>();
 
-            long timestamp = DateTime.Now.Ticks;
-            SurfaceTextureCaptureSession session = new(resolution);
+            GLESCaptureSession session = new(resolution, textureFormat);
+            uint textureId = await session.SetupJobAsync();
 
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
-            if (nativeObject is null)
+            if (textureId == 0)
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
-                return null;
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+                return session;
             }
 
-            session._captureSession = nativeObject;
-            session.InitializeNative(timestamp);
+            bool initResult = _native.Call<bool>("initializeGLESSession", session._native, (int)template, streamUseCases, resolution.width, resolution.height, (int)textureId);
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
             return session;
         }
 
-        /// <summary>
-        /// Creates a new on-demand OpenGL SurfaceTexture based capture session for use. Equivalent to <see cref="OnDemandCaptureSession"/>.
-        /// </summary>
-        /// <inheritdoc cref="CreateSurfaceTextureCaptureSession(Resolution, CaptureTemplate)"/>
-        public OnDemandSurfaceTextureCaptureSession? CreateOnDemandSurfaceTextureCaptureSession(Resolution resolution, CaptureTemplate captureTemplate = CaptureTemplate.Preview)
+        /// <summary>Closes the camera (if not already closed) and releases native resources.</summary>
+        public async ValueTask DisposeAsync()
         {
-            ThrowIfDisposed();
+            if (_disposed)
+                return;
+            
+            _disposed = true;
+            State = ResourceState.Invalid;
+            
+            TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnClosed() => tcs.TrySetResult(true);
+            NativeProxy.OnClosed += OnClosed;
 
-            long timestamp = DateTime.Now.Ticks;
-            OnDemandSurfaceTextureCaptureSession session = new(resolution);
-
-            AndroidJavaObject? nativeObject = _cameraDevice?.Call<AndroidJavaObject>("createSurfaceTextureCaptureSession", timestamp, session, resolution.width, resolution.height, (int)captureTemplate);
-            if (nativeObject is null)
+            try
             {
-                UCameraManager.Instance.StartCoroutine(session.DisposeAsync().Yield());
-                return null;
+                if (_native.Call<bool>("close"))
+                    await tcs.Task;
+            }
+            finally
+            {
+                NativeProxy.OnClosed        -= OnClosed;
+
+                NativeProxy.OnOpened        -= OnOpenedNative;
+                NativeProxy.OnClosed        -= OnClosedNative;
+                NativeProxy.OnErred         -= OnErredNative;
+                NativeProxy.OnDisconnected  -= OnDisconnectedNative;
+
+                _native.Dispose();
             }
 
-            session._captureSession = nativeObject;
-            session.InitializeNative(timestamp);
-            return session;
+            GC.SuppressFinalize(this);
         }
 
-        private void ThrowIfDisposed()
+        #region Callbacks
+        private void OnOpenedNative()
+        {
+            State = ResourceState.Valid;
+            OnDeviceOpened?.OnMainThread(CameraId).Forget();
+        }
+
+        private void OnClosedNative()
+        {
+            State = ResourceState.Invalid;
+            OnDeviceClosed?.OnMainThread(CameraId).Forget();
+        }
+
+        private void OnErredNative(ErrorCode code)
+        {
+            State = ResourceState.Invalid;
+            OnDeviceErred?.OnMainThread(CameraId, code).Forget();
+        }
+
+        private void OnDisconnectedNative()
+        {
+            State = ResourceState.Invalid;
+            OnDeviceDisconnected?.OnMainThread(CameraId).Forget();
+        }
+
+        #endregion
+
+        protected override void ThrowIfDisposed()
         {
             if (_disposed)
                 throw new ObjectDisposedException(nameof(CameraDevice));
+        }
+
+        ~CameraDevice()
+        {
+            Debug.LogWarning(
+                $"A {nameof(CameraDevice)} object was finalized by the garbage collector without being properly disposed.\n" +
+                $"The native camera device **may not be closed** and resources may still be held.\n\n" +
+                $"To fix this, ensure that you explicitly call `{nameof(DisposeAsync)}` or wrap it in an `await using` block:\n" +
+                $"    await using var camera = QuestCameraManager.Instance.OpenCamera(...);\n" +
+                $"This ensures that the camera is closed on the correct Unity thread."
+            );
         }
     }
 }
