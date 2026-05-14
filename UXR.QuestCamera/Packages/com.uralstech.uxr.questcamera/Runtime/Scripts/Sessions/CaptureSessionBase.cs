@@ -52,6 +52,8 @@ namespace Uralstech.UXR.QuestCamera
         {
             private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
 
+            public event Action<AndroidJavaObject, bool>? ModifyRequest;
+
             /// <inheritdoc cref="OnSessionConfigured"/>
             public event Action? OnConfigured;
 
@@ -78,6 +80,16 @@ namespace Uralstech.UXR.QuestCamera
                 int errorCode;
                 switch (methodName)
                 {
+                    case "modifyRequest":
+                        if (ModifyRequest is not Action<AndroidJavaObject, bool> callback)
+                            break;
+
+                        bool isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+                        using (AndroidJavaObject requestBuilder = JNIExtensions.UnboxObjectElement(javaArgs, 0))
+                            callback.Invoke(requestBuilder, isRepeatingRequest);
+
+                        break;
+                    
                     case "onConfigured":
                         OnConfigured?.Invoke(); break;
 

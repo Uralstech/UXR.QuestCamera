@@ -17,6 +17,9 @@ package com.uralstech.uxr.questcamera
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.util.Log
@@ -26,11 +29,14 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
+
 abstract class CaptureSessionManagerBase(
     private val callbacks: CallbacksBase,
     protected val logPrefix: String) {
 
     interface CallbacksBase {
+
+        fun modifyRequest(builder: CaptureRequest.Builder, isRepeating: Boolean)
 
         fun onConfigured()
         fun onConfigureFailed(code: Int)
@@ -119,9 +125,38 @@ abstract class CaptureSessionManagerBase(
         try {
             val request = session.device.createCaptureRequest(captureTemplate).apply {
                 addTarget(surface)
+                callbacks.modifyRequest(this, true)
+
+                val aeMode = get(CaptureRequest.CONTROL_AE_MODE)
+                val exposureTime = get(CaptureRequest.SENSOR_EXPOSURE_TIME)
+                val iso = get(CaptureRequest.SENSOR_SENSITIVITY)
+
+                Log.i(
+                    TAG,
+                    "SET AE mode=" + aeMode +
+                            " exposure=" + exposureTime +
+                            " iso=" + iso
+                )
             }.build()
 
-            session.setSingleRepeatingRequest(request, executor, object : CameraCaptureSession.CaptureCallback() { })
+            session.setSingleRepeatingRequest(request, executor, object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult
+                ) {
+                    val aeMode = result.get(CaptureResult.CONTROL_AE_MODE)
+                    val exposureTime = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+                    val iso = result.get(CaptureResult.SENSOR_SENSITIVITY)
+
+                    Log.i(
+                        TAG,
+                        "AE mode=" + aeMode +
+                                " exposure=" + exposureTime +
+                                " iso=" + iso
+                    )
+                }
+            })
 
             Log.i(TAG, "($logPrefix) Repeating request set.")
             callbacks.onRequestSet()

@@ -23,9 +23,7 @@ namespace Uralstech.UXR.QuestCamera
     /// </summary>
     public static class JNIExtensions
     {
-        /// <summary>
-        /// Retrieves a ByteBuffer object from a native object array and obtains its direct memory address.
-        /// </summary>
+        /// <summary>Retrieves a ByteBuffer object from a native object array and obtains its direct memory address.</summary>
         /// <param name="args">JNI object array containing the ByteBuffer.</param>
         /// <param name="index">Index of the ByteBuffer within the array.</param>
         /// <returns>A tuple containing the local JNI reference to the ByteBuffer, and the pointer to its direct buffer memory.</returns>
@@ -35,9 +33,7 @@ namespace Uralstech.UXR.QuestCamera
             return (localRef, (IntPtr)AndroidJNI.GetDirectBufferAddress(localRef));
         }
 
-        /// <summary>
-        /// Unboxes an integer from a native Object array.
-        /// </summary>
+        /// <summary>Unboxes an integer from a native Object array.</summary>
         /// <param name="args">The native array to take the integer from.</param>
         /// <param name="index">The index of the integer object in the native array.</param>
         /// <returns>The unboxed integer.</returns>
@@ -50,9 +46,7 @@ namespace Uralstech.UXR.QuestCamera
             return value;
         }
 
-        /// <summary>
-        /// Unboxes a long from a native Object array.
-        /// </summary>
+        /// <summary>Unboxes a long from a native Object array.</summary>
         /// <param name="args">The native array to take the long from.</param>
         /// <param name="index">The index of the long object in the native array.</param>
         /// <returns>The unboxed long.</returns>
@@ -65,9 +59,7 @@ namespace Uralstech.UXR.QuestCamera
             return value;
         }
 
-        /// <summary>
-        /// Unboxes a string from a native Object array.
-        /// </summary>
+        /// <summary>Unboxes a string from a native Object array.</summary>
         /// <param name="args">The native array to take the string from.</param>
         /// <param name="index">The index of the string object in the native array.</param>
         /// <returns>The unboxed string.</returns>
@@ -80,9 +72,7 @@ namespace Uralstech.UXR.QuestCamera
             return value;
         }
 
-        /// <summary>
-        /// Unboxes a boolean from a native Object array.
-        /// </summary>
+        /// <summary>Unboxes a boolean from a native Object array.</summary>
         /// <param name="args">The native array to take the boolean from.</param>
         /// <param name="index">The index of the boolean object in the native array.</param>
         /// <returns>The unboxed boolean.</returns>
@@ -93,6 +83,24 @@ namespace Uralstech.UXR.QuestCamera
 
             AndroidJNI.DeleteLocalRef(ptr);
             return value;
+        }
+
+
+        /// <summary>Unboxes an AndroidJavaObject from a native Object array.</summary>
+        /// <param name="args">The native array to take the object from.</param>
+        /// <param name="index">The index of the object in the native array.</param>
+        /// <returns>The unboxed object.</returns>
+        public static AndroidJavaObject UnboxObjectElement(IntPtr args, int index)
+        {
+            IntPtr ptr = AndroidJNI.GetObjectArrayElement(args, index);
+            try
+            {
+                return new AndroidJavaObject(ptr);
+            }
+            finally
+            {
+                AndroidJNI.DeleteLocalRef(ptr);
+            }
         }
     }
 }
