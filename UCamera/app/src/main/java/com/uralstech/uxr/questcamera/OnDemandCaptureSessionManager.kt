@@ -81,6 +81,7 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
         try {
             val request = session.device.createCaptureRequest(captureTemplate).apply {
                 addTarget(imageReader.surface)
+                callbacks.modifyRequestBuilder(this, false)
             }.build()
 
             session.captureSingleRequest(request, executor, object : CameraCaptureSession.CaptureCallback() { })

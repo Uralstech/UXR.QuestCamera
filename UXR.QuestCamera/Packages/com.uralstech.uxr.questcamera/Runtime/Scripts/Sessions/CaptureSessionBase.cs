@@ -46,11 +46,22 @@ namespace Uralstech.UXR.QuestCamera
             NativeJobBindingFailed  = 3000,
         }
 
+        /// <summary>
+        /// A callback for modification of all <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.Builder">CaptureRequest builders</a>
+        /// created for the session.
+        /// </summary>
+        /// <param name="builder">The builder object. DO NOT dispose this, or persist a reference to it beyond the callback.</param>
+        /// <param name="isRepeatingRequest">If this builder is for a repeating or on-demand capture.</param>
+        public delegate void ModifyRequestBuilderCallback(CaptureRequestBuilder builder, bool isRepeatingRequest);
+
         /// <summary>Java proxy to handle native callbacks.</summary>
         /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
         public abstract class ProxyBase : AndroidJavaProxy
         {
             private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
+
+            /// <inheritdoc cref="ModifyRequestBuilderCallback"/>
+            public event ModifyRequestBuilderCallback? ModifyRequestBuilder;
 
             /// <inheritdoc cref="OnSessionConfigured"/>
             public event Action? OnConfigured;
@@ -78,6 +89,17 @@ namespace Uralstech.UXR.QuestCamera
                 int errorCode;
                 switch (methodName)
                 {
+                    case "modifyRequestBuilder":
+                        if (ModifyRequestBuilder is not ModifyRequestBuilderCallback modifyBuilderCallback)
+                            break;
+
+                        AndroidJavaObject nativeBuilder = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        bool isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+
+                        using (CaptureRequestBuilder builder = new(nativeBuilder))
+                            modifyBuilderCallback.Invoke(builder, isRepeatingRequest);
+                        break;
+
                     case "onConfigured":
                         OnConfigured?.Invoke(); break;
 

@@ -2,17 +2,20 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
+}
+
+val moduleNamespace = "com.uralstech.uxr.questcamera"
+
+base {
+    archivesName.set(moduleNamespace)
 }
 
 android {
-    namespace = "com.uralstech.uxr.questcamera"
+    namespace = moduleNamespace
     compileSdk = 36
 
     defaultConfig {
         minSdk = 29
-
-        setProperty("archivesBaseName", "$namespace")
         consumerProguardFiles("consumer-rules.pro")
 
         ndk {

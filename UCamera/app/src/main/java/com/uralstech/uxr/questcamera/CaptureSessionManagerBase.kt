@@ -17,6 +17,7 @@ package com.uralstech.uxr.questcamera
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.util.Log
@@ -31,6 +32,7 @@ abstract class CaptureSessionManagerBase(
     protected val logPrefix: String) {
 
     interface CallbacksBase {
+        fun modifyRequestBuilder(builder: CaptureRequest.Builder, isRepeatingRequest: Boolean)
 
         fun onConfigured()
         fun onConfigureFailed(code: Int)
@@ -119,6 +121,7 @@ abstract class CaptureSessionManagerBase(
         try {
             val request = session.device.createCaptureRequest(captureTemplate).apply {
                 addTarget(surface)
+                callbacks.modifyRequestBuilder(this, true)
             }.build()
 
             session.setSingleRepeatingRequest(request, executor, object : CameraCaptureSession.CaptureCallback() { })
