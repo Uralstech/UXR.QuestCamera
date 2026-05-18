@@ -17,7 +17,9 @@ package com.uralstech.uxr.questcamera
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
+import android.hardware.camera2.CaptureFailure
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.util.Log
@@ -33,12 +35,19 @@ abstract class CaptureSessionManagerBase(
 
     interface CallbacksBase {
         fun modifyRequestBuilder(builder: CaptureRequest.Builder, isRepeatingRequest: Boolean)
+        fun shouldRegisterCaptureEvents(request: CaptureRequest, isRepeatingRequest: Boolean) : Boolean
 
         fun onConfigured()
         fun onConfigureFailed(code: Int)
 
-        fun onRequestSet()
+        fun onRequestSet(sequenceId: Int)
         fun onRequestFailed(code: Int)
+
+        fun onCaptureCompleted(request: CaptureRequest, result: TotalCaptureResult)
+        fun onCaptureFailed(request: CaptureRequest, failure: CaptureFailure)
+
+        fun onCaptureSequenceCompleted(sequenceId: Int, frameNumber: Long)
+        fun onCaptureSequenceAborted(sequenceId: Int)
 
         fun onClosed()
     }
@@ -124,10 +133,14 @@ abstract class CaptureSessionManagerBase(
                 callbacks.modifyRequestBuilder(this, true)
             }.build()
 
-            session.setSingleRepeatingRequest(request, executor, object : CameraCaptureSession.CaptureCallback() { })
+            val sequenceId = session.setSingleRepeatingRequest(
+                request,
+                executor,
+                setupCaptureEvents(request, true)
+            )
 
             Log.i(TAG, "($logPrefix) Repeating request set.")
-            callbacks.onRequestSet()
+            callbacks.onRequestSet(sequenceId)
 
             return true
         } catch (ex: CameraAccessException) {
@@ -164,6 +177,44 @@ abstract class CaptureSessionManagerBase(
         } catch (ex: IllegalStateException) {
             Log.e(TAG, "($logPrefix) Could not abort captures due to illegal state error", ex)
             return CustomErrorCodes.ILLEGAL_STATE
+        }
+    }
+
+    protected fun setupCaptureEvents(captureRequest: CaptureRequest, isRepeatingRequest: Boolean)
+        : CameraCaptureSession.CaptureCallback {
+        if (!callbacks.shouldRegisterCaptureEvents(captureRequest, isRepeatingRequest)) {
+            return object : CameraCaptureSession.CaptureCallback() { }
+        }
+
+        Log.i(TAG, "Registering callbacks for capture request.")
+        return object : CameraCaptureSession.CaptureCallback() {
+            override fun onCaptureCompleted(
+                session: CameraCaptureSession,
+                request: CaptureRequest,
+                result: TotalCaptureResult
+            ) {
+                callbacks.onCaptureCompleted(request, result)
+            }
+
+            override fun onCaptureFailed(
+                session: CameraCaptureSession,
+                request: CaptureRequest,
+                failure: CaptureFailure
+            ) {
+                callbacks.onCaptureFailed(request, failure)
+            }
+
+            override fun onCaptureSequenceCompleted(
+                session: CameraCaptureSession,
+                sequenceId: Int,
+                frameNumber: Long
+            ) {
+                callbacks.onCaptureSequenceCompleted(sequenceId, frameNumber)
+            }
+
+            override fun onCaptureSequenceAborted(session: CameraCaptureSession, sequenceId: Int) {
+                callbacks.onCaptureSequenceAborted(sequenceId)
+            }
         }
     }
 

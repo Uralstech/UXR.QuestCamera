@@ -51,8 +51,13 @@ namespace Uralstech.UXR.QuestCamera
         /// created for the session.
         /// </summary>
         /// <param name="builder">The builder object. DO NOT dispose this, or persist a reference to it beyond the callback.</param>
-        /// <param name="isRepeatingRequest">If this builder is for a repeating or on-demand capture.</param>
-        public delegate void ModifyRequestBuilderCallback(CaptureRequestBuilder builder, bool isRepeatingRequest);
+        /// <param name="isRepeatingRequest">If this builder is for a repeating or on-demand capture request.</param>
+        public delegate void ModifyRequestBuilderCallback(CaptureRequest.Builder builder, bool isRepeatingRequest);
+
+        /// <summary>A callback for configuring if capture-specific events should be registered for a capture request. Defaults to <see langword="false"/>.</summary>
+        /// <param name="request">The request for which events should be registered.</param>
+        /// <param name="isRepeatingRequest">If this is for a repeating or on-demand capture request.</param>
+        public delegate bool ShouldRegisterCaptureEventsCallback(CaptureRequest request, bool isRepeatingRequest);
 
         /// <summary>Java proxy to handle native callbacks.</summary>
         /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
@@ -60,8 +65,12 @@ namespace Uralstech.UXR.QuestCamera
         {
             private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
 
+            /// <remarks>You should generally avoid configuring the request if <c>isRepeatingRequest</c> is <see langword="true"/> for on-demand sessions.</remarks>
             /// <inheritdoc cref="ModifyRequestBuilderCallback"/>
             public event ModifyRequestBuilderCallback? ModifyRequestBuilder;
+
+            /// <inheritdoc cref="ShouldRegisterCaptureEventsCallback"/>
+            public event ShouldRegisterCaptureEventsCallback? ShouldRegisterCaptureEvents;
 
             /// <inheritdoc cref="OnSessionConfigured"/>
             public event Action? OnConfigured;
@@ -72,8 +81,27 @@ namespace Uralstech.UXR.QuestCamera
             /// <inheritdoc cref="OnSessionRequestSet"/>
             public event Action? OnRequestSet;
 
+            /// <summary>Same as <see cref="OnRequestSet"/>, but includes the sequence ID of the capture request.</summary>
+            public event Action<int>? OnRequestSetWithId;
+
             /// <inheritdoc cref="OnSessionRequestFailed"/>
             public event Action<ErrorCode>? OnRequestFailed;
+
+            /// <summary>Called when an image capture has fully completed and all the result metadata is available. </summary>
+            /// <remarks>Override <see cref="ShouldRegisterCaptureEvents"/> for capture requests that should invoke this event. DO NOT persist references beyond the callback.</remarks>
+            public event Action<CaptureRequest, TotalCaptureResult>? OnCaptureCompleted;
+
+            /// <summary>Called instead of <see cref="OnCaptureCompleted"/> when the camera device failed to produce a CaptureResult for the request.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<CaptureRequest, CaptureFailure>? OnCaptureFailed;
+
+            /// <summary>Called when a capture sequence finishes and all CaptureResult or CaptureFailure for it have been returned via this listener.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<int, long>? OnCaptureSequenceCompleted;
+
+            /// <summary>Called when a capture sequence aborts before any CaptureResult or CaptureFailure for it have been returned via this listener.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<int>? OnCaptureSequenceAborted;
 
             /// <inheritdoc cref="OnSessionClosed"/>
             public event Action? OnClosed;
@@ -86,7 +114,10 @@ namespace Uralstech.UXR.QuestCamera
             /// <exclude />
             public override IntPtr Invoke(string methodName, IntPtr javaArgs)
             {
-                int errorCode;
+                bool isRepeatingRequest;
+                int errorCode, sequenceId;
+                AndroidJavaObject nativeRequest;
+
                 switch (methodName)
                 {
                     case "modifyRequestBuilder":
@@ -94,11 +125,21 @@ namespace Uralstech.UXR.QuestCamera
                             break;
 
                         AndroidJavaObject nativeBuilder = JNIExtensions.UnboxObjectElement(javaArgs, 0);
-                        bool isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+                        isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
 
-                        using (CaptureRequestBuilder builder = new(nativeBuilder))
+                        using (CaptureRequest.Builder builder = new(nativeBuilder))
                             modifyBuilderCallback.Invoke(builder, isRepeatingRequest);
                         break;
+
+                    case "shouldRegisterCaptureEvents":
+                        if (ShouldRegisterCaptureEvents is not ShouldRegisterCaptureEventsCallback shouldRegisterEvents)
+                            return AndroidJNIHelper.Box(false);
+
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                            return AndroidJNIHelper.Box(shouldRegisterEvents.Invoke(request, isRepeatingRequest));
 
                     case "onConfigured":
                         OnConfigured?.Invoke(); break;
@@ -108,11 +149,42 @@ namespace Uralstech.UXR.QuestCamera
                         OnConfigureFailed?.Invoke((ErrorCode)errorCode); break;
                     
                     case "onRequestSet":
-                        OnRequestSet?.Invoke(); break;
+                        OnRequestSet?.Invoke();
+                        OnRequestSetWithId?.Invoke(JNIExtensions.UnboxIntElement(javaArgs, 0));
+                        break;
 
                     case "onRequestFailed":
                         errorCode = JNIExtensions.UnboxIntElement(javaArgs, 0);
                         OnRequestFailed?.Invoke((ErrorCode)errorCode); break;
+
+                    case "onCaptureCompleted":
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        AndroidJavaObject nativeCaptureResult = JNIExtensions.UnboxObjectElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                        using (TotalCaptureResult result = new(nativeCaptureResult))
+                            OnCaptureCompleted?.Invoke(request, result);
+                        break;
+
+                    case "onCaptureFailed":
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        AndroidJavaObject nativeCaptureFailure = JNIExtensions.UnboxObjectElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                        using (CaptureFailure failure = new(nativeCaptureFailure))
+                            OnCaptureFailed?.Invoke(request, failure);
+                        break;
+
+                    case "onCaptureSequenceCompleted":
+                        sequenceId = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        long frameNumber = JNIExtensions.UnboxLongElement(javaArgs, 1);
+
+                        OnCaptureSequenceCompleted?.Invoke(sequenceId, frameNumber);
+                        break;
+
+                    case "onCaptureSequenceAborted":
+                        sequenceId = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        OnCaptureSequenceAborted?.Invoke(sequenceId); break;
 
                     case "onClosed":
                         OnClosed?.Invoke(); break;

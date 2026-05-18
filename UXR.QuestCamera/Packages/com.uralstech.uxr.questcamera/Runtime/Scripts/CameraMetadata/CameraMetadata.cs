@@ -26,8 +26,8 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>The native object.</summary>
         public readonly AndroidJavaObject Native;
 
-        /// <summary>The Java/Kotlin class of the native object.</summary>
-        public readonly AndroidJavaClass Class;
+        /// <summary>The Java/Kotlin class which provides the keys and constants for this instance.</summary>
+        public readonly AndroidJavaClass KeyProviderClass;
 
         private bool _disposed;
 
@@ -89,7 +89,7 @@ namespace Uralstech.UXR.QuestCamera
 
         public CameraMetadata(AndroidJavaObject native, string className)
         {
-            Class = new AndroidJavaClass(className);
+            KeyProviderClass = new AndroidJavaClass(className);
             Native = native;
         }
 
@@ -98,7 +98,7 @@ namespace Uralstech.UXR.QuestCamera
         public int GetConstant(string name)
         {
             ThrowIfDisposed();
-            return Class.GetStatic<int>(name);
+            return KeyProviderClass.GetStatic<int>(name);
         }
 
         /// <summary>Returns the keys contained in this map.</summary>
@@ -125,7 +125,7 @@ namespace Uralstech.UXR.QuestCamera
         public bool TryGet<T>(string keyName, [MaybeNullWhen(false)] out T value)
         {
             ThrowIfDisposed();
-            using AndroidJavaObject key = Class.GetStatic<AndroidJavaObject>(keyName)
+            using AndroidJavaObject key = KeyProviderClass.GetStatic<AndroidJavaObject>(keyName)
                 ?? throw new KeyNotFoundException($"Camera metadata key not found: {keyName}");
 
             return TryGet(key, out value);
@@ -164,7 +164,7 @@ namespace Uralstech.UXR.QuestCamera
             if (_disposed)
                 return;
 
-            Class.Dispose();
+            KeyProviderClass.Dispose();
             Native.Dispose();
             _disposed = true;
         }
