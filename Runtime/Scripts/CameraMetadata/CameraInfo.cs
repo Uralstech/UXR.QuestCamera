@@ -85,7 +85,7 @@ namespace Uralstech.UXR.QuestCamera
             using (nativeStreamConfigMap)
             {
                 using AndroidJavaObject outputSizes = nativeStreamConfigMap.Call<AndroidJavaObject>("getOutputSizes", ImageFormatYUV420888);
-                SupportedResolutions = outputSizes.Convert<Resolution[]>();
+                SupportedResolutions = outputSizes.ToManaged<Resolution[]>();
             }
 
             SupportedStreamUseCases = AndroidAPILevel.Current >= AndroidAPILevel.Tiramisu

@@ -111,12 +111,12 @@ namespace Uralstech.UXR.QuestCamera
         protected Key[] GetKeysFromListNative(string methodName)
         {
             using AndroidJavaObject nativeKeysList = Native.Call<AndroidJavaObject>(methodName);
-            AndroidJavaObject[] nativeKeys = nativeKeysList.ConvertList<AndroidJavaObject>();
+            AndroidJavaObject[] nativeKeys = nativeKeysList.AsManagedArray<AndroidJavaObject>();
             return Array.ConvertAll(nativeKeys, static nativeKey => new Key(nativeKey));
         }
 
         /// <summary>Tries to get a value from this map.</summary>
-        /// <remarks>Supports converting to the types supported by <see cref="JNIExtensions.Convert{T}(AndroidJavaObject)"/> + AndroidJavaObject.</remarks>
+        /// <remarks>Supports converting to the types supported by <see cref="JNIExtensions.ToManaged{T}(AndroidJavaObject)"/> + AndroidJavaObject.</remarks>
         /// <typeparam name="T">The type of the value.</typeparam>
         /// <param name="keyName">The name of the key.</param>
         /// <param name="value">The result.</param>
@@ -132,7 +132,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Tries to get a value from this map.</summary>
-        /// <remarks>Supports converting to the types supported by <see cref="JNIExtensions.Convert{T}(AndroidJavaObject)"/> + AndroidJavaObject.</remarks>
+        /// <remarks>Supports converting to the types supported by <see cref="JNIExtensions.ToManaged{T}(AndroidJavaObject)"/> + AndroidJavaObject.</remarks>
         /// <typeparam name="T">The type of the value.</typeparam>
         /// <param name="key">The key.</param>
         /// <param name="value">The result.</param>
@@ -155,7 +155,7 @@ namespace Uralstech.UXR.QuestCamera
             value = default;
 
             using AndroidJavaObject? native = Native.Call<AndroidJavaObject>("get", nativeKey);
-            return native != null && native.TryConvert(out value);
+            return native != null && native.TryConvertToManaged(out value);
         }
 
         /// <inheritdoc/>

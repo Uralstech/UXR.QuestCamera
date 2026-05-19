@@ -94,17 +94,19 @@ namespace Uralstech.UXR.QuestCamera
             }
         }
 
+        #region Java -> C# Conversion
+
         /// <summary>Converts a java.util.List to a managed array.</summary>
         /// <remarks>
         /// <para>
         /// WARNING: This method <b>DOES NOT</b> verify if the native Java/Kotlin elements can actually be converted to the target type.
         /// </para>
         /// 
-        /// Supports converting elements to the types supported by <see cref="Convert{T}(AndroidJavaObject)"/> + AndroidJavaObject.
+        /// Supports converting elements to the types supported by <see cref="ToManaged{T}(AndroidJavaObject)"/> + AndroidJavaObject.
         /// </remarks>
         /// <typeparam name="T">The type of the elements.</typeparam>
         /// <returns>The converted array.</returns>
-        public static T[] ConvertList<T>(this AndroidJavaObject current)
+        public static T[] AsManagedArray<T>(this AndroidJavaObject current)
         {
             int length = current.Call<int>("size");
             T[] result = new T[length];
@@ -119,18 +121,18 @@ namespace Uralstech.UXR.QuestCamera
                 }
 
                 using AndroidJavaObject element = current.Call<AndroidJavaObject>("get", i);
-                result[i] = Convert<T>(element);
+                result[i] = ToManaged<T>(element);
             }
 
             return result;
         }
 
-        /// <summary>Safe version of <see cref="Convert{T}(AndroidJavaObject)"/>.</summary>
-        public static bool TryConvert<T>(this AndroidJavaObject current, [MaybeNullWhen(false)] out T? value)
+        /// <summary>Safe version of <see cref="ToManaged{T}(AndroidJavaObject)"/>.</summary>
+        public static bool TryConvertToManaged<T>(this AndroidJavaObject current, [MaybeNullWhen(false)] out T? value)
         {
             try
             {
-                value = Convert<T>(current);
+                value = ToManaged<T>(current);
                 return true;
             }
             catch
@@ -140,9 +142,9 @@ namespace Uralstech.UXR.QuestCamera
             }
         }
 
-        /// <inheritdoc cref="Convert(AndroidJavaObject, Type)"/>
+        /// <inheritdoc cref="ToManaged(AndroidJavaObject, Type)"/>
         /// <typeparam name="T">The managed target type.</typeparam>
-        public static T Convert<T>(this AndroidJavaObject current) => (T)Convert(current, typeof(T));
+        public static T ToManaged<T>(this AndroidJavaObject current) => (T)ToManaged(current, typeof(T));
 
         /// <summary>Converts a Java/Kotlin object represented by an <see cref="AndroidJavaObject"/> into a managed .NET/Unity type.</summary>
         /// <remarks>
@@ -202,7 +204,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <returns>The converted managed object.</returns>
         /// <exception cref="NotSupportedException">Thrown when the requested target type is unsupported.</exception>
         [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
-        public static object Convert(this AndroidJavaObject current, Type target)
+        public static object ToManaged(this AndroidJavaObject current, Type target)
         {
             if (target.IsPrimitive)
             {
@@ -211,7 +213,7 @@ namespace Uralstech.UXR.QuestCamera
 
             if (target == typeof(string))
             {
-                return current.Call<string>("toString");
+                return AndroidJNI.GetStringUTFChars(current.GetRawObject());
             }
 
             if (target.IsArray)
@@ -224,16 +226,16 @@ namespace Uralstech.UXR.QuestCamera
                     if (elementType == typeof(byte))
                         throw new NotSupportedException("Cannot unbox byte[] from Java/Kotlin. Use sbyte[] instead.");
 
-                    return HandleBasicArrays(current, elementType);
+                    return HandleBasicArraysToManaged(current, elementType);
                 }
 
-                return HandleCustomArrays(current, elementType);
+                return HandleCustomArraysToManaged(current, elementType);
             }
 
-            return HandleCustomTypes(current, target);
+            return HandleCustomTypesToManaged(current, target);
         }
 
-        private static Array HandleCustomArrays(AndroidJavaObject current, Type elementType)
+        private static Array HandleCustomArraysToManaged(AndroidJavaObject current, Type elementType)
         {
             IntPtr nativeObj = current.GetRawObject();
             int length = AndroidJNI.GetArrayLength(nativeObj);
@@ -242,7 +244,7 @@ namespace Uralstech.UXR.QuestCamera
             for (int i = 0; i < length; i++)
             {
                 using AndroidJavaObject element = UnboxObjectElement(nativeObj, i);
-                object converted = Convert(element, elementType);
+                object converted = ToManaged(element, elementType);
                 result.SetValue(converted, i);
             }
 
@@ -250,7 +252,7 @@ namespace Uralstech.UXR.QuestCamera
         }
         
         [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
-        private static object HandleCustomTypes(AndroidJavaObject current, Type target)
+        private static object HandleCustomTypesToManaged(AndroidJavaObject current, Type target)
         {
             if (target == typeof(Resolution))
             {
@@ -309,7 +311,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
-        private static object HandleBasicArrays(AndroidJavaObject current, Type elementType)
+        private static object HandleBasicArraysToManaged(AndroidJavaObject current, Type elementType)
         {
             IntPtr nativeObj = current.GetRawObject();
 
@@ -430,5 +432,228 @@ namespace Uralstech.UXR.QuestCamera
 
             throw new NotSupportedException($"Primitive '{target.Name}' is not supported.");
         }
+
+        #endregion
+
+        #region C# -> Java Conversion
+
+        /// <inheritdoc cref="ToJava(object, Type)"/>
+        /// <typeparam name="T">The type of the managed object.</typeparam>
+        public static AndroidJavaObject ToJava<T>(this T current) where T : notnull => ToJava(current, typeof(T));
+
+        /// <summary>Converts managed .NET/Unity object to a Java/Kotlin object represented by an <see cref="AndroidJavaObject"/>.</summary>
+        /// <remarks>
+        /// Basic supported types:
+        /// <list type="bullet">
+        ///     <item><description><see cref="bool"/></description></item>
+        ///     <item><description><see cref="char"/></description></item>
+        ///     <item><description><see cref="sbyte"/></description></item>
+        ///     <item><description><see cref="short"/></description></item>
+        ///     <item><description><see cref="int"/></description></item>
+        ///     <item><description><see cref="long"/></description></item>
+        ///     <item><description><see cref="float"/></description></item>
+        ///     <item><description><see cref="double"/></description></item>
+        ///     <item><description><see cref="string"/></description></item>
+        /// </list>
+        ///
+        /// Supported Android types:
+        /// <list type="table">
+        ///     <listheader>
+        ///         <term>Unity Type</term>
+        ///         <description>Android Type</description>
+        ///     </listheader>
+        /// 
+        ///     <item>
+        ///         <term><see cref="Resolution"/></term>
+        ///         <description><a href="https://developer.android.com/reference/android/util/Size">android.util.Size</a></description>
+        ///     </item>
+        ///     <item>
+        ///         <term><see cref="Rect"/></term>
+        ///         <description><a href="https://developer.android.com/reference/android/graphics/RectF">android.graphics.RectF</a></description>
+        ///     </item>
+        ///     <item>
+        ///         <term><see cref="RectInt"/></term>
+        ///         <description><a href="https://developer.android.com/reference/android/graphics/Rect">android.graphics.Rect</a></description>
+        ///     </item>
+        ///     <item>
+        ///         <term><see cref="CameraMetadata.IntRange"/></term>
+        ///         <description><a href="https://developer.android.com/reference/android/util/Range">android.util.Range&lt;Integer&gt;</a></description>
+        ///     </item>
+        ///     <item>
+        ///         <term><see cref="CameraMetadata.LongRange"/></term>
+        ///         <description>android.util.Range&lt;Long&gt;</description>
+        ///     </item>
+        ///     <item>
+        ///         <term><see cref="CameraMetadata.FloatRange"/></term>
+        ///         <description>android.util.Range&lt;Float&gt;</description>
+        ///     </item>
+        /// </list>
+        ///
+        /// Also supports converting arrays of all above types + generic AndroidJavaObject[] and AndroidJavaProxy[].
+        /// </remarks>
+        /// <param name="target">The type of the managed object.</param>
+        /// <returns>The converted Java object.</returns>
+        /// <exception cref="NotSupportedException">Thrown when the type is unsupported.</exception>
+        [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
+        public static AndroidJavaObject ToJava(this object current, Type target)
+        {
+            if (target.IsPrimitive)
+            {
+                return BoxPrimitive(current, target);
+            }
+
+            if (target == typeof(string))
+            {
+                return new AndroidJavaObject(AndroidJNI.NewStringUTF((string)current));
+            }
+
+            if (target.IsArray)
+            {
+                Type elementType = target.GetElementType();
+                if (elementType.IsPrimitive
+                 || elementType == typeof(string)
+                 || elementType == typeof(AndroidJavaObject)
+                 || elementType == typeof(AndroidJavaProxy))
+                {
+                    if (elementType == typeof(byte))
+                        throw new NotSupportedException("Cannot box byte[] from Java/Kotlin. Use sbyte[] instead.");
+
+                    return new AndroidJavaObject(AndroidJNIHelper.ConvertToJNIArray((Array)current));
+                }
+
+                return HandleCustomArraysToJava((Array)current, elementType);
+            }
+
+            return HandleCustomTypesToJava(current, target);
+        }
+
+        private static AndroidJavaObject HandleCustomArraysToJava(Array current, Type elementType)
+        {
+            int length = current.Length;
+            AndroidJavaObject[] array = new AndroidJavaObject[length];
+
+            for (int i = 0; i < length; i++)
+            {
+                object element = current.GetValue(i);
+                array[i] = ToJava(element, elementType);
+            }
+
+            AndroidJavaObject result = new(AndroidJNIHelper.ConvertToJNIArray(array));
+            Array.ForEach(array, static converted => converted.Dispose());
+            return result;
+        }
+
+        [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
+        private static AndroidJavaObject HandleCustomTypesToJava(object current, Type target)
+        {
+            if (target == typeof(Resolution))
+            {
+                Resolution res = (Resolution)current;
+                return new AndroidJavaObject("android.util.Size", (int)res.width, (int)res.height);
+            }
+
+            if (target == typeof(RectInt))
+            {
+                RectInt rectInt = (RectInt)current;
+                return new AndroidJavaObject("android.graphics.Rect",
+                    (int)rectInt.x,
+                    (int)rectInt.y,
+                    (int)(rectInt.x + rectInt.width),
+                    (int)(rectInt.y + rectInt.height)
+                );
+            }
+
+            if (target == typeof(Rect))
+            {
+                Rect rect = (Rect)current;
+                return new AndroidJavaObject("android.graphics.RectF",
+                    (float)rect.x,
+                    (float)rect.y,
+                    (float)(rect.x + rect.width),
+                    (float)(rect.y + rect.height)
+                );
+            }
+
+            if (target == typeof(CameraMetadata.IntRange))
+            {
+                CameraMetadata.IntRange intRange = (CameraMetadata.IntRange)current;
+                using AndroidJavaObject lower = BoxPrimitive(intRange.Lower, typeof(int));
+                using AndroidJavaObject upper = BoxPrimitive(intRange.Upper, typeof(int));
+
+                return new AndroidJavaObject("android.util.Range", lower, upper);
+            }
+
+            if (target == typeof(CameraMetadata.LongRange))
+            {
+                CameraMetadata.LongRange longRange = (CameraMetadata.LongRange)current;
+                using AndroidJavaObject lower = BoxPrimitive(longRange.Lower, typeof(long));
+                using AndroidJavaObject upper = BoxPrimitive(longRange.Upper, typeof(long));
+
+                return new AndroidJavaObject("android.util.Range", lower, upper);
+            }
+
+            if (target == typeof(CameraMetadata.FloatRange))
+            {
+                CameraMetadata.FloatRange floatRange = (CameraMetadata.FloatRange)current;
+                using AndroidJavaObject lower = BoxPrimitive(floatRange.Lower, typeof(float));
+                using AndroidJavaObject upper = BoxPrimitive(floatRange.Upper, typeof(float));
+
+                return new AndroidJavaObject("android.util.Range", lower, upper);
+            }
+
+            throw new NotSupportedException($"Type '{target.Name}' is not supported.");
+        }
+
+        private static AndroidJavaObject BoxPrimitive(object current, Type target)
+        {
+            if (target == typeof(bool))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((bool)current));
+            }
+
+            if (target == typeof(char))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((char)current));
+            }
+
+            if (target == typeof(sbyte))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((sbyte)current));
+            }
+
+            if (target == typeof(byte))
+            {
+                throw new NotSupportedException("Cannot box byte from Java/Kotlin. Use sbyte instead.");
+            }
+
+            if (target == typeof(short))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((short)current));
+            }
+
+            if (target == typeof(int))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((int)current));
+            }
+
+            if (target == typeof(long))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((long)current));
+            }
+
+            if (target == typeof(float))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((float)current));
+            }
+
+            if (target == typeof(double))
+            {
+                return new AndroidJavaObject(AndroidJNIHelper.Box((double)current));
+            }
+
+            throw new NotSupportedException($"Primitive '{target.Name}' is not supported.");
+        }
+
+        #endregion
     }
 }
