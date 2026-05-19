@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -24,13 +25,18 @@ namespace Uralstech.UXR.QuestCamera
         public CaptureRequest(AndroidJavaObject native) : base(native, "android.hardware.camera2.CaptureRequest") { }
 
         /// <summary>Gets the tag of this request previously set using <see cref="CaptureRequestBuilder.SetTag(object)"/>.</summary>
-        /// <remarks>No special conversion is done for this object, so make sure it's of a type that is be supported by Unity and the JNI.</remarks>
+        /// <remarks>Ensure the type of the tag is supported by <see cref="JNIExtensions.ToManaged(AndroidJavaObject, Type)"/>.</remarks>
         public T? GetTag<T>()
         {
-            // TODO: Would this actually work??
-
             ThrowIfDisposed();
-            return Native.Call<T>("getTag");
+
+            Type targetType = typeof(T);
+            AndroidJavaObject tag = Native.Call<AndroidJavaObject>("getTag");
+            if (targetType == typeof(AndroidJavaObject))
+                return (T)(object)tag;
+
+            using (tag)
+                return (T)tag.ToManaged(targetType);
         }
 
         /// <summary>Builder for a capture request. WARNING: Highly unstable API.</summary>
@@ -39,25 +45,19 @@ namespace Uralstech.UXR.QuestCamera
             public Builder(AndroidJavaObject native) : base(native, "android.hardware.camera2.CaptureRequest") { }
 
             /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            public void Set(string keyName, bool value) => SetBoxed(keyName, value, "java.lang.Boolean");
-
-            /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            public void Set(string keyName, sbyte value) => SetBoxed(keyName, value, "java.lang.Byte");
-
-            /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            public void Set(string keyName, int value) => SetBoxed(keyName, value, "java.lang.Integer");
-
-            /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            public void Set(string keyName, long value) => SetBoxed(keyName, value, "java.lang.Long");
-
-            /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            public void Set(string keyName, float value) => SetBoxed(keyName, value, "java.lang.Float");
-
-            private void SetBoxed<T>(string keyName, T value, string nativeBoxingType)
-                where T : struct
+            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
+            public void Set<T>(string keyName, T value)
+                where T : notnull
             {
-                using AndroidJavaObject nativeValue = new(nativeBoxingType, value);
-                Set(keyName, nativeValue);
+                Type tagType = typeof(T);
+                if (tagType == typeof(AndroidJavaObject))
+                {
+                    Set(keyName, (AndroidJavaObject)(object)value);
+                    return;
+                }
+
+                using AndroidJavaObject converted = value.ToJava(tagType);
+                Set(keyName, converted);
             }
 
             /// <summary>Set a capture request field to a value.</summary>
@@ -84,14 +84,22 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             /// <summary>Set a tag for this request.</summary>
-            /// <remarks>No special conversion is done for this object, so make sure it's of a type that will be supported by Unity and the JNI.</remarks>
+            /// <remarks>Ensure the type of the tag is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
             /// <param name="tag">An arbitrary Object to store with this request.</param>
-            public void SetTag(object tag)
+            public void SetTag<T>(T tag)
+                where T : notnull
             {
-                // TODO: Would this actually work??
-
                 ThrowIfDisposed();
-                Native.Call("setTag", tag);
+
+                Type tagType = typeof(T);
+                if (tagType == typeof(AndroidJavaObject))
+                {
+                    Native.Call("setTag", tag);
+                    return;
+                }
+
+                using AndroidJavaObject converted = tag.ToJava(tagType);
+                Native.Call("setTag", converted);
             }
         }
     }
