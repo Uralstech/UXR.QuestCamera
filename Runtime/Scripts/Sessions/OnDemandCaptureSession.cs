@@ -56,7 +56,7 @@ namespace Uralstech.UXR.QuestCamera
             ThrowIfDisposed();
 
             using AndroidJavaObject result = _native.Call<AndroidJavaObject>("setSingleRequest", (int)template);
-            int status = result.Get<int>("getStatus");
+            int status = result.Call<int>("getStatus");
             errorCode = (ErrorCode)status;
             return status == 0;
         }
@@ -68,8 +68,8 @@ namespace Uralstech.UXR.QuestCamera
             ThrowIfDisposed();
             
             using AndroidJavaObject result = _native.Call<AndroidJavaObject>("setSingleRequest", (int)template);
-            int sequenceId = result.Get<int>("getSequenceId");
-            int status = result.Get<int>("getStatus");
+            int sequenceId = result.Call<int>("getSequenceId");
+            int status = result.Call<int>("getStatus");
 
             return new RequestStatus(
                 (ErrorCode)status,
