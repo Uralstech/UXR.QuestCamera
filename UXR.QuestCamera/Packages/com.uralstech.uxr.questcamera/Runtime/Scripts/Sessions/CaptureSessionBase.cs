@@ -139,7 +139,18 @@ namespace Uralstech.UXR.QuestCamera
                         isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
 
                         using (CaptureRequest request = new(nativeRequest))
-                            return AndroidJNIHelper.Box(shouldRegisterEvents.Invoke(request, isRepeatingRequest));
+                        {
+                            try
+                            {
+                                bool result = shouldRegisterEvents.Invoke(request, isRepeatingRequest);
+                                return AndroidJNIHelper.Box(result);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogException(ex);
+                                return AndroidJNIHelper.Box(false);
+                            }
+                        }
 
                     case "onConfigured":
                         OnConfigured?.Invoke(); break;

@@ -65,7 +65,7 @@ namespace Uralstech.UXR.QuestCamera
             ThrowIfDisposed();
 
             using AndroidJavaObject nativeResultsList = Native.Call<AndroidJavaObject>("getPartialResults");
-            AndroidJavaObject[] nativeResults = nativeResultsList.AsManagedArray<AndroidJavaObject>();
+            AndroidJavaObject[] nativeResults = nativeResultsList.JavaListAsManagedArray<AndroidJavaObject>();
             return Array.ConvertAll(nativeResults, static nativeResult => new CaptureResult(nativeResult));
         }
     }
