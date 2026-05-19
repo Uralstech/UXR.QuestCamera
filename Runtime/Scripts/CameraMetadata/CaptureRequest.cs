@@ -39,48 +39,51 @@ namespace Uralstech.UXR.QuestCamera
                 return (T)tag.ToManaged(targetType);
         }
 
-        /// <summary>Builder for a capture request. WARNING: Highly unstable API.</summary>
+        /// <summary>Builder for a capture request.</summary>
         public sealed class Builder : CameraMetadata
         {
             public Builder(AndroidJavaObject native) : base(native, "android.hardware.camera2.CaptureRequest") { }
 
-            /// <inheritdoc cref="Set(string, AndroidJavaObject)"/>
-            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
-            public void Set<T>(string keyName, T value)
-                where T : notnull
-            {
-                Type tagType = typeof(T);
-                if (tagType == typeof(AndroidJavaObject))
-                {
-                    Set(keyName, (AndroidJavaObject)(object)value);
-                    return;
-                }
-
-                using AndroidJavaObject converted = value.ToJava(tagType);
-                Set(keyName, converted);
-            }
-
             /// <summary>Set a capture request field to a value.</summary>
+            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
+            /// <typeparam name="T">The type of the value.</typeparam>
             /// <param name="keyName">The name of the key.</param>
             /// <param name="value">The value to set.</param>
             /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in the native class.</exception>
-            public void Set(string keyName, AndroidJavaObject value)
+            public void Set<T>(string keyName, T value)
+                where T : notnull
             {
                 ThrowIfDisposed();
                 using AndroidJavaObject key = KeyProviderClass.GetStatic<AndroidJavaObject>(keyName)
                     ?? throw new KeyNotFoundException(keyName);
 
-                Native.Call("set", key, value);
+                Set(key, value);
             }
 
-
             /// <summary>Set a capture request field to a value.</summary>
+            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
             /// <param name="key">The key.</param>
             /// <param name="value">The value to set.</param>
-            public void Set(Key key, AndroidJavaObject value)
+            /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in the native class.</exception>
+            public void Set<T>(Key key, T value)
+                where T : notnull
             {
                 ThrowIfDisposed();
-                Native.Call("set", key.Native, value);
+                Set(key.Native, value);
+            }
+
+            private void Set<T>(AndroidJavaObject key, T value)
+                where T : notnull
+            {
+                Type tagType = typeof(T);
+                if (tagType == typeof(AndroidJavaObject))
+                {
+                    Native.Call("set", key, (AndroidJavaObject)(object)value);
+                    return;
+                }
+
+                using AndroidJavaObject converted = value.ToJava(tagType);
+                Native.Call("set", key, converted);
             }
 
             /// <summary>Set a tag for this request.</summary>

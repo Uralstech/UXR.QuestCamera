@@ -111,7 +111,7 @@ namespace Uralstech.UXR.QuestCamera
         protected Key[] GetKeysFromListNative(string methodName)
         {
             using AndroidJavaObject nativeKeysList = Native.Call<AndroidJavaObject>(methodName);
-            AndroidJavaObject[] nativeKeys = nativeKeysList.AsManagedArray<AndroidJavaObject>();
+            AndroidJavaObject[] nativeKeys = nativeKeysList.JavaListAsManagedArray<AndroidJavaObject>();
             return Array.ConvertAll(nativeKeys, static nativeKey => new Key(nativeKey));
         }
 
@@ -126,7 +126,7 @@ namespace Uralstech.UXR.QuestCamera
         {
             ThrowIfDisposed();
             using AndroidJavaObject key = KeyProviderClass.GetStatic<AndroidJavaObject>(keyName)
-                ?? throw new KeyNotFoundException($"Camera metadata key not found: {keyName}");
+                ?? throw new KeyNotFoundException(keyName);
 
             return TryGet(key, out value);
         }

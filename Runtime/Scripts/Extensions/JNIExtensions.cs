@@ -106,12 +106,13 @@ namespace Uralstech.UXR.QuestCamera
         /// </remarks>
         /// <typeparam name="T">The type of the elements.</typeparam>
         /// <returns>The converted array.</returns>
-        public static T[] AsManagedArray<T>(this AndroidJavaObject current)
+        public static T[] JavaListAsManagedArray<T>(this AndroidJavaObject current)
         {
             int length = current.Call<int>("size");
             T[] result = new T[length];
 
-            bool isAndroidJavaObjectArray = typeof(T) == typeof(AndroidJavaObject);
+            Type elementType = typeof(T);
+            bool isAndroidJavaObjectArray = elementType == typeof(AndroidJavaObject);
             for (int i = 0; i < length; i++)
             {
                 if (isAndroidJavaObjectArray)
@@ -121,7 +122,7 @@ namespace Uralstech.UXR.QuestCamera
                 }
 
                 using AndroidJavaObject element = current.Call<AndroidJavaObject>("get", i);
-                result[i] = ToManaged<T>(element);
+                result[i] = (T)ToManaged(element, elementType);
             }
 
             return result;
@@ -285,25 +286,34 @@ namespace Uralstech.UXR.QuestCamera
 
             if (target == typeof(CameraMetadata.IntRange))
             {
+                using AndroidJavaObject lower = current.Call<AndroidJavaObject>("getLower");
+                using AndroidJavaObject upper = current.Call<AndroidJavaObject>("getUpper");
+
                 return new CameraMetadata.IntRange(
-                    Lower: current.Call<int>("getLower"),
-                    Upper: current.Call<int>("getUpper")
+                    Lower: (int)ToManaged(lower, typeof(int)),
+                    Upper: (int)ToManaged(upper, typeof(int))
                 );
             }
 
             if (target == typeof(CameraMetadata.LongRange))
             {
+                using AndroidJavaObject lower = current.Call<AndroidJavaObject>("getLower");
+                using AndroidJavaObject upper = current.Call<AndroidJavaObject>("getUpper");
+
                 return new CameraMetadata.LongRange(
-                    Lower: current.Call<long>("getLower"),
-                    Upper: current.Call<long>("getUpper")
+                    Lower: (long)ToManaged(lower, typeof(long)),
+                    Upper: (long)ToManaged(upper, typeof(long))
                 );
             }
 
             if (target == typeof(CameraMetadata.FloatRange))
             {
+                using AndroidJavaObject lower = current.Call<AndroidJavaObject>("getLower");
+                using AndroidJavaObject upper = current.Call<AndroidJavaObject>("getUpper");
+
                 return new CameraMetadata.FloatRange(
-                    Lower: current.Call<float>("getLower"),
-                    Upper: current.Call<float>("getUpper")
+                    Lower: (float)ToManaged(lower, typeof(float)),
+                    Upper: (float)ToManaged(upper, typeof(float))
                 );
             }
 
