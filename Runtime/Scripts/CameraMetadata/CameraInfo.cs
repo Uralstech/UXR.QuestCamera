@@ -156,17 +156,12 @@ namespace Uralstech.UXR.QuestCamera
         public override bool Equals(object? obj) => Equals(obj as CameraInfo);
 
         /// <inheritdoc/>
-        public bool Equals(CameraInfo? other) => other != null && string.Compare(other.CameraId, CameraId) == 0;
+        public bool Equals(CameraInfo? other) => other is not null && string.Equals(other.CameraId, CameraId, StringComparison.Ordinal);
 
         /// <inheritdoc/>
         public override int GetHashCode() => CameraId.GetHashCode();
 
-        /// <inheritdoc/>
-        public static bool operator ==(CameraInfo? left, CameraInfo? right)
-            => string.Compare(left?.CameraId, right?.CameraId, StringComparison.Ordinal) == 0;
-
-        /// <inheritdoc/>
-        public static bool operator !=(CameraInfo? left, CameraInfo? right)
-            => string.Compare(left?.CameraId, right?.CameraId, StringComparison.Ordinal) != 0;
+        public static bool operator ==(CameraInfo? a, CameraInfo? b) => ReferenceEquals(a, b) || (a is not null && a.Equals(b)); 
+        public static bool operator !=(CameraInfo? a, CameraInfo? b) => !ReferenceEquals(a, b) && (a is null || !a.Equals(b)); 
     }
 }

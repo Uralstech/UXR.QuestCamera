@@ -55,6 +55,7 @@ namespace Uralstech.UXR.QuestCamera
         public delegate void ModifyRequestBuilderCallback(CaptureRequest.Builder builder, bool isRepeatingRequest);
 
         /// <summary>A callback for configuring if capture-specific events should be registered for a capture request. Defaults to <see langword="false"/>.</summary>
+        /// <remarks>Please only register one listener to this event for each session.</remarks>
         /// <param name="request">The request for which events should be registered.</param>
         /// <param name="isRepeatingRequest">If this is for a repeating or on-demand capture request.</param>
         public delegate bool ShouldRegisterCaptureEventsCallback(CaptureRequest request, bool isRepeatingRequest);
@@ -217,6 +218,9 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Called when the session request has been set.</summary>
         public event Action? OnSessionRequestSet;
 
+        /// <summary>Same as <see cref="OnSessionRequestSet"/>, but includes the sequence ID of the capture request.</summary>
+        public event Action<int>? OnSessionRequestSetWithId;
+
         /// <summary>Called when the session request could not be set.</summary>
         public event Action<ErrorCode>? OnSessionRequestFailed;
 
@@ -236,7 +240,7 @@ namespace Uralstech.UXR.QuestCamera
 
             NativeProxy.OnConfigured         += OnConfiguredNative;
             NativeProxy.OnConfigureFailed    += OnConfigureFailedNative;
-            NativeProxy.OnRequestSet         += OnRequestSetNative;
+            NativeProxy.OnRequestSetWithId   += OnRequestSetNative;
             NativeProxy.OnRequestFailed      += OnRequestFailedNative;
             NativeProxy.OnClosed             += OnClosedNative;
         }
@@ -286,7 +290,7 @@ namespace Uralstech.UXR.QuestCamera
                 // Final deregistration
                 NativeProxy.OnConfigured        -= OnConfiguredNative;
                 NativeProxy.OnConfigureFailed   -= OnConfigureFailedNative;
-                NativeProxy.OnRequestSet        -= OnRequestSetNative;
+                NativeProxy.OnRequestSetWithId  -= OnRequestSetNative;
                 NativeProxy.OnRequestFailed     -= OnRequestFailedNative;
                 NativeProxy.OnClosed            -= OnClosedNative;
 
@@ -305,10 +309,11 @@ namespace Uralstech.UXR.QuestCamera
             OnSessionConfigurationFailed?.OnMainThread(errorCode).Forget();
         }
 
-        private void OnRequestSetNative()
+        private void OnRequestSetNative(int sequenceId)
         {
             State = ResourceState.Valid;
             OnSessionRequestSet?.OnMainThread().Forget();
+            OnSessionRequestSetWithId?.OnMainThread(sequenceId).Forget();
         }
 
         private void OnRequestFailedNative(ErrorCode errorCode)

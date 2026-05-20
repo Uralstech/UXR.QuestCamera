@@ -24,8 +24,8 @@ namespace Uralstech.UXR.QuestCamera
     {
         public CaptureRequest(AndroidJavaObject native) : base(native, "android.hardware.camera2.CaptureRequest") { }
 
-        /// <summary>Gets the tag of this request previously set using <see cref="CaptureRequestBuilder.SetTag(object)"/>.</summary>
-        /// <remarks>Ensure the type of the tag is supported by <see cref="JNIExtensions.ToManaged(AndroidJavaObject, Type)"/>.</remarks>
+        /// <summary>Gets the tag of this request previously set using <see cref="Builder.SetTag{T}(T)"/>.</summary>
+        /// <remarks>Supports the types supported by <see cref="JNIExtensions.ToManaged{T}(AndroidJavaObject)"/> + AndroidJavaObject.</remarks>
         public T? GetTag<T>()
         {
             ThrowIfDisposed();
@@ -45,11 +45,11 @@ namespace Uralstech.UXR.QuestCamera
             public Builder(AndroidJavaObject native) : base(native, "android.hardware.camera2.CaptureRequest") { }
 
             /// <summary>Set a capture request field to a value.</summary>
-            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
+            /// <remarks>Supports the types supported by <see cref="JNIExtensions.ToJava{T}(T)"/> + AndroidJavaObject.</remarks>
             /// <typeparam name="T">The type of the value.</typeparam>
             /// <param name="keyName">The name of the key.</param>
             /// <param name="value">The value to set.</param>
-            /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in the native class.</exception>
+            /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in <see cref="CameraMetadata.KeyProviderClass"/>.</exception>
             public void Set<T>(string keyName, T value)
                 where T : notnull
             {
@@ -61,10 +61,10 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             /// <summary>Set a capture request field to a value.</summary>
-            /// <remarks>Ensure the type is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
+            /// <remarks>Supports the types supported by <see cref="JNIExtensions.ToJava{T}(T)"/> + AndroidJavaObject.</remarks>
+            /// <typeparam name="T">The type of the value.</typeparam>
             /// <param name="key">The key.</param>
             /// <param name="value">The value to set.</param>
-            /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in the native class.</exception>
             public void Set<T>(Key key, T value)
                 where T : notnull
             {
@@ -87,7 +87,8 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             /// <summary>Set a tag for this request.</summary>
-            /// <remarks>Ensure the type of the tag is supported by <see cref="JNIExtensions.ToJava(object, Type)"/>.</remarks>
+            /// <remarks>Supports the types supported by <see cref="JNIExtensions.ToJava{T}(T)"/> + AndroidJavaObject.</remarks>
+            /// <typeparam name="T">The type of the tag.</typeparam>
             /// <param name="tag">An arbitrary Object to store with this request.</param>
             public void SetTag<T>(T tag)
                 where T : notnull
