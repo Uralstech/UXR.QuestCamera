@@ -24,6 +24,26 @@ namespace Uralstech.UXR.QuestCamera
     {
         private const string ClassName = "com.uralstech.uxr.questcamera.OnDemandCaptureSessionManager";
 
+        /// <summary>Status for on-demand capture requests.</summary>
+        public readonly struct RequestStatus
+        {
+            /// <summary>Error code for failures, only valid if <see cref="Success"/> is <see langword="false"/>.</summary>
+            public readonly ErrorCode ErrorCode;
+            
+            /// <summary>Sequence ID of capture request, only valid if <see cref="Success"/> is <see langword="true"/>.</summary>
+            public readonly int SequenceId;
+
+            /// <summary>If the request was successful.</summary>
+            public readonly bool Success;
+
+            public RequestStatus(ErrorCode errorCode, int sequenceId, bool success)
+            {
+                ErrorCode = errorCode;
+                SequenceId = sequenceId;
+                Success = success;
+            }
+        }
+
         public OnDemandCaptureSession(Resolution resolution) : base(resolution, ClassName) { }
 
         /// <summary>Requests a new capture from the session.</summary>
@@ -35,9 +55,27 @@ namespace Uralstech.UXR.QuestCamera
         {
             ThrowIfDisposed();
 
-            int result = _native.Call<int>("setSingleRequest", (int)template);
-            errorCode = (ErrorCode)result;
-            return result == 0;
+            using AndroidJavaObject result = _native.Call<AndroidJavaObject>("setSingleRequest", (int)template);
+            int status = result.Call<int>("getStatus");
+            errorCode = (ErrorCode)status;
+            return status == 0;
+        }
+
+        /// <summary>Requests a new capture from the session.</summary>
+        /// <exception cref="ObjectDisposedException"/>
+        public RequestStatus RequestCapture(CaptureTemplate template = CaptureTemplate.StillCapture)
+        {
+            ThrowIfDisposed();
+            
+            using AndroidJavaObject result = _native.Call<AndroidJavaObject>("setSingleRequest", (int)template);
+            int sequenceId = result.Call<int>("getSequenceId");
+            int status = result.Call<int>("getStatus");
+
+            return new RequestStatus(
+                (ErrorCode)status,
+                sequenceId,
+                status == 0
+            );
         }
     }
 }

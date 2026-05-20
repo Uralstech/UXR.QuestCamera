@@ -32,6 +32,12 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Meta Quest Avatar Camera API permission string.</summary>
         public const string AvatarCameraPermission = "android.permission.CAMERA";
 
+        /// <summary>Name of the metadata key for the Quest's camera source.</summary>
+        public const string MetaQuestCameraSourceKeyName = "com.meta.extra_metadata.camera_source";
+
+        /// <summary>Name of the metadata key for the Quest's camera eye position.</summary>
+        public const string MetaQuestCameraPositionKeyName = "com.meta.extra_metadata.position";
+
         /// <summary>Tries to get the runtime's support for the Passthrough Camera Access and Camera2 APIs.</summary>
         public static PCASupport Support => GetPassthroughCameraSupport();
 
@@ -72,6 +78,13 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>A managed, cached array of available cameras and their characteristics.</summary>
         public IReadOnlyList<CameraInfo> Cameras => _managedInfos ??= GetDevices();
 
+
+        /// <summary>Metadata key for the Quest's camera source.</summary>
+        public CameraMetadata.Key MetaQuestCameraSourceKey { get; private set; }
+
+        /// <summary>Metadata key for the Quest's camera eye position.</summary>
+        public CameraMetadata.Key MetaQuestCameraPositionKey { get; private set; }
+
         private CameraInfo[]? _managedInfos;
         private AndroidJavaObject _native;
 
@@ -91,24 +104,55 @@ namespace Uralstech.UXR.QuestCamera
 #endif
 
             _native = deviceProviderCls.CallStatic<AndroidJavaObject>("getInstance", currentContext);
+
+            const string CameraCharacteristicsKeyClassName = "android.hardware.camera2.CameraCharacteristics$Key";
+            using AndroidJavaClass integerClass = new("java.lang.Integer");
+
+            MetaQuestCameraSourceKey = new CameraMetadata.Key(
+                new AndroidJavaObject(
+                    CameraCharacteristicsKeyClassName,
+                    MetaQuestCameraSourceKeyName,
+                    integerClass
+                )
+            );
+
+            MetaQuestCameraPositionKey = new CameraMetadata.Key(
+                new AndroidJavaObject(
+                    CameraCharacteristicsKeyClassName,
+                    MetaQuestCameraPositionKeyName,
+                    integerClass
+                )
+            );
         }
 
         private void OnDestroy()
         {
             DisposeManagedCameraInfos();
+
             _native.Dispose();
+            MetaQuestCameraSourceKey.Dispose();
+            MetaQuestCameraPositionKey.Dispose();
         }
 
         /// <summary>Gets the IDs and intrinsics of all connected camera devices.</summary>
         public CameraInfo[] GetDevices()
         {
-            AndroidJavaObject[] cameraCharacteristicsProviders = _native.Call<AndroidJavaObject[]>("getDevices");
-            return Array.ConvertAll(cameraCharacteristicsProviders, static provider =>
+            AndroidJavaObject[] nativeCameraInfos = _native.Call<AndroidJavaObject[]>("getDevices");
+            int count = nativeCameraInfos.Length;
+
+            CameraInfo[] cameraInfos = new CameraInfo[count];
+            for (int i = 0; i < count; i++)
             {
-                CameraInfo cameraInfo = new(provider);
-                provider.Dispose();
-                return cameraInfo;
-            });
+                using AndroidJavaObject nativeCameraInfo = nativeCameraInfos[i];
+                cameraInfos[i] = new CameraInfo(
+                    nativeCameraInfo.Call<string>("getCameraId"),
+                    nativeCameraInfo.Call<AndroidJavaObject>("getCharacteristics"),
+                    metaQuestSourceKey: MetaQuestCameraSourceKey,
+                    metaQuestPositionKey: MetaQuestCameraPositionKey
+                );
+            }
+
+            return cameraInfos;
         }
 
         /// <summary>Refreshes cached camera device information.</summary>

@@ -46,11 +46,32 @@ namespace Uralstech.UXR.QuestCamera
             NativeJobBindingFailed  = 3000,
         }
 
+        /// <summary>
+        /// A callback for modification of all <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.Builder">CaptureRequest builders</a>
+        /// created for the session.
+        /// </summary>
+        /// <param name="builder">The builder object. DO NOT dispose this, or persist a reference to it beyond the callback.</param>
+        /// <param name="isRepeatingRequest">If this builder is for a repeating or on-demand capture request.</param>
+        public delegate void ModifyRequestBuilderCallback(CaptureRequest.Builder builder, bool isRepeatingRequest);
+
+        /// <summary>A callback for configuring if capture-specific events should be registered for a capture request. Defaults to <see langword="false"/>.</summary>
+        /// <remarks>Please only register one listener to this event for each session.</remarks>
+        /// <param name="request">The request for which events should be registered.</param>
+        /// <param name="isRepeatingRequest">If this is for a repeating or on-demand capture request.</param>
+        public delegate bool ShouldRegisterCaptureEventsCallback(CaptureRequest request, bool isRepeatingRequest);
+
         /// <summary>Java proxy to handle native callbacks.</summary>
         /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
         public abstract class ProxyBase : AndroidJavaProxy
         {
             private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
+
+            /// <remarks>You should generally avoid configuring the request if <c>isRepeatingRequest</c> is <see langword="true"/> for on-demand sessions.</remarks>
+            /// <inheritdoc cref="ModifyRequestBuilderCallback"/>
+            public event ModifyRequestBuilderCallback? ModifyRequestBuilder;
+
+            /// <inheritdoc cref="ShouldRegisterCaptureEventsCallback"/>
+            public event ShouldRegisterCaptureEventsCallback? ShouldRegisterCaptureEvents;
 
             /// <inheritdoc cref="OnSessionConfigured"/>
             public event Action? OnConfigured;
@@ -61,8 +82,27 @@ namespace Uralstech.UXR.QuestCamera
             /// <inheritdoc cref="OnSessionRequestSet"/>
             public event Action? OnRequestSet;
 
+            /// <summary>Same as <see cref="OnRequestSet"/>, but includes the sequence ID of the capture request.</summary>
+            public event Action<int>? OnRequestSetWithId;
+
             /// <inheritdoc cref="OnSessionRequestFailed"/>
             public event Action<ErrorCode>? OnRequestFailed;
+
+            /// <summary>Called when an image capture has fully completed and all the result metadata is available. </summary>
+            /// <remarks>Override <see cref="ShouldRegisterCaptureEvents"/> for capture requests that should invoke this event. DO NOT persist references beyond the callback.</remarks>
+            public event Action<CaptureRequest, TotalCaptureResult>? OnCaptureCompleted;
+
+            /// <summary>Called instead of <see cref="OnCaptureCompleted"/> when the camera device failed to produce a CaptureResult for the request.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<CaptureRequest, CaptureFailure>? OnCaptureFailed;
+
+            /// <summary>Called when a capture sequence finishes and all CaptureResult or CaptureFailure for it have been returned via this listener.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<int, long>? OnCaptureSequenceCompleted;
+
+            /// <summary>Called when a capture sequence aborts before any CaptureResult or CaptureFailure for it have been returned via this listener.</summary>
+            /// <inheritdoc cref="OnCaptureCompleted"/>
+            public event Action<int>? OnCaptureSequenceAborted;
 
             /// <inheritdoc cref="OnSessionClosed"/>
             public event Action? OnClosed;
@@ -75,9 +115,44 @@ namespace Uralstech.UXR.QuestCamera
             /// <exclude />
             public override IntPtr Invoke(string methodName, IntPtr javaArgs)
             {
-                int errorCode;
+                bool isRepeatingRequest;
+                int errorCode, sequenceId;
+                AndroidJavaObject nativeRequest;
+
                 switch (methodName)
                 {
+                    case "modifyRequestBuilder":
+                        if (ModifyRequestBuilder is not ModifyRequestBuilderCallback modifyBuilderCallback)
+                            break;
+
+                        AndroidJavaObject nativeBuilder = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+
+                        using (CaptureRequest.Builder builder = new(nativeBuilder))
+                            modifyBuilderCallback.Invoke(builder, isRepeatingRequest);
+                        break;
+
+                    case "shouldRegisterCaptureEvents":
+                        if (ShouldRegisterCaptureEvents is not ShouldRegisterCaptureEventsCallback shouldRegisterEvents)
+                            return AndroidJNIHelper.Box(false);
+
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        isRepeatingRequest = JNIExtensions.UnboxBoolElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                        {
+                            try
+                            {
+                                bool result = shouldRegisterEvents.Invoke(request, isRepeatingRequest);
+                                return AndroidJNIHelper.Box(result);
+                            }
+                            catch (Exception ex)
+                            {
+                                Debug.LogException(ex);
+                                return AndroidJNIHelper.Box(false);
+                            }
+                        }
+
                     case "onConfigured":
                         OnConfigured?.Invoke(); break;
 
@@ -86,11 +161,42 @@ namespace Uralstech.UXR.QuestCamera
                         OnConfigureFailed?.Invoke((ErrorCode)errorCode); break;
                     
                     case "onRequestSet":
-                        OnRequestSet?.Invoke(); break;
+                        OnRequestSet?.Invoke();
+                        OnRequestSetWithId?.Invoke(JNIExtensions.UnboxIntElement(javaArgs, 0));
+                        break;
 
                     case "onRequestFailed":
                         errorCode = JNIExtensions.UnboxIntElement(javaArgs, 0);
                         OnRequestFailed?.Invoke((ErrorCode)errorCode); break;
+
+                    case "onCaptureCompleted":
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        AndroidJavaObject nativeCaptureResult = JNIExtensions.UnboxObjectElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                        using (TotalCaptureResult result = new(nativeCaptureResult))
+                            OnCaptureCompleted?.Invoke(request, result);
+                        break;
+
+                    case "onCaptureFailed":
+                        nativeRequest = JNIExtensions.UnboxObjectElement(javaArgs, 0);
+                        AndroidJavaObject nativeCaptureFailure = JNIExtensions.UnboxObjectElement(javaArgs, 1);
+
+                        using (CaptureRequest request = new(nativeRequest))
+                        using (CaptureFailure failure = new(nativeCaptureFailure))
+                            OnCaptureFailed?.Invoke(request, failure);
+                        break;
+
+                    case "onCaptureSequenceCompleted":
+                        sequenceId = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        long frameNumber = JNIExtensions.UnboxLongElement(javaArgs, 1);
+
+                        OnCaptureSequenceCompleted?.Invoke(sequenceId, frameNumber);
+                        break;
+
+                    case "onCaptureSequenceAborted":
+                        sequenceId = JNIExtensions.UnboxIntElement(javaArgs, 0);
+                        OnCaptureSequenceAborted?.Invoke(sequenceId); break;
 
                     case "onClosed":
                         OnClosed?.Invoke(); break;
@@ -112,6 +218,9 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Called when the session request has been set.</summary>
         public event Action? OnSessionRequestSet;
 
+        /// <summary>Same as <see cref="OnSessionRequestSet"/>, but includes the sequence ID of the capture request.</summary>
+        public event Action<int>? OnSessionRequestSetWithId;
+
         /// <summary>Called when the session request could not be set.</summary>
         public event Action<ErrorCode>? OnSessionRequestFailed;
 
@@ -131,7 +240,7 @@ namespace Uralstech.UXR.QuestCamera
 
             NativeProxy.OnConfigured         += OnConfiguredNative;
             NativeProxy.OnConfigureFailed    += OnConfigureFailedNative;
-            NativeProxy.OnRequestSet         += OnRequestSetNative;
+            NativeProxy.OnRequestSetWithId   += OnRequestSetNative;
             NativeProxy.OnRequestFailed      += OnRequestFailedNative;
             NativeProxy.OnClosed             += OnClosedNative;
         }
@@ -181,7 +290,7 @@ namespace Uralstech.UXR.QuestCamera
                 // Final deregistration
                 NativeProxy.OnConfigured        -= OnConfiguredNative;
                 NativeProxy.OnConfigureFailed   -= OnConfigureFailedNative;
-                NativeProxy.OnRequestSet        -= OnRequestSetNative;
+                NativeProxy.OnRequestSetWithId  -= OnRequestSetNative;
                 NativeProxy.OnRequestFailed     -= OnRequestFailedNative;
                 NativeProxy.OnClosed            -= OnClosedNative;
 
@@ -200,10 +309,11 @@ namespace Uralstech.UXR.QuestCamera
             OnSessionConfigurationFailed?.OnMainThread(errorCode).Forget();
         }
 
-        private void OnRequestSetNative()
+        private void OnRequestSetNative(int sequenceId)
         {
             State = ResourceState.Valid;
             OnSessionRequestSet?.OnMainThread().Forget();
+            OnSessionRequestSetWithId?.OnMainThread(sequenceId).Forget();
         }
 
         private void OnRequestFailedNative(ErrorCode errorCode)

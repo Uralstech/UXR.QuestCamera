@@ -16,6 +16,7 @@ package com.uralstech.uxr.questcamera
 
 import android.content.Context
 import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.util.Log
 
@@ -35,26 +36,31 @@ class CameraDeviceProvider private constructor(context: Context) {
         }
     }
 
+    data class CameraInfo(
+        val cameraId: String,
+        val characteristics: CameraCharacteristics
+    )
+
     private val cameraManager = context.applicationContext.getSystemService(
         Context.CAMERA_SERVICE
     ) as CameraManager
 
-    fun getDevices() : Array<CameraCharacteristicsProvider> {
+    fun getDevices() : Array<CameraInfo> {
         return try {
             Log.i(TAG, "Getting devices.")
 
             val cameraIds = cameraManager.cameraIdList
-            val result = mutableListOf<CameraCharacteristicsProvider>()
+            val result = mutableListOf<CameraInfo>()
 
             for (cameraId in cameraIds) {
                 val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-                result.add(CameraCharacteristicsProvider(cameraId, characteristics))
+                result.add(CameraInfo(cameraId, characteristics))
             }
 
             result.toTypedArray()
         } catch (ex: CameraAccessException) {
             Log.e(TAG, "Could not get device details due to access error", ex)
-            emptyArray<CameraCharacteristicsProvider>()
+            emptyArray<CameraInfo>()
         }
     }
 

@@ -16,7 +16,6 @@ package com.uralstech.uxr.questcamera
 
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
-import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.params.OutputConfiguration
 import android.os.Build
@@ -28,6 +27,11 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
 
     private var dummySurfaceTexture: SurfaceTexture? = null
     private var dummySurface: Surface? = null
+
+    data class SingleRequestSetResult(
+        val status: Int,
+        val sequenceId: Int
+    )
 
     override fun initialize(
         camera: CameraDevice, captureTemplate: Int, streamUseCases: LongArray
@@ -69,11 +73,11 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
         }
     }
 
-    fun setSingleRequest(captureTemplate: Int) : Int {
+    fun setSingleRequest(captureTemplate: Int) : SingleRequestSetResult {
         val session = captureSession
         if (isDisposed || session == null) {
             Log.e(TAG, "($logPrefix) Tried to use closed/failed session.")
-            return CustomErrorCodes.OBJECT_DISPOSED
+            return SingleRequestSetResult(CustomErrorCodes.OBJECT_DISPOSED, 0)
         }
 
         Log.i(TAG, "($logPrefix) Setting single-capture request.")
@@ -81,21 +85,27 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
         try {
             val request = session.device.createCaptureRequest(captureTemplate).apply {
                 addTarget(imageReader.surface)
+                callbacks.modifyRequestBuilder(this, false)
             }.build()
 
-            session.captureSingleRequest(request, executor, object : CameraCaptureSession.CaptureCallback() { })
+            val sequenceId = session.captureSingleRequest(
+                request,
+                executor,
+                setupCaptureEvents(request, false)
+            )
+
             Log.i(TAG, "($logPrefix) Request set.")
-            return 0
+            return SingleRequestSetResult(0, sequenceId)
 
         } catch (ex: CameraAccessException) {
             Log.e(TAG, "($logPrefix) Could not set request due to access error", ex)
-            return CustomErrorCodes.CAMERA_ACCESS
+            return SingleRequestSetResult(CustomErrorCodes.CAMERA_ACCESS, 0)
         } catch (ex: IllegalStateException) {
             Log.e(TAG, "($logPrefix) Could not set request due to illegal state error", ex)
-            return CustomErrorCodes.ILLEGAL_STATE
+            return SingleRequestSetResult(CustomErrorCodes.ILLEGAL_STATE, 0)
         } catch (ex: IllegalArgumentException) {
             Log.e(TAG, "($logPrefix) Could not set request due to illegal argument", ex)
-            return CustomErrorCodes.ILLEGAL_ARGUMENT
+            return SingleRequestSetResult(CustomErrorCodes.ILLEGAL_ARGUMENT, 0)
         }
     }
 

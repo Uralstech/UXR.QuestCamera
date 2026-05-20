@@ -1,7 +1,7 @@
 # Quick Start
 
 The example code provided in this quick start guide is for educational and demonstration purposes only. It may not represent best practices for production use.
-This quick start was last updated for **UXR.QuestCamera v4.0.0**.
+This quick start was last updated for **UXR.QuestCamera v4.1.0**.
 
 ## Breaking Changes Notice
 
@@ -278,6 +278,60 @@ _rawImage.texture = session.Texture;
 ```
 
 For on-demand capture, use `await session.ProcessSingleFrameAsync()` instead of `StartContinuousProcessing()`.
+
+## Camera2 Interface
+
+With UXR.QuestCamera v4.1.0, you can now modify the capture requests made by all session types, get all available CameraCharacteristics keys and values from `CameraInfo`,
+and listen for capture callbacks for all capture requests! A lot of the APIs that enable this are quite similar to their native Camera2 counterparts, so use them only if
+you're familiar with the Camera2 API.
+
+### Get CameraCharacteristics Metadata
+
+By default, `CameraInfo` only exposes a guaranteed subset of the metadata exposed in the wrapped native CameraCharacteristics object. You can access additional metadata through the [`TryGet`](~/api/Uralstech.UXR.QuestCamera.CameraMetadata.yml#Uralstech_UXR_QuestCamera_CameraMetadata_TryGet__1_System_String___0__) method:
+
+```csharp
+if (cameraInfo.TryGet("CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES", out CameraMetadata.IntRange[] supportedFpsRanges))
+{
+    Debug.Log($"Supported FPS ranges: {string.Join(',', (IEnumerable<CameraMetadata.IntRange>)supportedFpsRanges)}");
+}
+```
+
+There are some helper methods in [`CameraInfo`](~/api/Uralstech.UXR.QuestCamera.CameraInfo.yml) and its parent [`CameraMetadata`](~/api/Uralstech.UXR.QuestCamera.CameraMetadata.yml) to help you with the keys used to access data.
+
+### Modify Capture Requests
+
+Immediately after you create a session, add a listener to [`session.NativeProxy.ModifyRequestBuilder`](~/api/Uralstech.UXR.QuestCamera.CaptureSessionBase-1.ProxyBase.yml#Uralstech_UXR_QuestCamera_CaptureSessionBase_1_ProxyBase_ModifyRequestBuilder). This will be called on a JNI thread, so don't use any Unity APIs here.
+The events gives you the CaptureRequest Builder and a boolean flag for if the request being built is a repeating or on-demand request. Please see the reference manual for all methods available in
+[`CaptureRequest.Builder`](~/api/Uralstech.UXR.QuestCamera.CaptureRequest.Builder.yml).
+
+This example sets the framerate for a repeating request:
+```csharp
+session.NativeProxy.ModifyRequestBuilder += static (builder, isRepeatingRequest) =>
+{
+    if (isRepeatingRequest)
+        builder.Set("CONTROL_AE_TARGET_FPS_RANGE", new CameraMetadata.IntRange(15, 15));
+};
+```
+
+### Register Capture Callbacks
+
+Callback events for capture sessions are exclusive to the session's [`NativeProxy`](~/api/Uralstech.UXR.QuestCamera.CaptureSessionBase-1.ProxyBase.yml) and called from a JNI thread. They are not invoked by default due to their performance impact
+for repeating capture requests. To tell the session to invoke them, add a **single listener** to [`session.NativeProxy.ShouldRegisterCaptureEvents`](~/api/Uralstech.UXR.QuestCamera.CaptureSessionBase-1.ProxyBase.yml#Uralstech_UXR_QuestCamera_CaptureSessionBase_1_ProxyBase_ShouldRegisterCaptureEvents) immediately after creating
+the session, which will return `true` or `false` for capture requests that you want callbacks from. Similar to `ModifyRequestBuilder`, it gives you the [`CaptureRequest`](~/api/Uralstech.UXR.QuestCamera.CaptureRequest.yml) and
+a bool for if it's a repeating request. Now you can actually register listeners to the capture callbacks:
+
+```csharp
+_pipeline.NativeProxy.ShouldRegisterCaptureEvents += static (request, isRepeatingRequest) => true;
+
+_pipeline.NativeProxy.OnCaptureCompleted += static (request, result) => Debug.Log($"Capture completed, frame: {result.GetFrameNumber()}");
+_pipeline.NativeProxy.OnCaptureFailed += static (request, failure) => Debug.Log($"Capture failed: {failure.Reason}");
+
+_pipeline.NativeProxy.OnCaptureSequenceCompleted += static (sequenceId, frameNumber) => Debug.Log("Sequence completed.");
+_pipeline.NativeProxy.OnCaptureSequenceAborted += static (sequenceId) => Debug.Log("Sequence aborted.");
+```
+
+You can obtain the sequence ID of a capture request by listening to [`session.OnSessionRequestSetWithId`](~/api/Uralstech.UXR.QuestCamera.CaptureSessionBase-1.ProxyBase.yml#Uralstech_UXR_QuestCamera_CaptureSessionBase_1_ProxyBase_OnRequestSetWithId) for repeating requests and GLES sessions
+and [`OnDemandCaptureSession.RequestCapture(CaptureTemplate)`](~/api/Uralstech.UXR.QuestCamera.OnDemandCaptureSession.yml#Uralstech_UXR_QuestCamera_OnDemandCaptureSession_RequestCapture_Uralstech_UXR_QuestCamera_CaptureTemplate_)'s `RequestStatus.SequenceId` for on-demand requests.
 
 ## Example Script
 
