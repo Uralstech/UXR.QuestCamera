@@ -48,6 +48,7 @@ namespace Uralstech.UXR.QuestCamera
         /// Light wrapper for <a href="https://developer.android.com/reference/android/hardware/camera2/CaptureRequest.Key">CaptureRequest.Key</a>,
         /// <a href="https://developer.android.com/reference/android/hardware/camera2/CameraCharacteristics.Key">CameraCharacteristics.Key</a>, etc.
         /// </summary>
+        /// <remarks><b>DO NOT</b> mix or compare keys from different sources!</remarks>
         public sealed class Key : IDisposable, IEquatable<Key>
         {
             /// <summary>The native object.</summary>
@@ -71,10 +72,13 @@ namespace Uralstech.UXR.QuestCamera
             public override bool Equals(object? obj) => Equals(obj as Key);
 
             /// <inheritdoc/>
-            public bool Equals(Key? other) => other != null && string.Compare(other.Name, Name, StringComparison.Ordinal) == 0;
+            public bool Equals(Key? other) => other is not null && string.Equals(other.Name, Name, StringComparison.Ordinal);
 
             /// <inheritdoc/>
             public override int GetHashCode() => Name.GetHashCode();
+
+            public static bool operator ==(Key? a, Key? b) => ReferenceEquals(a, b) || (a is not null && a.Equals(b)); 
+            public static bool operator !=(Key? a, Key? b) => !ReferenceEquals(a, b) && (a is null || !a.Equals(b)); 
 
             /// <inheritdoc/>
             public void Dispose()
@@ -102,6 +106,7 @@ namespace Uralstech.UXR.QuestCamera
         }
 
         /// <summary>Returns the keys contained in this map.</summary>
+        /// <remarks>The caller is responsible for the disposal of all returned <see cref="Key"/> objects.</remarks>
         public Key[] GetKeys()
         {
             ThrowIfDisposed();
@@ -121,7 +126,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <param name="keyName">The name of the key.</param>
         /// <param name="value">The result.</param>
         /// <returns><see langword="true"/> if the key exists and was converted successfully into a managed type, <see langword="false"/> otherwise.</returns>
-        /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in the native class.</exception>
+        /// <exception cref="KeyNotFoundException">Thrown if the key is not defined in <see cref="KeyProviderClass"/>.</exception>
         public bool TryGet<T>(string keyName, [MaybeNullWhen(false)] out T value)
         {
             ThrowIfDisposed();

@@ -112,10 +112,10 @@ namespace Uralstech.UXR.QuestCamera
             T[] result = new T[length];
 
             Type elementType = typeof(T);
-            bool isAndroidJavaObjectArray = elementType == typeof(AndroidJavaObject);
+            bool isObjectArray = elementType == typeof(AndroidJavaObject);
             for (int i = 0; i < length; i++)
             {
-                if (isAndroidJavaObjectArray)
+                if (isObjectArray)
                 {
                     result[i] = (T)(object)current.Call<AndroidJavaObject>("get", i);
                     continue;
@@ -252,7 +252,6 @@ namespace Uralstech.UXR.QuestCamera
             return result;
         }
         
-        [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
         private static object HandleCustomTypesToManaged(AndroidJavaObject current, Type target)
         {
             if (target == typeof(Resolution))
@@ -553,7 +552,6 @@ namespace Uralstech.UXR.QuestCamera
             return result;
         }
 
-        [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
         private static AndroidJavaObject HandleCustomTypesToJava(object current, Type target)
         {
             if (target == typeof(Resolution))
@@ -614,6 +612,7 @@ namespace Uralstech.UXR.QuestCamera
             throw new NotSupportedException($"Type '{target.Name}' is not supported.");
         }
 
+        [SuppressMessage("Style", "IDE0046:Convert to conditional expression", Justification = "Code is neater without conditionals.")]
         private static AndroidJavaObject BoxPrimitive(object current, Type target)
         {
             if (target == typeof(bool))
