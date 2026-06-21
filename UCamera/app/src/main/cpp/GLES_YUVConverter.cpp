@@ -244,6 +244,7 @@ static bool setupGeometry(GLuint* vertexArrayObj, GLuint* vertexBufferObj) {
 
 bool GLES_YUVConverter::registerStaticResourceRef() {
     if (s_staticReferenceHolders > 0) {
+        s_staticReferenceHolders++;
         return true;
     }
 
