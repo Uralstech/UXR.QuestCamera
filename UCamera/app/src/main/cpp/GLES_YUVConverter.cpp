@@ -396,9 +396,8 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
 
 draw_cleanup:
     glBindVertexArray(oldVao);
-
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, oldExtTexture);
     glActiveTexture(oldActiveTexture);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, oldExtTexture);
 
     glUseProgram(oldProgram);
     glViewport(
