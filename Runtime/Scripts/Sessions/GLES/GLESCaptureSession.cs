@@ -170,8 +170,8 @@ namespace Uralstech.UXR.QuestCamera.GLES
             }
             finally
             {
-                _eventsSemaphore.Release();
                 _eventsCommandBuffer.Clear();
+                _eventsSemaphore.Release();
                 GLESAPI.RunCallbacksRegistry.TryRemove(_textureId, out _);
             }
         }
