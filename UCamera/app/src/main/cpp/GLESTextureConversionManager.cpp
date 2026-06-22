@@ -14,7 +14,7 @@
 
 #include <android/log.h>
 #include <mutex>
-#include <map>
+#include <unordered_map>
 #include <GLES3/gl3.h>
 #include <android/surface_texture_jni.h>
 
@@ -32,11 +32,11 @@ struct RenderJob {
     jobject srcTextureJava;
     ASurfaceTexture* srcTextureNative;
 
-    GLES_YUVConverter* converter;
+    unique_ptr<GLES_YUVConverter> converter;
     bool awaitingDispose;
 };
 
-static map<GLuint, RenderJob> g_renderJobs;
+static unordered_map<GLuint, unique_ptr<RenderJob>> g_renderJobs;
 static mutex g_renderJobsMutex;
 
 //region Kotlin interface
@@ -51,18 +51,20 @@ Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env
     LOGI("Binding surfaceTexture to job.");
 
     lock_guard<mutex> lock(g_renderJobsMutex);
-    if (g_renderJobs.find(jobTexId) == g_renderJobs.end()) {
+    auto it = g_renderJobs.find(jobTexId);
+
+    if (it == g_renderJobs.end()) {
         LOGE("Unknown job ID provided.");
         return false;
     }
 
-    RenderJob& job = g_renderJobs[jobTexId];
-    if (job.srcTextureJava != nullptr || job.srcTextureNative != nullptr) {
+    RenderJob* job = it->second.get();
+    if (job->srcTextureJava != nullptr || job->srcTextureNative != nullptr) {
         LOGE("Cannot bind to job with already bound surfaceTexture.");
         return false;
     }
 
-    if (job.awaitingDispose) {
+    if (job->awaitingDispose) {
         LOGE("Cannot bind to disposing job.");
         return false;
     }
@@ -73,8 +75,15 @@ Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env
         return false;
     }
 
-    job.srcTextureJava = globalRef;
-    job.srcTextureNative = ASurfaceTexture_fromSurfaceTexture(env, surfaceTexture);
+    job->srcTextureJava = globalRef;
+    job->srcTextureNative = ASurfaceTexture_fromSurfaceTexture(env, globalRef);
+
+    if (job->srcTextureNative == nullptr) {
+        LOGE("Could not create native surfaceTexture from java object!");
+        job->srcTextureJava = nullptr;
+        env->DeleteGlobalRef(globalRef);
+        return false;
+    }
 
     LOGI("Surface texture bound.");
     return true;
@@ -90,24 +99,25 @@ Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_unbindJob(JNIEnv *e
     LOGI("Unbinding surfaceTexture from job.");
 
     lock_guard<mutex> lock(g_renderJobsMutex);
-    if (g_renderJobs.find(jobTexId) == g_renderJobs.end()) {
+    auto it = g_renderJobs.find(jobTexId);
+
+    if (it == g_renderJobs.end()) {
         LOGE("Unknown job ID provided.");
         return;
     }
 
-    RenderJob& job = g_renderJobs[jobTexId];
-
-    if (job.srcTextureNative != nullptr) {
-        ASurfaceTexture_release(job.srcTextureNative);
-        job.srcTextureNative = nullptr;
+    RenderJob* job = it->second.get();
+    if (job->srcTextureNative != nullptr) {
+        ASurfaceTexture_release(job->srcTextureNative);
+        job->srcTextureNative = nullptr;
     }
 
-    if (job.srcTextureJava != nullptr) {
-        env->DeleteGlobalRef(job.srcTextureJava);
-        job.srcTextureJava = nullptr;
+    if (job->srcTextureJava != nullptr) {
+        env->DeleteGlobalRef(job->srcTextureJava);
+        job->srcTextureJava = nullptr;
     }
 
-    job.awaitingDispose = true;
+    job->awaitingDispose = true;
     LOGI("SurfaceTexture unbound, awaiting dispose.");
 }
 
@@ -139,118 +149,112 @@ struct JobDisposeData {
 static void setupJob(void* data) {
     auto setupData = reinterpret_cast<JobSetupData*>(data);
     GLuint renderTexture = setupData->renderTexture;
+    GLuint nativeTexture = 0;
 
-    lock_guard<mutex> lock(g_renderJobsMutex);
-    if (g_renderJobs.find(renderTexture) != g_renderJobs.end()) {
-        LOGE("Tried to register texture to multiple jobs!");
-        setupData->onDone(0, renderTexture);
-        return;
+    {
+        lock_guard<mutex> lock(g_renderJobsMutex);
+        if (g_renderJobs.find(renderTexture) != g_renderJobs.end()) {
+            LOGE("Tried to register texture to multiple jobs!");
+            goto setupJobEnd;
+        }
+
+        auto converter = make_unique<GLES_YUVConverter>(
+                renderTexture,
+                setupData->width,
+                setupData->height
+        );
+
+        if (!converter->initialize(&nativeTexture)) {
+            LOGE("Could not initialize converter.");
+            converter->dispose();
+            goto setupJobEnd;
+        }
+
+        g_renderJobs[renderTexture] = make_unique<RenderJob>(RenderJob{
+                nullptr, nullptr,
+                std::move(converter),
+                false
+        });
+
+        LOGI("Converter initialized.");
     }
 
-    auto converter = new GLES_YUVConverter(
-            renderTexture,
-            setupData->width,
-            setupData->height
-    );
-
-    GLuint newTexture;
-    if (!converter->initialize(&newTexture)) {
-        LOGE("Could not initialize converter.");
-        converter->dispose();
-        delete converter;
-
-        setupData->onDone(0, renderTexture);
-        return;
-    }
-
-    g_renderJobs[renderTexture] = {
-            nullptr,
-            nullptr,
-            converter,
-            false
-    };
-
-    LOGI("Converter initialized.");
-    setupData->onDone(newTexture, renderTexture);
+setupJobEnd:
+    setupData->onDone(nativeTexture, renderTexture);
 }
 
 static void runJob(void* data) {
     auto renderData = reinterpret_cast<JobRunData*>(data);
     GLuint renderTexture = renderData->renderTexture;
-
-    GLES_YUVConverter* converter;
-    ASurfaceTexture* srcTexture;
-    bool awaitingDispose;
+    int64_t timestamp = -1;
 
     {
         lock_guard<mutex> lock(g_renderJobsMutex);
-        if (g_renderJobs.find(renderTexture) == g_renderJobs.end()) {
+        auto it = g_renderJobs.find(renderTexture);
+
+        if (it == g_renderJobs.end()) {
             LOGE("Unknown job ID provided.");
-            renderData->onDone(-1, renderTexture);
-            return;
+            goto runJobEnd;
         }
 
-        const RenderJob& job = g_renderJobs[renderTexture];
-        converter = job.converter;
-        srcTexture = job.srcTextureNative;
-        awaitingDispose = job.awaitingDispose;
+        RenderJob* job = it->second.get();
+        if (job->awaitingDispose) {
+            LOGE("Cannot run disposing job.");
+            goto runJobEnd;
+        }
+
+        if (job->srcTextureNative == nullptr) {
+            LOGE("Job does not have valid srcTexture.");
+            goto runJobEnd;
+        }
+
+        if (job->converter == nullptr) {
+            LOGE("Job does not have valid converter.");
+            goto runJobEnd;
+        }
+
+        bool result = job->converter->render(job->srcTextureNative);
+        if (result) {
+            timestamp = ASurfaceTexture_getTimestamp(job->srcTextureNative);
+        }
     }
 
-    if (awaitingDispose) {
-        LOGE("Cannot run disposing job.");
-        renderData->onDone(-1, renderTexture);
-        return;
-    }
-
-    if (srcTexture == nullptr) {
-        LOGE("Job does not have valid source srcTexture.");
-        renderData->onDone(-1, renderTexture);
-        return;
-    }
-
-    if (converter == nullptr) {
-        LOGE("Job does not have valid converter.");
-        renderData->onDone(-1, renderTexture);
-        return;
-    }
-
-    bool result = converter->render(srcTexture);
-    if (!result) {
-        renderData->onDone(-1, renderTexture);
-        return;
-    }
-
-    int64_t timestamp = ASurfaceTexture_getTimestamp(srcTexture);
+runJobEnd:
     renderData->onDone(timestamp, renderTexture);
 }
 
 static void disposeJob(void* data) {
     auto disposeData = reinterpret_cast<JobDisposeData*>(data);
     GLuint renderTexture = disposeData->renderTexture;
+    bool result = false;
 
-    lock_guard<mutex> lock(g_renderJobsMutex);
-    if (g_renderJobs.find(renderTexture) == g_renderJobs.end()) {
-        LOGE("Unknown job ID provided.");
-        disposeData->onDone(false, renderTexture);
-        return;
+    {
+        lock_guard<mutex> lock(g_renderJobsMutex);
+        auto it = g_renderJobs.find(renderTexture);
+
+        if (it == g_renderJobs.end()) {
+            LOGE("Unknown job ID provided.");
+            goto disposeJobEnd;
+        }
+
+        RenderJob* job = it->second.get();
+        if (!job->awaitingDispose) {
+            LOGE("Cannot dispose job with active source texture.");
+            goto disposeJobEnd;
+        }
+
+        if (job->converter != nullptr) {
+            job->converter->dispose();
+        }
+
+        g_renderJobs.erase(it);
+        result = true;
+
+        LOGI("Job successfully disposed.");
     }
 
-    RenderJob& job = g_renderJobs[renderTexture];
-    if (!job.awaitingDispose) {
-        LOGE("Cannot dispose job with active source texture.");
-        disposeData->onDone(false, renderTexture);
-        return;
-    }
-
-    if (job.converter != nullptr) {
-        job.converter->dispose();
-        delete job.converter;
-    }
-
-    g_renderJobs.erase(renderTexture);
-    LOGI("Job successfully disposed.");
-
-    disposeData->onDone(true, renderTexture);
+disposeJobEnd:
+    disposeData->onDone(result, renderTexture);
 }
 
 static void UNITY_INTERFACE_API manageConverterJob(int eventId, void* data) {
