@@ -215,13 +215,17 @@ static bool setupGeometry(GLuint* vertexArrayObj, GLuint* vertexBufferObj) {
     glGenVertexArrays(1, vertexArrayObj);
     glGenBuffers(1, vertexBufferObj);
 
+    GLint oldVao, oldVbo;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldVao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &oldVbo);
+
     glBindVertexArray(*vertexArrayObj);
     glBindBuffer(GL_ARRAY_BUFFER, *vertexBufferObj);
 
     glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
     if (hasErrors("glBufferData")) {
-        glBindVertexArray(0);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(oldVao);
+        glBindBuffer(GL_ARRAY_BUFFER, oldVbo);
 
         glDeleteVertexArrays(1, vertexArrayObj);
         glDeleteBuffers(1, vertexBufferObj);
@@ -235,8 +239,8 @@ static bool setupGeometry(GLuint* vertexArrayObj, GLuint* vertexBufferObj) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (void*)(3 * sizeof(GLfloat)));
     glEnableVertexAttribArray(1);
 
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(oldVao);
+    glBindBuffer(GL_ARRAY_BUFFER, oldVbo);
 
     LOGI("Geometry data setup.");
     return true;
@@ -312,6 +316,9 @@ bool GLES_YUVConverter::initialize(GLuint *createdSourceTexture) {
         return false;
     }
 
+    GLint oldTexture;
+    glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, &oldTexture);
+
     glBindTexture(GL_TEXTURE_EXTERNAL_OES, _sourceTexture);
     if (hasErrors("glBindTexture")) {
         return false;
@@ -322,7 +329,7 @@ bool GLES_YUVConverter::initialize(GLuint *createdSourceTexture) {
     glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_EXTERNAL_OES, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, oldTexture);
 
     *createdSourceTexture = _sourceTexture;
     LOGI("Renderer setup.");
@@ -338,10 +345,19 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
     bool srgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB_EXT);
     glDisable(GL_FRAMEBUFFER_SRGB_EXT);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, _frameBufferObj);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _renderTexture, 0);
+    // Record and restore all modified states so that GL.InvalidateState doesn't have to be called.
 
-    if (hasErrors("glFramebufferTexture2D") || glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    GLint oldDrawFrameBuffer, oldViewport[4], oldProgram, oldActiveTexture, oldExtTexture, oldVao;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &oldDrawFrameBuffer);
+    glGetIntegerv(GL_VIEWPORT, oldViewport);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &oldProgram);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &oldActiveTexture);
+    glGetIntegerv(GL_TEXTURE_BINDING_EXTERNAL_OES, &oldExtTexture);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &oldVao);
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, _frameBufferObj);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, _renderTexture, 0);
+    if (hasErrors("glFramebufferTexture2D") || glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
         LOGE("Could not bind frameBuffer to texture.");
         goto draw_cleanup;
     }
@@ -379,9 +395,18 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
     result = !hasErrors("glDrawArrays");
 
 draw_cleanup:
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glBindVertexArray(0);
-    glBindTexture(GL_TEXTURE_EXTERNAL_OES, 0);
+    glBindVertexArray(oldVao);
+
+    glBindTexture(GL_TEXTURE_EXTERNAL_OES, oldExtTexture);
+    glActiveTexture(oldActiveTexture);
+
+    glUseProgram(oldProgram);
+    glViewport(
+            oldViewport[0], oldViewport[1],
+            oldViewport[2], oldViewport[3]
+    );
+
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFrameBuffer);
 
     if (srgbEnabled) {
         glEnable(GL_FRAMEBUFFER_SRGB_EXT);

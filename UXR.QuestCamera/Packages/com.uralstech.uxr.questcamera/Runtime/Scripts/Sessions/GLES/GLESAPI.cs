@@ -50,7 +50,6 @@ namespace Uralstech.UXR.QuestCamera.GLES
         [MonoPInvokeCallback(typeof(RenderJobSetupData.Callback))]
         public static void OnRenderJobSetup(uint nativeTextureId, uint renderTextureId)
         {
-            GL.InvalidateState();
             if (SetupCallbacksRegistry.TryRemove(renderTextureId, out RenderJobSetupData.Callback? callback))
                 callback.Invoke(nativeTextureId, renderTextureId);
             else
@@ -71,7 +70,6 @@ namespace Uralstech.UXR.QuestCamera.GLES
         [MonoPInvokeCallback(typeof(RenderJobRunData.Callback))]
         public static void OnRenderJobRun(long timestamp, uint renderTextureId)
         {
-            GL.InvalidateState();
             if (RunCallbacksRegistry.TryGetValue(renderTextureId, out RenderJobRunData.Callback? callback))
                 callback.Invoke(timestamp, renderTextureId);
             else
