@@ -73,9 +73,13 @@ namespace Uralstech.UXR.QuestCamera.GLES
         }
 
         /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        /// <exception cref="NotSupportedException">Thrown if this constructor is invoked in an environment where OpenGL ES 3 is unavailable.</exception>
         public GLESCaptureSession(Resolution resolution, GraphicsFormat textureFormat = GraphicsFormat.None)
             : base(MakeProxy(out Proxy proxy), new(ClassName, MakeTexture(resolution, textureFormat, out Texture2D texture, out uint textureId), proxy))
         {
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES3)
+                throw new NotSupportedException("Unsupported graphics device, requires OpenGL ES 3!");
+            
             Texture = texture;
             _textureId = textureId;
             
