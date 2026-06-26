@@ -29,11 +29,11 @@
 using namespace std;
 
 struct RenderJob {
-    jobject srcTextureJava;
-    ASurfaceTexture* srcTextureNative;
+    jobject srcTextureJava = nullptr;
+    ASurfaceTexture* srcTextureNative = nullptr;
 
     unique_ptr<GLES_YUVConverter> converter;
-    bool awaitingDispose;
+    bool awaitingDispose = false;
 };
 
 static unordered_map<GLuint, unique_ptr<RenderJob>> g_renderJobs;
@@ -171,9 +171,7 @@ static void setupJob(void* data) {
         }
 
         g_renderJobs[renderTexture] = make_unique<RenderJob>(RenderJob{
-                nullptr, nullptr,
-                std::move(converter),
-                false
+                .converter = std::move(converter),
         });
 
         LOGI("Converter initialized.");

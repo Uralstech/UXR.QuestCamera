@@ -27,7 +27,7 @@ class GLESCaptureSessionManager(private val jobTexId: Int, private val callbacks
 
     companion object {
         init {
-            System.loadLibrary("UXRQC_NativeConverters")
+            System.loadLibrary("UXRQC_GLESPlugin")
         }
     }
 
