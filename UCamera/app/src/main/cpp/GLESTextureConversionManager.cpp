@@ -13,10 +13,9 @@
 // limitations under the License.
 
 #include <android/log.h>
-#include <mutex>
-#include <unordered_map>
-#include <GLES3/gl3.h>
 #include <android/surface_texture_jni.h>
+#include <unordered_map>
+#include <mutex>
 
 #include "GLES_YUVConverter.h"
 #include "IUnityInterface.h"
