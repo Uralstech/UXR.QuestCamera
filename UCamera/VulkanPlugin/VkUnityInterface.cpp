@@ -140,7 +140,7 @@ static void UNITY_INTERFACE_API
 
     switch (eventId) {
         case EVENT_ID_RENDER:
-            s_renderer->render(data);
+            s_renderer->render(reinterpret_cast<RenderData*>(data));
             break;
 
         default:

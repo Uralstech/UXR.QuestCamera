@@ -33,6 +33,40 @@ void VkRenderer::onDeviceShutdown() {
 
 }
 
-void VkRenderer::render(void *data) {
+void VkRenderer::render(RenderData* data) {
 
+    if (data == nullptr || data->image == nullptr) {
+        LogE("Data/image was null.");
+        return;
+    }
+
+    UnityVulkanImage uvkImage;
+    if (!unityVulkan->AccessTexture(
+            data->image, UnityVulkanWholeImage,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            VK_ACCESS_TRANSFER_WRITE_BIT, kUnityVulkanResourceAccess_PipelineBarrier, &uvkImage)) {
+        return;
+    }
+
+    UnityVulkanRecordingState recording;
+    if (!unityVulkan->CommandRecordingState(&recording, kUnityVulkanGraphicsQueueAccess_DontCare)) {
+        return;
+    }
+
+    VkClearColorValue clearColor = { };
+    clearColor.float32[0] = data->r;
+    clearColor.float32[1] = data->g;
+    clearColor.float32[2] = data->b;
+    clearColor.float32[3] = 1.0f;
+
+    VkImageSubresourceRange range = { };
+    range.aspectMask = uvkImage.aspect;
+    range.layerCount = uvkImage.layers;
+    range.levelCount = uvkImage.mipCount;
+    range.baseArrayLayer = 0;
+    range.baseMipLevel = 0;
+
+    vkCmdClearColorImage(recording.commandBuffer, uvkImage.image,
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                         &clearColor, 1, &range);
 }

@@ -23,9 +23,15 @@
 #include "IUnityGraphicsVulkan.h"
 #include <vulkan/vulkan_core.h>
 
-#define USED_VULKAN_FUNCTIONS(apply)
+#define USED_VULKAN_FUNCTIONS(apply) \
+    apply(vkCmdClearColorImage);
 
 #define EVENT_ID_RENDER 1
+
+struct RenderData {
+    VkImage* image;
+    float r,g,b;
+};
 
 class VkRenderer {
 
@@ -38,7 +44,7 @@ public:
     void onDeviceInitialized();
     void onDeviceShutdown();
 
-    void render(void* data);
+    void render(RenderData* data);
 
 private:
 #define DEFINE_VULKAN_FUNCTIONPTR(func) static PFN_##func func
