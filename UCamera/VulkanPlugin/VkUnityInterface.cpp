@@ -49,10 +49,10 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
         return;
     }
 
-    if (
-            (s_unityVulkanV2 = unityInterfaces->Get<IUnityGraphicsVulkanV2>()) == nullptr
-            && (s_unityVulkanV1 = unityInterfaces->Get<IUnityGraphicsVulkan>()) == nullptr
-       ) {
+    s_unityVulkanV2 = unityInterfaces->Get<IUnityGraphicsVulkanV2>();
+    s_unityVulkanV1 = unityInterfaces->Get<IUnityGraphicsVulkan>();
+
+    if (!s_unityVulkanV1) {
         LOGD("Could not retrieve Unity Vulkan interface, cannot continue.");
         return;
     }
@@ -100,6 +100,12 @@ static void UNITY_INTERFACE_API
 
     if (s_unityGraphics->GetRenderer() != kUnityGfxRendererVulkan) {
         LOGD("Received event for non-Vulkan graphics device, ignoring.");
+
+        // Unity may invoke device events before the Vulkan renderer has been
+        // fully initialized (GetRenderer() is still not Vulkan). During startup,
+        // Unity also creates and destroys a temporary VkInstance before creating
+        // the final renderer instance. We therefore ignore device events until
+        // the active renderer reports Vulkan.
         return;
     }
 
@@ -108,11 +114,7 @@ static void UNITY_INTERFACE_API
             LOGD("Graphics device initialized.");
             if (s_renderer) return;
 
-            s_renderer = std::make_unique<VkRenderer>(
-                s_unityVulkanV2,
-                s_unityVulkanV1
-            );
-
+            s_renderer = std::make_unique<VkRenderer>(s_unityVulkanV1);
             s_renderer->onDeviceInitialized();
             break;
 

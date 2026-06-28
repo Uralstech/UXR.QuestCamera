@@ -14,12 +14,19 @@
 
 #include "VkRenderer.h"
 
-VkRenderer::VkRenderer(IUnityGraphicsVulkanV2 *unityVkV2, IUnityGraphicsVulkan *unityVkV1) {
-
+VkRenderer::VkRenderer(IUnityGraphicsVulkan* unityVulkan) {
+    this->unityVulkan = unityVulkan;
 }
 
 void VkRenderer::onDeviceInitialized() {
 
+    UnityVulkanPluginEventConfig config = { };
+    config.graphicsQueueAccess = kUnityVulkanGraphicsQueueAccess_DontCare;
+    config.renderPassPrecondition = kUnityVulkanRenderPass_EnsureInside;
+    config.flags = kUnityVulkanEventConfigFlag_EnsurePreviousFrameSubmission | kUnityVulkanEventConfigFlag_ModifiesCommandBuffersState;
+
+    unityVulkan->ConfigureEvent(EVENT_ID_RENDER, &config);
+    LogD("Events configured.");
 }
 
 void VkRenderer::onDeviceShutdown() {

@@ -33,7 +33,7 @@ public:
     static PFN_vkGetInstanceProcAddr UNITY_INTERFACE_API
         hookVulkanInitialization(PFN_vkGetInstanceProcAddr getInstanceProcAddr, void*);
 
-    VkRenderer(IUnityGraphicsVulkanV2* unityVkV2, IUnityGraphicsVulkan* unityVkV1);
+    VkRenderer(IUnityGraphicsVulkan* unityVulkan);
 
     void onDeviceInitialized();
     void onDeviceShutdown();
@@ -43,7 +43,6 @@ public:
 private:
 #define DEFINE_VULKAN_FUNCTIONPTR(func) static PFN_##func func
     DEFINE_VULKAN_FUNCTIONPTR(vkGetInstanceProcAddr);
-    DEFINE_VULKAN_FUNCTIONPTR(vkCreateInstance);
     USED_VULKAN_FUNCTIONS(DEFINE_VULKAN_FUNCTIONPTR);
 #undef DEFINE_VULKAN_FUNCTIONPTR
 
@@ -59,6 +58,8 @@ private:
         Hook_vkCreateInstance(const VkInstanceCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkInstance* pInstance);
 
     static void loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr, VkInstance instance);
+
+    IUnityGraphicsVulkan* unityVulkan;
 };
 
 

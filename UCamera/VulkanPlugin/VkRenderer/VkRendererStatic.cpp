@@ -43,7 +43,6 @@ void VkRenderer::LogE(const char* msg, ...)
 
 #define INIT_VULKAN_FUNCTIONPTR(func) PFN_##func VkRenderer::func = nullptr
 INIT_VULKAN_FUNCTIONPTR(vkGetInstanceProcAddr);
-INIT_VULKAN_FUNCTIONPTR(vkCreateInstance);
 USED_VULKAN_FUNCTIONS(INIT_VULKAN_FUNCTIONPTR);
 #undef INIT_VULKAN_FUNCTIONPTR
 
@@ -84,9 +83,11 @@ VKAPI_ATTR VkResult VKAPI_CALL
         LogD("Vulkan version: %u.%u",
              VK_API_VERSION_MAJOR(appInfo->apiVersion),
              VK_API_VERSION_MINOR(appInfo->apiVersion));
+
+        LogD("app: %s, engine: %s", appInfo->pApplicationName, appInfo->pEngineName);
     }
 
-    vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
+    auto vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
     VkResult result = vkCreateInstance(pCreateInfo, pAllocator, pInstance);
     if (result == VK_SUCCESS) {
         loadVulkanFunctions(vkGetInstanceProcAddr, *pInstance);
@@ -100,10 +101,6 @@ void
 
     if (!vkGetInstanceProcAddr && getInstanceProcAddr) {
         vkGetInstanceProcAddr = getInstanceProcAddr;
-    }
-
-    if (!vkCreateInstance) {
-        vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
     }
 
 #define LOAD_VULKAN_FUNCTION(func) if (!func) func = (PFN_##func)vkGetInstanceProcAddr(instance, #func)
