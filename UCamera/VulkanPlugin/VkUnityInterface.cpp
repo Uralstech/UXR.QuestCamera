@@ -53,21 +53,26 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
             (s_unityVulkanV2 = unityInterfaces->Get<IUnityGraphicsVulkanV2>()) == nullptr
             && (s_unityVulkanV1 = unityInterfaces->Get<IUnityGraphicsVulkan>()) == nullptr
        ) {
-        LOGD("Graphics API is not Vulkan, cannot continue.");
+        LOGD("Could not retrieve Unity Vulkan interface, cannot continue.");
         return;
     }
 
+    bool interceptAdded = false;
     if (s_unityVulkanV2) {
-        s_unityVulkanV2->AddInterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr, 0);
+        interceptAdded = s_unityVulkanV2->AddInterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr, 0);
     } else {
-        s_unityVulkanV1->InterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr);
+        interceptAdded = s_unityVulkanV1->InterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr);
+    }
+
+    if (!interceptAdded) {
+        LOGD("Could not register Vulkan initialization intercept, cannot continue.");
+        return;
     }
 
     s_unityGraphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
     s_isDeviceEventRegistered = true;
 
     LOGD("Plugin loaded successfully.");
-    OnGraphicsDeviceEvent(kUnityGfxDeviceEventInitialize);
 }
 
 extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
@@ -93,8 +98,14 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 static void UNITY_INTERFACE_API
     OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
 
+    if (s_unityGraphics->GetRenderer() != kUnityGfxRendererVulkan) {
+        LOGD("Received event for non-Vulkan graphics device, ignoring.");
+        return;
+    }
+
     switch (eventType) {
         case kUnityGfxDeviceEventInitialize:
+            LOGD("Graphics device initialized.");
             if (s_renderer) return;
 
             s_renderer = std::make_unique<VkRenderer>(
@@ -106,6 +117,7 @@ static void UNITY_INTERFACE_API
             break;
 
         case kUnityGfxDeviceEventShutdown:
+            LOGD("Graphics device shut down.");
             if (!s_renderer) return;
 
             s_renderer->onDeviceShutdown();
