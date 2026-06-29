@@ -30,7 +30,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
         /// <inheritdoc/>
         public sealed class Proxy : ProxyBase { }
 
-        private const string ClassName = "com.uralstech.uxr.questcamera.GLESCaptureSessionManager";
+        private const string ClassName = "com.uralstech.uxr.questcamera.sessions.GLESCaptureSessionManager";
 
         private static readonly int s_largestDataStructSize = Marshal.SizeOf<RenderJobSetupData>();
 
