@@ -1,3 +1,17 @@
+// Copyright 2026 URAV ADVANCED LEARNING SYSTEMS PRIVATE LIMITED
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package com.uralstech.uxr.questcamera.sessions.vulkan
 
 import android.graphics.ImageFormat
@@ -12,22 +26,54 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
     : ImageReaderCaptureSessionManagerBase(width, height, ImageFormat.PRIVATE, 3,
         HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE, callbacks, logPrefix)  {
 
+    companion object {
+        init {
+            System.loadLibrary("UXRQC_VkGluePlugin")
+        }
+    }
+
     interface Callbacks : CallbacksBase {
 
-        fun canTakeImage() : Boolean
-
-        fun onFrameReady(image: Image)
+        /**
+         * Gives ownership of the acquired AHardwareBuffer.
+         *
+         * If this method returns normally, the caller relinquishes ownership.
+         * If it throws, it must not have retained the buffer pointer.
+         */
+        fun onFrameReady(acquiredBufferPtr: Long, timestamp: Long)
     }
 
     constructor(width: Int, height: Int, callbacks: Callbacks) : this(width, height, callbacks, "VkContinuousSession")
 
     override fun imageHandover(image: Image) {
-        if (!callbacks.canTakeImage()) {
+
+        val buffer = image.hardwareBuffer
+        if (buffer == null) {
+            Log.e(TAG, "Could not get hardware buffer from image.")
             image.close()
             return
         }
 
-        callbacks.onFrameReady(image)
+        var acquiredBufferPtr = 0L
+
+        try {
+            val timestamp = image.timestamp
+            acquiredBufferPtr = acquireHardwareBuffer(buffer)
+
+            if (acquiredBufferPtr != 0L) {
+                callbacks.onFrameReady(acquiredBufferPtr, timestamp)
+                acquiredBufferPtr = 0L
+            }
+        } catch (ex: Exception) {
+            Log.e(TAG, "Could not complete image handover due to exception.", ex)
+        } finally {
+            if (acquiredBufferPtr != 0L) {
+                releaseHardwareBuffer(acquiredBufferPtr)
+            }
+
+            buffer.close()
+            image.close()
+        }
     }
 
     internal open fun initialize(
@@ -47,4 +93,7 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
             callbacks.onConfigureFailed(CustomErrorCodes.ILLEGAL_ARGUMENT)
         }
     }
+
+    private external fun acquireHardwareBuffer(buffer: HardwareBuffer) : Long
+    private external fun releaseHardwareBuffer(acquiredBufferPtr: Long)
 }

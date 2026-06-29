@@ -29,7 +29,12 @@ abstract class ImageReaderCaptureSessionManagerBase
     private val imageHandler = Handler(imageThread.looper)
     private val imageReader = ImageReader.newInstance(width, height, format, maxImages, usage).apply {
         setOnImageAvailableListener({
-            val image = it.acquireLatestImage() ?: return@setOnImageAvailableListener
+            val image = try {
+                it.acquireLatestImage() ?: return@setOnImageAvailableListener
+            } catch (ex: IllegalStateException) {
+                Log.e(TAG, "Could not acquire new image due to exception.", ex)
+                return@setOnImageAvailableListener
+            }
 
             if (isDisposed) {
                 image.close()
