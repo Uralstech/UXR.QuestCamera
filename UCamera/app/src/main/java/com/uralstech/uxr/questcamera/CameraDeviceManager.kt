@@ -19,6 +19,9 @@ import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.util.Log
+import com.uralstech.uxr.questcamera.sessions.cpu.ContinuousCaptureSessionManager
+import com.uralstech.uxr.questcamera.sessions.GLESCaptureSessionManager
+import com.uralstech.uxr.questcamera.sessions.vulkan.VkContinuousCaptureSessionManager
 import java.util.concurrent.Executors
 
 @SuppressLint("MissingPermission")
@@ -119,6 +122,16 @@ class CameraDeviceManager(private val callbacks: Callbacks) {
         val device = getDeviceLogged() ?: return false
         session.initialize(device, captureTemplate, streamUseCases)
         return true
+    }
+
+    fun initializeVulkanSession(
+        session: VkContinuousCaptureSessionManager,
+        captureTemplate: Int, streamUseCases: LongArray
+    ) : Boolean {
+
+        val device = getDeviceLogged() ?: return false
+        session.initialize(device, captureTemplate, streamUseCases)
+        return true;
     }
 
     fun initializeGLESSession(

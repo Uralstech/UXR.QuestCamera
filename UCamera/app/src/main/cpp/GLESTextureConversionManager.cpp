@@ -42,7 +42,7 @@ static mutex g_renderJobsMutex;
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env,
+Java_com_uralstech_uxr_questcamera_sessions_GLESCaptureSessionManager_bindJob(JNIEnv *env,
                                                                      jobject,
                                                                      jint jobTexId,
                                                                      jobject surfaceTexture) {
@@ -91,7 +91,7 @@ Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_unbindJob(JNIEnv *env,
+Java_com_uralstech_uxr_questcamera_sessions_GLESCaptureSessionManager_unbindJob(JNIEnv *env,
                                                                       jobject,
                                                                       jint jobTexId) {
 

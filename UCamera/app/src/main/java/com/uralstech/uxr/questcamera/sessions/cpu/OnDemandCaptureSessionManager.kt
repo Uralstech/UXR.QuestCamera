@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.uralstech.uxr.questcamera
+package com.uralstech.uxr.questcamera.sessions.cpu
 
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.params.OutputConfiguration
-import android.os.Build
 import android.util.Log
 import android.view.Surface
+import com.uralstech.uxr.questcamera.CustomErrorCodes
 
 class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callbacks)
     : ContinuousCaptureSessionManager(width, height, callbacks, "OnDemandSession") {
@@ -45,18 +44,8 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
             this.dummySurfaceTexture = dummySurfaceTexture
             this.dummySurface = dummySurface
 
-            val dummyOutputConfiguration = OutputConfiguration(dummySurface)
-            val outputConfiguration = OutputConfiguration(imageReader.surface)
-
-            if (streamUseCases.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                dummyOutputConfiguration.streamUseCase = streamUseCases[0]
-                outputConfiguration.streamUseCase = if (streamUseCases.size > 1) {
-                    streamUseCases[1]
-                } else {
-                    streamUseCases[0]
-                }
-            }
-
+            val dummyOutputConfiguration = outputConfigWith(dummySurface, streamUseCases, 0)
+            val outputConfiguration = outputConfigWith(imageSurface, streamUseCases, if (streamUseCases.size > 1) 1 else 0)
             startSession(camera, listOf(dummyOutputConfiguration, outputConfiguration)) { session ->
                 setRepeatingRequest(session, dummySurface, captureTemplate)
             }
@@ -84,7 +73,7 @@ class OnDemandCaptureSessionManager(width: Int, height: Int, callbacks: Callback
 
         try {
             val request = session.device.createCaptureRequest(captureTemplate).apply {
-                addTarget(imageReader.surface)
+                addTarget(imageSurface)
                 callbacks.modifyRequestBuilder(this, false)
             }.build()
 

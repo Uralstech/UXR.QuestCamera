@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.uralstech.uxr.questcamera
+package com.uralstech.uxr.questcamera.sessions
 
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCaptureSession
@@ -22,8 +22,10 @@ import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
+import android.os.Build
 import android.util.Log
 import android.view.Surface
+import com.uralstech.uxr.questcamera.CustomErrorCodes
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -159,6 +161,14 @@ abstract class CaptureSessionManagerBase(
         }
 
         return false
+    }
+
+    protected fun outputConfigWith(surface: Surface, streamUseCases: LongArray, useCaseIdx: Int) : OutputConfiguration {
+        return OutputConfiguration(surface).apply {
+            if (streamUseCases.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                streamUseCase = streamUseCases[useCaseIdx]
+            }
+        }
     }
 
     fun abortCaptures() : Int {

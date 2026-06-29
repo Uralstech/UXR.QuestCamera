@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.uralstech.uxr.questcamera
+package com.uralstech.uxr.questcamera.sessions
 
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
-import android.hardware.camera2.params.OutputConfiguration
-import android.os.Build
 import android.util.Log
 import android.view.Surface
+import com.uralstech.uxr.questcamera.CustomErrorCodes
 
 class GLESCaptureSessionManager(private val jobTexId: Int, private val callbacks: CallbacksBase)
     : CaptureSessionManagerBase(callbacks, "GLESSession") {
@@ -58,12 +57,8 @@ class GLESCaptureSessionManager(private val jobTexId: Int, private val callbacks
             }
 
             isBoundToJob = true
-            val outputConfiguration = OutputConfiguration(surface).apply {
-                if (streamUseCases.isNotEmpty() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    this.streamUseCase = streamUseCases[0]
-                }
-            }
 
+            val outputConfiguration = outputConfigWith(surface, streamUseCases, 0)
             startSession(camera, listOf(outputConfiguration)) { session ->
                 setRepeatingRequest(session, surface, captureTemplate)
             }
