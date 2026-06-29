@@ -109,6 +109,11 @@ static void UNITY_INTERFACE_API
         return;
     }
 
+    if (!VkRenderer::isVulkanSetup()) {
+        LOGD("Renderer hooks not setup, cannot continue.");
+        return;
+    }
+
     switch (eventType) {
         case kUnityGfxDeviceEventInitialize:
             LOGD("Graphics device initialized.");
