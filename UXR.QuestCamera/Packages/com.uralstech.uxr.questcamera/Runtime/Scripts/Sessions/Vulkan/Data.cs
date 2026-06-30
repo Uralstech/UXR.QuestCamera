@@ -26,14 +26,16 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         public static readonly int Align = UnsafeUtility.AlignOf<RenderData>();
         
         public readonly IntPtr SourceHardwareBuffer;
+        public readonly ulong SourceHardwareBufferId;
         public readonly IntPtr DestinationImage;
         public readonly IntPtr OnDone;
 
-        public delegate void Callback(long hardwareBufferId);
+        public delegate void Callback(ulong hardwareBufferId);
 
-        public RenderData(IntPtr sourceHardwareBuffer, IntPtr destinationImage, IntPtr onDone)
+        public RenderData(IntPtr sourceHardwareBuffer, ulong sourceHardwareBufferId, IntPtr destinationImage, IntPtr onDone)
         {
             SourceHardwareBuffer = sourceHardwareBuffer;
+            SourceHardwareBufferId = sourceHardwareBufferId;
             DestinationImage = destinationImage;
             OnDone = onDone;
         }

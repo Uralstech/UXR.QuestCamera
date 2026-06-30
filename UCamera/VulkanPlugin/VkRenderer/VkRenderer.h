@@ -25,17 +25,20 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_android.h>
 
-#define USED_VULKAN_FUNCTIONS(apply)                \
-    apply(vkCmdClearColorImage);                    \
-    apply(vkCreateDevice);                          \
-    apply(vkEnumerateDeviceExtensionProperties);    \
-    apply(vkGetPhysicalDeviceFeatures2);
+#define USED_VULKAN_FUNCTIONS(apply)                    \
+    apply(vkCmdClearColorImage);                        \
+    apply(vkCreateDevice);                              \
+    apply(vkEnumerateDeviceExtensionProperties);        \
+    apply(vkGetPhysicalDeviceFeatures2);                \
+    apply(vkGetAndroidHardwareBufferPropertiesANDROID);
 
 #define EVENT_ID_RENDER 1
 
 struct RenderData {
-    VkImage* image;
-    float r,g,b;
+    AHardwareBuffer* srcHardwareBuffer;
+    uint64_t srcHardwareBufferId;
+    VkImage* dstImage;
+    void (*onDone)(int64_t hardwareBufferId);
 };
 
 class VkRenderer {

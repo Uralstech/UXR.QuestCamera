@@ -14,10 +14,18 @@
 
 #include <android/log.h>
 #include <android/hardware_buffer_jni.h>
+#include <dlfcn.h>
 #include "IUnityInterface.h"
 
 #define TAG "UXRQC.VkGlue"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
+using GetIdFn = int(*)(AHardwareBuffer*, uint64_t*);
+
+static GetIdFn getIdFn = []() -> GetIdFn {
+    return reinterpret_cast<GetIdFn>(
+            dlsym(RTLD_DEFAULT, "AHardwareBuffer_getId"));
+}();
 
 extern "C"
 JNIEXPORT jlong JNICALL
@@ -33,10 +41,37 @@ Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionMan
     AHardwareBuffer_acquire(nativeBuffer);
     return reinterpret_cast<jlong>(nativeBuffer);
 }
+
+extern "C"
+JNIEXPORT jlong JNICALL
+Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_getHardwareBufferId(
+        JNIEnv*, jobject, jlong acquiredBufferPtr) {
+
+    auto* hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
+    if (hardwareBuffer == nullptr) {
+        LOGE("Cannot get ID of nullptr native hardware buffer.");
+        return 0;
+    }
+
+    if (!getIdFn) {
+        LOGE("Cannot get ID of native hardware buffer on Android <31.");
+        return 0;
+    }
+
+    uint64_t bufferId;
+    auto result = getIdFn(hardwareBuffer, &bufferId);
+    if (result != 0) {
+        LOGE("Could not get ID of native hardware buffer due to error, code: %d", result);
+        return 0;
+    }
+
+    return static_cast<jlong>(bufferId);
+}
+
 extern "C"
 JNIEXPORT void JNICALL
 Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_releaseHardwareBuffer(
-        JNIEnv *env, jobject, jlong acquiredBufferPtr) {
+        JNIEnv*, jobject, jlong acquiredBufferPtr) {
 
     auto* hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
     if (hardwareBuffer == nullptr) {

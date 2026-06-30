@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using Uralstech.UXR.QuestCamera.GLES;
+using Uralstech.UXR.QuestCamera.Vulkan;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
@@ -258,6 +259,25 @@ namespace Uralstech.UXR.QuestCamera
             }
 
             bool initResult = _native.Call<bool>("initializeGLESSession", session._native, (int)template, streamUseCases, resolution.width, resolution.height, (int)textureId);
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
+            return session;
+        }
+        
+        public VkContinuousCaptureSession CreateVkContinuousSession(Resolution resolution, CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None)
+        {
+            ThrowIfDisposed();
+            long[] streamUseCases = streamUseCase is not StreamUseCase.None
+                ? new long[] { (long)streamUseCase }
+                : Array.Empty<long>();
+
+            VkContinuousCaptureSession session = new(resolution);
+
+            bool initResult = _native.Call<bool>("initializeVulkanSession", session._native, (int)template, streamUseCases);
             if (!initResult)
             {
                 // Invalidates the session immediately.

@@ -47,7 +47,7 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
 
     constructor(width: Int, height: Int, callbacks: Callbacks) : this(width, height, callbacks, "VkContinuousSession")
 
-    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+    @RequiresApi(Build.VERSION_CODES.S)
     override fun imageHandover(image: Image) {
 
         val buffer = image.hardwareBuffer
@@ -60,9 +60,10 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
         var acquiredBufferPtr = 0L
 
         try {
-            val bufferId = buffer.id
             val timestamp = image.timestamp
+
             acquiredBufferPtr = acquireHardwareBuffer(buffer)
+            val bufferId = getHardwareBufferId(acquiredBufferPtr)
 
             if (acquiredBufferPtr != 0L) {
                 callbacks.onFrameReady(acquiredBufferPtr, bufferId, timestamp)
@@ -99,5 +100,6 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
     }
 
     private external fun acquireHardwareBuffer(buffer: HardwareBuffer) : Long
+    private external fun getHardwareBufferId(acquiredBufferPtr: Long) : Long
     private external fun releaseHardwareBuffer(acquiredBufferPtr: Long)
 }

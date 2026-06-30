@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "VkRenderer.h"
+#include <android/hardware_buffer.h>
 
 VkRenderer::VkRenderer(IUnityGraphicsVulkan* unityVulkan) {
     this->unityVulkan = unityVulkan;
@@ -35,38 +36,62 @@ void VkRenderer::onDeviceShutdown() {
 
 void VkRenderer::render(RenderData* data) {
 
-    if (data == nullptr || data->image == nullptr) {
-        LogE("Data/image was null.");
+    if (data == nullptr) {
+        LogE("Data is null.");
         return;
     }
 
+    AHardwareBuffer* hardwareBuffer = data->srcHardwareBuffer;
+    if (hardwareBuffer == nullptr) {
+        LogE("Provided srcHardwareBuffer is a nullptr, cannot render.");
+        return;
+    }
+
+    UnityVulkanInstance vkInstance = unityVulkan->Instance();
+    VkAndroidHardwareBufferFormatProperties2ANDROID bufferFormatProperties;
+    VkAndroidHardwareBufferPropertiesANDROID bufferProperties;
+    VkResult vkResult;
+
     UnityVulkanImage uvkImage;
+    if (data->dstImage == nullptr) {
+        LogE("Provided dstImage is a nullptr, cannot render.");
+        goto renderEnd;
+    }
+
     if (!unityVulkan->AccessTexture(
-            data->image, UnityVulkanWholeImage,
+            data->dstImage, UnityVulkanWholeImage,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT,
             VK_ACCESS_TRANSFER_WRITE_BIT, kUnityVulkanResourceAccess_PipelineBarrier, &uvkImage)) {
-        return;
+
+        LogE("Could not get UnityVulkanImage from dstImage!");
+        goto renderEnd;
     }
 
     UnityVulkanRecordingState recording;
     if (!unityVulkan->CommandRecordingState(&recording, kUnityVulkanGraphicsQueueAccess_DontCare)) {
-        return;
+        LogE("Could not get Unity command recording state!");
+        goto renderEnd;
     }
 
-    VkClearColorValue clearColor = { };
-    clearColor.float32[0] = data->r;
-    clearColor.float32[1] = data->g;
-    clearColor.float32[2] = data->b;
-    clearColor.float32[3] = 1.0f;
+    bufferFormatProperties = {
+        .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID,
+        .pNext = nullptr
+    };
 
-    VkImageSubresourceRange range = { };
-    range.aspectMask = uvkImage.aspect;
-    range.layerCount = uvkImage.layers;
-    range.levelCount = uvkImage.mipCount;
-    range.baseArrayLayer = 0;
-    range.baseMipLevel = 0;
+    bufferProperties = {
+        .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_PROPERTIES_ANDROID,
+        .pNext = &bufferFormatProperties
+    };
 
-    vkCmdClearColorImage(recording.commandBuffer, uvkImage.image,
-                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                         &clearColor, 1, &range);
+    vkResult = vkGetAndroidHardwareBufferPropertiesANDROID(vkInstance.device, hardwareBuffer, &bufferProperties);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not access srcHardwareBuffer properties due to error, code: %d", vkResult);
+        goto renderEnd;
+    }
+
+renderEnd:
+    AHardwareBuffer_release(hardwareBuffer);
+    if (data->onDone) {
+        data->onDone(data->srcHardwareBufferId);
+    }
 }
