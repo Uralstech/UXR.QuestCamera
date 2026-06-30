@@ -47,6 +47,11 @@ set(VKGLUE_PLUGIN_NAME UXRQC_VkGluePlugin)
 add_library(${VKGLUE_PLUGIN_NAME} SHARED
         VulkanGlue.cpp)
 
+target_include_directories(
+        ${VKGLUE_PLUGIN_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../UnityInterface
+)
+
 target_link_libraries(${VKGLUE_PLUGIN_NAME}
     android
     log)

@@ -18,7 +18,9 @@ import android.graphics.ImageFormat
 import android.hardware.HardwareBuffer
 import android.hardware.camera2.CameraDevice
 import android.media.Image
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.uralstech.uxr.questcamera.CustomErrorCodes
 import com.uralstech.uxr.questcamera.sessions.ImageReaderCaptureSessionManagerBase
 
@@ -40,11 +42,12 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
          * If this method returns normally, the caller relinquishes ownership.
          * If it throws, it must not have retained the buffer pointer.
          */
-        fun onFrameReady(acquiredBufferPtr: Long, timestamp: Long)
+        fun onFrameReady(acquiredBufferPtr: Long, bufferId: Long, timestamp: Long)
     }
 
     constructor(width: Int, height: Int, callbacks: Callbacks) : this(width, height, callbacks, "VkContinuousSession")
 
+    @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
     override fun imageHandover(image: Image) {
 
         val buffer = image.hardwareBuffer
@@ -57,11 +60,12 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
         var acquiredBufferPtr = 0L
 
         try {
+            val bufferId = buffer.id
             val timestamp = image.timestamp
             acquiredBufferPtr = acquireHardwareBuffer(buffer)
 
             if (acquiredBufferPtr != 0L) {
-                callbacks.onFrameReady(acquiredBufferPtr, timestamp)
+                callbacks.onFrameReady(acquiredBufferPtr, bufferId, timestamp)
                 acquiredBufferPtr = 0L
             }
         } catch (ex: Exception) {

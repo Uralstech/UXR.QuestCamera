@@ -14,6 +14,7 @@
 
 #include <android/log.h>
 #include <android/hardware_buffer_jni.h>
+#include "IUnityInterface.h"
 
 #define TAG "UXRQC.VkGlue"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
@@ -44,4 +45,12 @@ Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionMan
     }
 
     AHardwareBuffer_release(hardwareBuffer);
+}
+
+extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+    releaseHardwareBuffer(AHardwareBuffer* acquiredBufferPtr) {
+
+    if (acquiredBufferPtr != nullptr) {
+        AHardwareBuffer_release(acquiredBufferPtr);
+    }
 }
