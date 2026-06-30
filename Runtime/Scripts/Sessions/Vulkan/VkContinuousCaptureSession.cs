@@ -108,6 +108,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
 
                 RenderData data = new(
                     acquiredBufferPtr,
+                    (ulong)bufferId,
                     _texturePtr,
                     VkAPI.RenderCallbackPtr);
 

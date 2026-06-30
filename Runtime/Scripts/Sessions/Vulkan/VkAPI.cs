@@ -51,9 +51,9 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         }
         
         [MonoPInvokeCallback(typeof(RenderData.Callback))]
-        public static void OnRenderDone(long hardwareBufferId)
+        public static void OnRenderDone(ulong hardwareBufferId)
         {
-            if (!TryFreeRenderData(hardwareBufferId))
+            if (!TryFreeRenderData((long)hardwareBufferId))
                 Debug.LogWarning($"Dangling {nameof(OnRenderDone)} for hardware buffer ID {hardwareBufferId}.");
         }
     }
