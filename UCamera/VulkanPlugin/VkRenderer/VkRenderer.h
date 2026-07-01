@@ -104,6 +104,11 @@ private:
     static void loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr, VkInstance instance);
     static bool tryGetDeviceSupportedExtensions(VkPhysicalDevice device, std::vector<VkExtensionProperties>* result);
 
+    struct ExtFormatSupport {
+        bool isSupported = false;
+        bool supportsLinearSampling = false;
+    };
+
     class ImportedImage {
 
     public:
@@ -188,14 +193,15 @@ private:
     IUnityGraphicsVulkan* unityVulkan;
     UnityVulkanInstance unityVulkanInstance;
 
-    std::unordered_map<VkFormat, bool> externalFormatSupport;
+    std::unordered_map<VkFormat, ExtFormatSupport> externalFormatSupport;
     std::optional<VkPhysicalDeviceMemoryProperties2> deviceMemoryProperties;
     std::unordered_map<YuvHardwareBufferFormat, VkSamplerYcbcrConversion, YuvHardwareBufferFormat::Hasher> samplerYuvConversions;
 
     std::unique_ptr<ImportedImage> processHardwareBuffer(AHardwareBuffer* hardwareBuffer);
-    bool getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProperties2ANDROID& bufferFormatProperties, const VkExternalFormatANDROID* externalFormat, VkSamplerYcbcrConversion* sampler);
+    bool getSamplerYuvConversion(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
+                                 const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering, VkSamplerYcbcrConversion* sampler);
     bool getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties, uint32_t* memTypeIndex);
-    bool confirmExternalFormatSupport(VkFormat format);
+    bool confirmExternalFormatSupport(VkFormat format, bool* supportsLinearFiltering);
 };
 
 

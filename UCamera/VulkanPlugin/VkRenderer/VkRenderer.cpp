@@ -89,8 +89,8 @@ renderEnd:
 std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHardwareBuffer* hardwareBuffer) {
 
     auto importedImage = std::make_unique<ImportedImage>(unityVulkanInstance.device);
-    VkAndroidHardwareBufferFormatProperties2ANDROID bufferFormatProperties = {
-            .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_2_ANDROID,
+    VkAndroidHardwareBufferFormatPropertiesANDROID bufferFormatProperties = {
+            .sType = VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_FORMAT_PROPERTIES_ANDROID,
             .pNext = nullptr
     };
 
@@ -106,14 +106,21 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
     }
 
     bool useExternalFormat = bufferFormatProperties.format == VK_FORMAT_UNDEFINED;
-    if (useExternalFormat
-        && (bufferFormatProperties.formatFeatures & VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT_KHR) != VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT_KHR) {
+    bool useLinearFiltering = false;
 
-        LogE("Cannot use srcHardwareBuffer as it does not support sampling (externalFormat).");
-        // TODO: Signal fatal error to C#
-        return nullptr;
+    if (useExternalFormat) {
+        if ((bufferFormatProperties.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
+
+            LogE("Cannot use srcHardwareBuffer as it does not support sampling (externalFormat).");
+            // TODO: Signal fatal error to C#
+            return nullptr;
+        }
+
+        useLinearFiltering = (bufferFormatProperties.formatFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
+                                    == VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT;
+
     } else if (!useExternalFormat
-                && !confirmExternalFormatSupport(bufferFormatProperties.format)) {
+                && !confirmExternalFormatSupport(bufferFormatProperties.format, &useLinearFiltering)) {
 
         // TODO: Signal fatal error to C#
         return nullptr;
@@ -222,7 +229,7 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
     }
 
     VkSamplerYcbcrConversion yuvSampler;
-    if (!getSamplerYuvConversion(bufferFormatProperties, &externalFormatAndroid, &yuvSampler)) {
+    if (!getSamplerYuvConversion(bufferFormatProperties, &externalFormatAndroid, useLinearFiltering, &yuvSampler)) {
         // TODO: Signal fatal error to C#
         return nullptr;
     }
@@ -266,7 +273,9 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
 }
 
 
-bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProperties2ANDROID& bufferFormatProperties, const VkExternalFormatANDROID* externalFormat, VkSamplerYcbcrConversion* sampler) {
+bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
+                                         const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering,
+                                         VkSamplerYcbcrConversion* sampler) {
 
     YuvHardwareBufferFormat format = {
             .format = bufferFormatProperties.format,
@@ -294,7 +303,7 @@ bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProp
             .components = bufferFormatProperties.samplerYcbcrConversionComponents,
             .xChromaOffset = bufferFormatProperties.suggestedXChromaOffset,
             .yChromaOffset = bufferFormatProperties.suggestedYChromaOffset,
-            .chromaFilter = VK_FILTER_NEAREST,
+            .chromaFilter = useLinearFiltering ? VK_FILTER_LINEAR : VK_FILTER_NEAREST,
             .forceExplicitReconstruction = VK_FALSE,
     };
 
@@ -337,11 +346,12 @@ bool VkRenderer::getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags required
     return false;
 }
 
-bool VkRenderer::confirmExternalFormatSupport(VkFormat format) {
+bool VkRenderer::confirmExternalFormatSupport(VkFormat format, bool* supportsLinearFiltering) {
 
     auto cached = externalFormatSupport.find(format);
     if (cached != externalFormatSupport.end()) {
-        return cached->second;
+        *supportsLinearFiltering = cached->second.supportsLinearSampling;
+        return cached->second.isSupported;
     }
 
     VkFormatProperties2 formatProperties = {
@@ -354,7 +364,7 @@ bool VkRenderer::confirmExternalFormatSupport(VkFormat format) {
             != VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) {
 
         LogE("Cannot use srcHardwareBuffer as it does not support sampling (VkFormat).");
-        return externalFormatSupport[format] = false;
+        return (externalFormatSupport[format] = { }).isSupported;
     }
 
     VkPhysicalDeviceExternalImageFormatInfo externalImageFormatInfo = {
@@ -388,7 +398,7 @@ bool VkRenderer::confirmExternalFormatSupport(VkFormat format) {
                                                                 &imageFormatProperties);
     if (result != VK_SUCCESS) {
         LogE("Could not get image format properties for srcHardwareBuffer due to error, code: %d.", result);
-        return externalFormatSupport[format] = false;
+        return (externalFormatSupport[format] = { }).isSupported;
     }
 
     if ((externalImageFormatProperties.externalMemoryProperties.compatibleHandleTypes
@@ -396,15 +406,22 @@ bool VkRenderer::confirmExternalFormatSupport(VkFormat format) {
                 != VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
 
         LogE("Cannot use srcHardwareBuffer as this device does not support it.");
-        return externalFormatSupport[format] = false;
+        return (externalFormatSupport[format] = { }).isSupported;
     }
 
     if ((externalImageFormatProperties.externalMemoryProperties.externalMemoryFeatures
             & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) != VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) {
 
         LogE("Cannot use srcHardwareBuffer as this device cannot import it.");
-        return externalFormatSupport[format] = false;
+        return (externalFormatSupport[format] = { }).isSupported;
     }
 
-    return externalFormatSupport[format] = true;
+    ExtFormatSupport formatSupport = {
+            .isSupported = true,
+            .supportsLinearSampling = (formatProperties.formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT)
+                                            == VK_FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT,
+    };
+
+    *supportsLinearFiltering = formatSupport.supportsLinearSampling;
+    return (externalFormatSupport[format] = formatSupport).isSupported;
 }
