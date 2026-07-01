@@ -65,7 +65,7 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
             acquiredBufferPtr = acquireHardwareBuffer(buffer)
             val bufferId = getHardwareBufferId(acquiredBufferPtr)
 
-            if (acquiredBufferPtr != 0L) {
+            if (acquiredBufferPtr != 0L && bufferId != 0L) {
                 callbacks.onFrameReady(acquiredBufferPtr, bufferId, timestamp)
                 acquiredBufferPtr = 0L
             }

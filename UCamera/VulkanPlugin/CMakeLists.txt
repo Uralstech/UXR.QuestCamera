@@ -37,6 +37,8 @@ target_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/../UnityInterface
 )
 
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE VK_NO_PROTOTYPES)
+
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
 # build script, prebuilt third-party libraries, or Android system libraries.

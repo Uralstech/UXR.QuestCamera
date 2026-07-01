@@ -221,8 +221,7 @@ VKAPI_ATTR VkResult VKAPI_CALL
 
         VkPhysicalDeviceFeatures2 features2 = {
                 .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                .pNext = &yuvFeaturesOut,
-                .features = VkPhysicalDeviceFeatures { },
+                .pNext = &yuvFeaturesOut
         };
 
         vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);

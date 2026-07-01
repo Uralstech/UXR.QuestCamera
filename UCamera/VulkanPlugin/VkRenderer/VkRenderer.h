@@ -16,21 +16,33 @@
 #define UXR_QUESTCAMERA_VKRENDERER_H
 
 #include <array>
-#include "IUnityInterface.h"
-#include "IUnityGraphics.h"
-
-// DON'T link to vulkan
-#define VK_NO_PROTOTYPES
-#include "IUnityGraphicsVulkan.h"
+#include <optional>
+#include <unordered_map>
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_android.h>
+#include "IUnityInterface.h"
+#include "IUnityGraphics.h"
+#include "IUnityGraphicsVulkan.h"
+#include "../External/BoostCombineHash.h"
 
 #define USED_VULKAN_FUNCTIONS(apply)                    \
     apply(vkCmdClearColorImage);                        \
     apply(vkCreateDevice);                              \
     apply(vkEnumerateDeviceExtensionProperties);        \
     apply(vkGetPhysicalDeviceFeatures2);                \
-    apply(vkGetAndroidHardwareBufferPropertiesANDROID);
+    apply(vkGetAndroidHardwareBufferPropertiesANDROID); \
+    apply(vkGetPhysicalDeviceMemoryProperties2);        \
+    apply(vkGetPhysicalDeviceFormatProperties2);        \
+    apply(vkGetPhysicalDeviceImageFormatProperties2);   \
+    apply(vkCreateImage);                               \
+    apply(vkDestroyImage);                              \
+    apply(vkAllocateMemory);                            \
+    apply(vkFreeMemory);                                \
+    apply(vkBindImageMemory2);                          \
+    apply(vkCreateSamplerYcbcrConversion);              \
+    apply(vkDestroySamplerYcbcrConversion);             \
+    apply(vkCreateImageView);                           \
+    apply(vkDestroyImageView);
 
 #define EVENT_ID_RENDER 1
 
@@ -49,6 +61,7 @@ public:
 
     static bool isVulkanSetup();
 
+    /// <summary>Must be called after Vulkan device initialization.</summary>
     VkRenderer(IUnityGraphicsVulkan* unityVulkan);
 
     void onDeviceInitialized();
@@ -91,7 +104,98 @@ private:
     static void loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr, VkInstance instance);
     static bool tryGetDeviceSupportedExtensions(VkPhysicalDevice device, std::vector<VkExtensionProperties>* result);
 
+    class ImportedImage {
+
+    public:
+        VkImage image           = VK_NULL_HANDLE;
+        VkDeviceMemory memory   = VK_NULL_HANDLE;
+        VkImageView imageView   = VK_NULL_HANDLE;
+
+        ImportedImage(VkDevice device_)
+                : device(device_) { }
+
+        ImportedImage(const ImportedImage&) = delete;
+        ImportedImage& operator=(const ImportedImage&) = delete;
+
+        ImportedImage(ImportedImage&&) = delete;
+        ImportedImage& operator=(ImportedImage&&) = delete;
+
+        ~ImportedImage() {
+
+            if (imageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, imageView, nullptr);
+            }
+
+            if (image != VK_NULL_HANDLE) {
+                vkDestroyImage(device, image, nullptr);
+            }
+
+            if (memory != VK_NULL_HANDLE) {
+                vkFreeMemory(device, memory, nullptr);
+            }
+        }
+
+    private:
+        VkDevice device;
+    };
+
+    struct YuvHardwareBufferFormat {
+        VkFormat format;
+        uint64_t externalFormat;
+
+        VkComponentMapping componentMapping;
+        VkSamplerYcbcrModelConversion model;
+        VkSamplerYcbcrRange range;
+        VkChromaLocation xChromaOffset;
+        VkChromaLocation yChromaOffset;
+
+        struct Hasher
+        {
+            size_t operator()(const YuvHardwareBufferFormat& val) const {
+                size_t seed = 0;
+
+                hash_combine(seed, val.format);
+                hash_combine(seed, val.externalFormat);
+
+                hash_combine(seed, val.componentMapping.r);
+                hash_combine(seed, val.componentMapping.g);
+                hash_combine(seed, val.componentMapping.b);
+                hash_combine(seed, val.componentMapping.a);
+
+                hash_combine(seed, val.model);
+                hash_combine(seed, val.range);
+                hash_combine(seed, val.xChromaOffset);
+                hash_combine(seed, val.yChromaOffset);
+
+                return seed;
+            }
+        };
+
+        bool operator==(const YuvHardwareBufferFormat& rhs) const {
+            return format == rhs.format
+                && externalFormat == rhs.externalFormat
+                && componentMapping.r == rhs.componentMapping.r
+                && componentMapping.g == rhs.componentMapping.g
+                && componentMapping.b == rhs.componentMapping.b
+                && componentMapping.a == rhs.componentMapping.a
+                && model == rhs.model
+                && range == rhs.range
+                && xChromaOffset == rhs.xChromaOffset
+                && yChromaOffset == rhs.yChromaOffset;
+        }
+    };
+
     IUnityGraphicsVulkan* unityVulkan;
+    UnityVulkanInstance unityVulkanInstance;
+
+    std::unordered_map<VkFormat, bool> externalFormatSupport;
+    std::optional<VkPhysicalDeviceMemoryProperties2> deviceMemoryProperties;
+    std::unordered_map<YuvHardwareBufferFormat, VkSamplerYcbcrConversion, YuvHardwareBufferFormat::Hasher> samplerYuvConversions;
+
+    std::unique_ptr<ImportedImage> processHardwareBuffer(AHardwareBuffer* hardwareBuffer);
+    bool getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProperties2ANDROID& bufferFormatProperties, const VkExternalFormatANDROID* externalFormat, VkSamplerYcbcrConversion* sampler);
+    bool getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties, uint32_t* memTypeIndex);
+    bool confirmExternalFormatSupport(VkFormat format);
 };
 
 

@@ -17,10 +17,6 @@
 
 #include "IUnityInterface.h"
 #include "IUnityGraphics.h"
-
-// DON'T link to vulkan
-#define VK_NO_PROTOTYPES
-
 #include "IUnityGraphicsVulkan.h"
 #include "VkRenderer/VkRenderer.h"
 
