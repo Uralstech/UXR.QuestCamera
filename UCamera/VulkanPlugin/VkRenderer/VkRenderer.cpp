@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include "VkRenderer.h"
+#include "../CompiledShaders/render_vert.h"
+#include "../CompiledShaders/render_frag.h"
 #include <android/hardware_buffer.h>
 
 VkRenderer::VkRenderer(IUnityGraphicsVulkan* unityVulkan_)
@@ -31,10 +33,29 @@ void VkRenderer::onDeviceInitialized() {
 
 void VkRenderer::onDeviceShutdown() {
 
+    if (graphicsPipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(unityVulkanInstance.device, graphicsPipeline, nullptr);
+        graphicsPipeline = VK_NULL_HANDLE;
+    }
+
+    if (graphicsPipelineLayout != VK_NULL_HANDLE) {
+        vkDestroyPipelineLayout(unityVulkanInstance.device, graphicsPipelineLayout, nullptr);
+        graphicsPipelineLayout = VK_NULL_HANDLE;
+    }
+
+    if (graphicsPipelineDescriptorSetLayout != VK_NULL_HANDLE) {
+        vkDestroyDescriptorSetLayout(unityVulkanInstance.device, graphicsPipelineDescriptorSetLayout, nullptr);
+        graphicsPipelineDescriptorSetLayout = VK_NULL_HANDLE;
+    }
+
     for (auto it = samplerYuvConversions.begin(); it != samplerYuvConversions.end();) {
         vkDestroySamplerYcbcrConversion(unityVulkanInstance.device, it->second, nullptr);
         it = samplerYuvConversions.erase(it);
     }
+
+    graphicsPipelineRenderPass = VK_NULL_HANDLE;
+    deviceMemoryProperties.reset();
+    externalFormatSupport.clear();
 
     LogD("Cleaned up resources.");
 }
@@ -79,11 +100,293 @@ void VkRenderer::render(RenderData* data) {
         goto renderEnd;
     }
 
+    VkPipeline pipeline;
+    if (!getGraphicsPipeline(recording.renderPass, &pipeline)) {
+        goto renderEnd;
+    }
+
 renderEnd:
     AHardwareBuffer_release(hardwareBuffer);
     if (data->onDone) {
         data->onDone(data->srcHardwareBufferId);
     }
+}
+
+bool VkRenderer::getGraphicsPipeline(VkRenderPass renderPass, VkPipeline* pipeline) {
+
+    if (graphicsPipeline != VK_NULL_HANDLE && graphicsPipelineRenderPass == renderPass) {
+        *pipeline = graphicsPipeline;
+        return true;
+    }
+
+    LogD("Creating graphics pipeline.");
+    if (graphicsPipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(unityVulkanInstance.device, graphicsPipeline, nullptr);
+        graphicsPipeline = VK_NULL_HANDLE;
+    }
+
+    VkPipelineLayout pipelineLayout;
+    if (!getGraphicsPipelineLayout(&pipelineLayout)) {
+        return false;
+    }
+
+    VkShaderModuleCreateInfo moduleCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+    };
+
+    moduleCreateInfo.codeSize = render_vert_size;
+    moduleCreateInfo.pCode = render_vert;
+
+    VkShaderModule vertexShaderModule;
+    VkResult vkResult = vkCreateShaderModule(unityVulkanInstance.device, &moduleCreateInfo, nullptr, &vertexShaderModule);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create vertex shader module due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    moduleCreateInfo.codeSize = render_frag_size;
+    moduleCreateInfo.pCode = render_frag;
+
+    VkShaderModule fragmentShaderModule;
+    vkResult = vkCreateShaderModule(unityVulkanInstance.device, &moduleCreateInfo, nullptr, &fragmentShaderModule);
+    if (vkResult != VK_SUCCESS) {
+        vkDestroyShaderModule(unityVulkanInstance.device, vertexShaderModule, nullptr);
+        LogE("Could not create fragment shader module due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    VkPipelineShaderStageCreateInfo shaderStageCreateInfos[2] {
+            VkPipelineShaderStageCreateInfo {
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                    .module = vertexShaderModule,
+                    .pName = "main",
+                    .pSpecializationInfo = nullptr
+            },
+            VkPipelineShaderStageCreateInfo {
+                    .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                    .module = fragmentShaderModule,
+                    .pName = "main",
+                    .pSpecializationInfo = nullptr
+            }
+    };
+
+    VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .vertexBindingDescriptionCount = 0,
+            .pVertexBindingDescriptions = nullptr,
+            .vertexAttributeDescriptionCount = 0,
+            .pVertexAttributeDescriptions = nullptr
+    };
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+            .primitiveRestartEnable = VK_FALSE
+    };
+
+    VkPipelineViewportStateCreateInfo viewportStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .viewportCount = 1,
+            .pViewports = nullptr, // dynamic
+            .scissorCount = 1,
+            .pScissors = nullptr // dynamic
+    };
+
+    VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .depthClampEnable = VK_FALSE,
+            .rasterizerDiscardEnable = VK_FALSE,
+            .polygonMode = VK_POLYGON_MODE_FILL,
+            .cullMode = VK_CULL_MODE_BACK_BIT,
+            .frontFace = VK_FRONT_FACE_CLOCKWISE,
+            .depthBiasEnable = VK_FALSE,
+            .depthBiasConstantFactor = 0.0f,
+            .depthBiasClamp = 0.0f,
+            .depthBiasSlopeFactor = 0.0f,
+            .lineWidth = 1.0f,
+    };
+
+    VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+            .sampleShadingEnable = VK_FALSE,
+            .minSampleShading = 0.0f,
+            .pSampleMask = nullptr,
+            .alphaToCoverageEnable = VK_FALSE,
+            .alphaToOneEnable = VK_FALSE,
+    };
+
+    VkPipelineColorBlendAttachmentState colorBlendAttachmentState = {
+            .blendEnable = VK_FALSE,
+            .srcColorBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstColorBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .colorBlendOp = VK_BLEND_OP_ADD,
+            .srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE,
+            .dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO,
+            .alphaBlendOp = VK_BLEND_OP_ADD,
+            .colorWriteMask = VK_COLOR_COMPONENT_R_BIT
+                              | VK_COLOR_COMPONENT_G_BIT
+                              | VK_COLOR_COMPONENT_B_BIT
+                              | VK_COLOR_COMPONENT_A_BIT
+    };
+
+    VkPipelineColorBlendStateCreateInfo colorBlendStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .logicOpEnable = VK_FALSE,
+            .logicOp = VK_LOGIC_OP_COPY,
+            .attachmentCount = 1,
+            .pAttachments = &colorBlendAttachmentState,
+            .blendConstants = { 0.0f, 0.0f, 0.0f, 0.0f }
+    };
+
+    VkDynamicState dynamicStates[2] = {
+            VK_DYNAMIC_STATE_VIEWPORT,
+            VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicStateCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .dynamicStateCount = 2,
+            .pDynamicStates = dynamicStates
+    };
+
+    VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .stageCount = 2,
+            .pStages = shaderStageCreateInfos,
+            .pVertexInputState = &vertexInputStateCreateInfo,
+            .pInputAssemblyState = &inputAssemblyStateCreateInfo,
+            .pTessellationState = nullptr,
+            .pViewportState = &viewportStateCreateInfo,
+            .pRasterizationState = &rasterizationStateCreateInfo,
+            .pMultisampleState = &multisampleStateCreateInfo,
+            .pDepthStencilState = nullptr,
+            .pColorBlendState = &colorBlendStateCreateInfo,
+            .pDynamicState = &dynamicStateCreateInfo,
+            .layout = pipelineLayout,
+            .renderPass = renderPass,
+            .subpass = 0,
+            .basePipelineHandle = VK_NULL_HANDLE,
+            .basePipelineIndex = -1,
+    };
+
+    VkPipeline vkCreatedPipeline;
+    vkResult = vkCreateGraphicsPipelines(unityVulkanInstance.device, unityVulkanInstance.pipelineCache,
+                                         1, &pipelineCreateInfo, nullptr, &vkCreatedPipeline);
+
+    vkDestroyShaderModule(unityVulkanInstance.device, fragmentShaderModule, nullptr);
+    vkDestroyShaderModule(unityVulkanInstance.device, vertexShaderModule, nullptr);
+
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create graphics pipeline due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *pipeline = graphicsPipeline = vkCreatedPipeline;
+    graphicsPipelineRenderPass = renderPass;
+    return true;
+}
+
+bool VkRenderer::getGraphicsPipelineLayout(VkPipelineLayout* layout) {
+
+    if (graphicsPipelineLayout != VK_NULL_HANDLE) {
+        *layout = graphicsPipelineLayout;
+        return true;
+    }
+
+    VkDescriptorSetLayout descriptorSetLayout;
+    if (!getGraphicsPipelineDescriptorSetLayout(&descriptorSetLayout)) {
+        return false;
+    }
+
+    VkPipelineLayoutCreateInfo layoutCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .setLayoutCount = 1,
+            .pSetLayouts = &descriptorSetLayout,
+            .pushConstantRangeCount = 0,
+            .pPushConstantRanges = nullptr
+    };
+
+    VkPipelineLayout vkCreatedPipelineLayout;
+    VkResult vkResult = vkCreatePipelineLayout(unityVulkanInstance.device, &layoutCreateInfo, nullptr, &vkCreatedPipelineLayout);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create graphics pipeline layout due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *layout = graphicsPipelineLayout = vkCreatedPipelineLayout;
+    return true;
+}
+
+bool VkRenderer::getGraphicsPipelineDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
+
+    if (graphicsPipelineDescriptorSetLayout != VK_NULL_HANDLE) {
+        *descriptorSetLayout = graphicsPipelineDescriptorSetLayout;
+        return true;
+    }
+
+    VkDescriptorSetLayoutBinding descriptorSetLayoutBinding = {
+            .binding = 0,
+            .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .bindingCount = 1,
+            .pBindings = &descriptorSetLayoutBinding
+    };
+
+    VkDescriptorSetLayoutSupport descriptorSetLayoutSupport = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_SUPPORT,
+            .pNext = nullptr,
+    };
+
+    vkGetDescriptorSetLayoutSupport(unityVulkanInstance.device, &descriptorSetLayoutCreateInfo, &descriptorSetLayoutSupport);
+    if (descriptorSetLayoutSupport.supported != VK_TRUE) {
+        LogE("Could not create descriptor set layout for graphics pipeline as the device does not support it.");
+        return false;
+    }
+
+    VkDescriptorSetLayout vkCreatedDescriptorSetLayout;
+    VkResult vkResult = vkCreateDescriptorSetLayout(unityVulkanInstance.device, &descriptorSetLayoutCreateInfo,
+                                                    nullptr, &vkCreatedDescriptorSetLayout);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create descriptor set layout for graphics pipeline due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *descriptorSetLayout = graphicsPipelineDescriptorSetLayout = vkCreatedDescriptorSetLayout;
+    return true;
 }
 
 std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHardwareBuffer* hardwareBuffer) {
@@ -268,7 +571,6 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
     }
 
     importedImage->imageView = vkCreatedImageView;
-
     return importedImage;
 }
 
@@ -308,9 +610,9 @@ bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProp
     };
 
     VkSamplerYcbcrConversion conversion;
-    VkResult result = vkCreateSamplerYcbcrConversion(unityVulkanInstance.device, &createInfo, nullptr, &conversion);
-    if (result != VK_SUCCESS) {
-        LogE("Could not create sampler YUV conversion due to error, code: %d.", result);
+    VkResult vkResult = vkCreateSamplerYcbcrConversion(unityVulkanInstance.device, &createInfo, nullptr, &conversion);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create sampler YUV conversion due to error, code: %d.", vkResult);
         return false;
     }
 
@@ -393,11 +695,11 @@ bool VkRenderer::confirmExternalFormatSupport(VkFormat format, bool* supportsLin
             .pNext = &externalImageFormatProperties
     };
 
-    VkResult result = vkGetPhysicalDeviceImageFormatProperties2(unityVulkanInstance.physicalDevice,
+    VkResult vkResult = vkGetPhysicalDeviceImageFormatProperties2(unityVulkanInstance.physicalDevice,
                                                                 &imageFormatInfo,
                                                                 &imageFormatProperties);
-    if (result != VK_SUCCESS) {
-        LogE("Could not get image format properties for srcHardwareBuffer due to error, code: %d.", result);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not get image format properties for srcHardwareBuffer due to error, code: %d.", vkResult);
         return (externalFormatSupport[format] = { }).isSupported;
     }
 

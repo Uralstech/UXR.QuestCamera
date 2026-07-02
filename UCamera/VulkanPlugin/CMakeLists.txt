@@ -11,6 +11,82 @@ cmake_minimum_required(VERSION 3.22.1)
 # build script scope).
 project("GfxPlugin_UXRQC_VulkanPlugin")
 
+# Compile shaders
+find_program(GLSLC
+    NAMES glslc
+    PATHS
+        "$ENV{ANDROID_NDK}/shader-tools"
+        "${ANDROID_NDK}/shader-tools"
+    PATH_SUFFIXES
+        darwin-x86_64
+        windows-x86_64
+    REQUIRED
+)
+
+set(SHADERS
+        Shaders/Render.vert
+        Shaders/Render.frag
+)
+
+set(GENERATED_SOURCES)
+foreach(SHADER ${SHADERS})
+
+    get_filename_component(FILE_NAME ${SHADER} NAME)
+    string(REPLACE "." "_" SYMBOL ${FILE_NAME})
+    string(TOLOWER ${SYMBOL} SYMBOL)
+
+    set(TXT ${CMAKE_CURRENT_SOURCE_DIR}/CompiledShaders/${SYMBOL}.txt)
+    set(CPP ${CMAKE_CURRENT_SOURCE_DIR}/CompiledShaders/${SYMBOL}.cpp)
+    set(HPP ${CMAKE_CURRENT_SOURCE_DIR}/CompiledShaders/${SYMBOL}.h)
+
+    add_custom_command(
+        OUTPUT ${TXT}
+        COMMAND ${GLSLC}
+            --target-env=vulkan1.1
+            -mfmt=c
+            -o ${TXT}
+            ${CMAKE_CURRENT_SOURCE_DIR}/${SHADER}
+        DEPENDS ${SHADER}
+    )
+
+    file(GENERATE
+        OUTPUT ${HPP}
+        CONTENT
+            "#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+extern const uint32_t ${SYMBOL}[];
+extern const size_t ${SYMBOL}_size;
+")
+
+    file(GENERATE
+        OUTPUT ${CPP}
+        CONTENT
+            "#include \"${SYMBOL}.h\"
+
+const uint32_t ${SYMBOL}[] =
+#include \"${SYMBOL}.txt\"
+;
+
+const size_t ${SYMBOL}_size = sizeof(${SYMBOL});
+")
+
+    set_source_files_properties(${CPP}
+            PROPERTIES
+            GENERATED TRUE
+            OBJECT_DEPENDS ${TXT}
+    )
+
+    set_source_files_properties(${HPP}
+            PROPERTIES
+            GENERATED TRUE
+    )
+
+    list(APPEND GENERATED_SOURCES ${CPP})
+endforeach()
+
 # Creates and names a library, sets it as either STATIC
 # or SHARED, and provides the relative paths to its source code.
 # You can define multiple libraries, and CMake builds them for you.
@@ -30,7 +106,8 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
     VkRenderer/VkRenderer.cpp
     VkRenderer/VkRendererStatic.cpp
 
-    VkUnityInterface.cpp)
+    VkUnityInterface.cpp
+    ${GENERATED_SOURCES})
 
 target_include_directories(
         ${CMAKE_PROJECT_NAME} PRIVATE

@@ -42,7 +42,16 @@
     apply(vkCreateSamplerYcbcrConversion);              \
     apply(vkDestroySamplerYcbcrConversion);             \
     apply(vkCreateImageView);                           \
-    apply(vkDestroyImageView);
+    apply(vkDestroyImageView);                          \
+    apply(vkCreateShaderModule);                        \
+    apply(vkDestroyShaderModule);                       \
+    apply(vkGetDescriptorSetLayoutSupport);             \
+    apply(vkCreateDescriptorSetLayout);                 \
+    apply(vkDestroyDescriptorSetLayout);                \
+    apply(vkCreatePipelineLayout);                      \
+    apply(vkDestroyPipelineLayout);                     \
+    apply(vkCreateGraphicsPipelines);                   \
+    apply(vkDestroyPipeline);
 
 #define EVENT_ID_RENDER 1
 
@@ -197,7 +206,17 @@ private:
     std::optional<VkPhysicalDeviceMemoryProperties2> deviceMemoryProperties;
     std::unordered_map<YuvHardwareBufferFormat, VkSamplerYcbcrConversion, YuvHardwareBufferFormat::Hasher> samplerYuvConversions;
 
+    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    VkPipelineLayout graphicsPipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout graphicsPipelineDescriptorSetLayout = VK_NULL_HANDLE;
+    VkRenderPass graphicsPipelineRenderPass = VK_NULL_HANDLE;
+
+    bool getGraphicsPipeline(VkRenderPass renderPass, VkPipeline* pipeline);
+    bool getGraphicsPipelineLayout(VkPipelineLayout* layout);
+    bool getGraphicsPipelineDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout);
+
     std::unique_ptr<ImportedImage> processHardwareBuffer(AHardwareBuffer* hardwareBuffer);
+
     bool getSamplerYuvConversion(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
                                  const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering, VkSamplerYcbcrConversion* sampler);
     bool getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties, uint32_t* memTypeIndex);
