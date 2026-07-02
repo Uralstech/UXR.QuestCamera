@@ -26,14 +26,14 @@
 #include "../External/BoostCombineHash.h"
 
 #define USED_VULKAN_FUNCTIONS(apply)                    \
-    apply(vkCmdClearColorImage);                        \
     apply(vkCreateDevice);                              \
     apply(vkEnumerateDeviceExtensionProperties);        \
     apply(vkGetPhysicalDeviceFeatures2);                \
-    apply(vkGetAndroidHardwareBufferPropertiesANDROID); \
+    apply(vkGetPhysicalDeviceProperties2);              \
     apply(vkGetPhysicalDeviceMemoryProperties2);        \
     apply(vkGetPhysicalDeviceFormatProperties2);        \
     apply(vkGetPhysicalDeviceImageFormatProperties2);   \
+    apply(vkGetAndroidHardwareBufferPropertiesANDROID); \
     apply(vkCreateImage);                               \
     apply(vkDestroyImage);                              \
     apply(vkAllocateMemory);                            \
@@ -41,6 +41,8 @@
     apply(vkBindImageMemory2);                          \
     apply(vkCreateSamplerYcbcrConversion);              \
     apply(vkDestroySamplerYcbcrConversion);             \
+    apply(vkCreateSampler);                             \
+    apply(vkDestroySampler);                            \
     apply(vkCreateImageView);                           \
     apply(vkDestroyImageView);                          \
     apply(vkCreateShaderModule);                        \
@@ -51,7 +53,15 @@
     apply(vkCreatePipelineLayout);                      \
     apply(vkDestroyPipelineLayout);                     \
     apply(vkCreateGraphicsPipelines);                   \
-    apply(vkDestroyPipeline);
+    apply(vkDestroyPipeline);                           \
+    apply(vkCreateDescriptorPool);                      \
+    apply(vkDestroyDescriptorPool);                     \
+    apply(vkAllocateDescriptorSets);                    \
+    apply(vkFreeDescriptorSets);                        \
+    apply(vkUpdateDescriptorSets);                      \
+    apply(vkCreateFence);                               \
+    apply(vkDestroyFence);                              \
+    apply(vkWaitForFences);
 
 #define EVENT_ID_RENDER 1
 
@@ -93,12 +103,13 @@ private:
     static bool canContinueWithVulkanInstance;
     static bool canContinueWithVulkanDevice;
 
-    static constexpr std::array<const char*, 5> reqDeviceExtensions = {
+    static constexpr std::array<const char*, 6> reqDeviceExtensions = {
             VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
             VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
             VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
             VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
-            VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME
+            VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
+            VK_KHR_MAINTENANCE_6_EXTENSION_NAME
     };
 
     static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
@@ -118,12 +129,41 @@ private:
         bool supportsLinearSampling = false;
     };
 
+    struct YuvConversionObjects {
+        VkSamplerYcbcrConversion samplerConversion = VK_NULL_HANDLE;
+        VkSampler sampler = VK_NULL_HANDLE;
+
+        YuvConversionObjects(VkDevice device_)
+            : device(device_) { }
+
+        YuvConversionObjects(const YuvConversionObjects&) = delete;
+        YuvConversionObjects& operator=(const YuvConversionObjects&) = delete;
+
+        YuvConversionObjects(YuvConversionObjects&&) = delete;
+        YuvConversionObjects& operator=(YuvConversionObjects&&) = delete;
+
+        ~YuvConversionObjects() {
+
+            if (samplerConversion != VK_NULL_HANDLE) {
+                vkDestroySamplerYcbcrConversion(device, samplerConversion, nullptr);
+            }
+
+            if (sampler != VK_NULL_HANDLE) {
+                vkDestroySampler(device, sampler, nullptr);
+            }
+        }
+
+    private:
+        VkDevice device;
+    };
+
     class ImportedImage {
 
     public:
         VkImage image           = VK_NULL_HANDLE;
         VkDeviceMemory memory   = VK_NULL_HANDLE;
         VkImageView imageView   = VK_NULL_HANDLE;
+        const YuvConversionObjects* usedConversionObjects = nullptr;
 
         ImportedImage(VkDevice device_)
                 : device(device_) { }
@@ -163,8 +203,7 @@ private:
         VkChromaLocation xChromaOffset;
         VkChromaLocation yChromaOffset;
 
-        struct Hasher
-        {
+        struct Hasher {
             size_t operator()(const YuvHardwareBufferFormat& val) const {
                 size_t seed = 0;
 
@@ -199,26 +238,74 @@ private:
         }
     };
 
+    struct RenderSubmission {
+        std::unique_ptr<ImportedImage> srcImage = nullptr;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+        VkFence fence = VK_NULL_HANDLE;
+
+        RenderSubmission(VkDevice device_)
+            : device(device_) { }
+
+        RenderSubmission(const RenderSubmission&) = delete;
+        RenderSubmission& operator=(const RenderSubmission&) = delete;
+
+        RenderSubmission(RenderSubmission&&) = delete;
+        RenderSubmission& operator=(RenderSubmission&&) = delete;
+
+        bool releaseDescriptorSet(VkDescriptorPool descriptorPool) {
+
+            if (descriptorSet != VK_NULL_HANDLE) {
+                VkResult vkResult = vkFreeDescriptorSets(device, descriptorPool, 1, &descriptorSet);
+                if (vkResult != VK_SUCCESS) {
+                    LogE("Could not free descriptor set due to error, code: %d.", vkResult);
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        ~RenderSubmission() {
+
+            if (fence != VK_NULL_HANDLE) {
+                vkDestroyFence(device, fence, nullptr);
+            }
+
+            // srcImage is auto-deleted
+        }
+
+    private:
+        VkDevice device;
+    };
+
     IUnityGraphicsVulkan* unityVulkan;
     UnityVulkanInstance unityVulkanInstance;
 
     std::unordered_map<VkFormat, ExtFormatSupport> externalFormatSupport;
     std::optional<VkPhysicalDeviceMemoryProperties2> deviceMemoryProperties;
-    std::unordered_map<YuvHardwareBufferFormat, VkSamplerYcbcrConversion, YuvHardwareBufferFormat::Hasher> samplerYuvConversions;
+    std::unordered_map<YuvHardwareBufferFormat, std::unique_ptr<YuvConversionObjects>, YuvHardwareBufferFormat::Hasher> samplerYuvConversions;
 
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkPipelineLayout graphicsPipelineLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout graphicsPipelineDescriptorSetLayout = VK_NULL_HANDLE;
     VkRenderPass graphicsPipelineRenderPass = VK_NULL_HANDLE;
 
+    std::vector<std::unique_ptr<RenderSubmission>> ongoingSubmissions;
+    VkDescriptorPool submissionDescriptorPool = VK_NULL_HANDLE;
+
+    void pruneOngoingSubmissions();
+
     bool getGraphicsPipeline(VkRenderPass renderPass, VkPipeline* pipeline);
     bool getGraphicsPipelineLayout(VkPipelineLayout* layout);
+    bool getGraphicsPipelineDescriptorSet(VkDescriptorSet* descriptorSet);
     bool getGraphicsPipelineDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout);
+    bool getDescriptorPool(VkDescriptorPool* descriptorPool);
 
     std::unique_ptr<ImportedImage> processHardwareBuffer(AHardwareBuffer* hardwareBuffer);
 
-    bool getSamplerYuvConversion(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
-                                 const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering, VkSamplerYcbcrConversion* sampler);
+    const YuvConversionObjects* getYuvConversionObjects(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
+                                                        const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering);
+
     bool getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties, uint32_t* memTypeIndex);
     bool confirmExternalFormatSupport(VkFormat format, bool* supportsLinearFiltering);
 };

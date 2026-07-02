@@ -18,7 +18,9 @@
 #include <android/hardware_buffer.h>
 
 VkRenderer::VkRenderer(IUnityGraphicsVulkan* unityVulkan_)
-    : unityVulkan(unityVulkan_), unityVulkanInstance(unityVulkan_->Instance()) { }
+    : unityVulkan(unityVulkan_), unityVulkanInstance(unityVulkan_->Instance()) {
+    ongoingSubmissions.reserve(5);
+}
 
 void VkRenderer::onDeviceInitialized() {
 
@@ -32,6 +34,13 @@ void VkRenderer::onDeviceInitialized() {
 }
 
 void VkRenderer::onDeviceShutdown() {
+
+    ongoingSubmissions.clear();
+
+    if (submissionDescriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(unityVulkanInstance.device, submissionDescriptorPool, nullptr);
+        submissionDescriptorPool = VK_NULL_HANDLE;
+    }
 
     if (graphicsPipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(unityVulkanInstance.device, graphicsPipeline, nullptr);
@@ -48,11 +57,7 @@ void VkRenderer::onDeviceShutdown() {
         graphicsPipelineDescriptorSetLayout = VK_NULL_HANDLE;
     }
 
-    for (auto it = samplerYuvConversions.begin(); it != samplerYuvConversions.end();) {
-        vkDestroySamplerYcbcrConversion(unityVulkanInstance.device, it->second, nullptr);
-        it = samplerYuvConversions.erase(it);
-    }
-
+    samplerYuvConversions.clear();
     graphicsPipelineRenderPass = VK_NULL_HANDLE;
     deviceMemoryProperties.reset();
     externalFormatSupport.clear();
@@ -67,21 +72,29 @@ void VkRenderer::render(RenderData* data) {
         return;
     }
 
+    UnityVulkanImage uvkImage;
     AHardwareBuffer* hardwareBuffer = data->srcHardwareBuffer;
+    auto renderSubmission = std::make_unique<RenderSubmission>(unityVulkanInstance.device);
+
+    VkDescriptorImageInfo descriptorImageInfo;
+    VkWriteDescriptorSet writeDescriptorSet;
+
     if (hardwareBuffer == nullptr) {
         LogE("Provided srcHardwareBuffer is a nullptr, cannot render.");
-        return;
-    }
-
-    UnityVulkanImage uvkImage;
-    std::unique_ptr<ImportedImage> importedImage;
-    if (data->dstImage == nullptr) {
-        LogE("Provided dstImage is a nullptr, cannot render.");
         goto renderEnd;
     }
 
-    importedImage = processHardwareBuffer(hardwareBuffer);
-    if (!importedImage) {
+    if (data->dstImage == nullptr) {
+        LogE("Provided dstImage is a nullptr, cannot render.");
+        AHardwareBuffer_release(hardwareBuffer);
+        goto renderEnd;
+    }
+
+    pruneOngoingSubmissions();
+
+    renderSubmission->srcImage = processHardwareBuffer(hardwareBuffer);
+    AHardwareBuffer_release(hardwareBuffer);
+    if (!renderSubmission->srcImage) {
         goto renderEnd;
     }
 
@@ -105,10 +118,60 @@ void VkRenderer::render(RenderData* data) {
         goto renderEnd;
     }
 
+    if (!getGraphicsPipelineDescriptorSet(&renderSubmission->descriptorSet)) {
+        goto renderEnd;
+    }
+
+    descriptorImageInfo = {
+        .sampler = renderSubmission->srcImage->usedConversionObjects->sampler,
+        .imageView = renderSubmission->srcImage->imageView,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+    };
+
+    writeDescriptorSet = {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = nullptr,
+        .dstSet = renderSubmission->descriptorSet,
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &descriptorImageInfo,
+        .pBufferInfo = nullptr,
+        .pTexelBufferView = nullptr,
+    };
+
+    vkUpdateDescriptorSets(unityVulkanInstance.device, 1, &writeDescriptorSet, 0, nullptr);
+
 renderEnd:
-    AHardwareBuffer_release(hardwareBuffer);
     if (data->onDone) {
         data->onDone(data->srcHardwareBufferId);
+    }
+}
+
+void VkRenderer::pruneOngoingSubmissions() {
+
+    if (ongoingSubmissions.empty()) {
+        return;
+    }
+
+    VkDescriptorPool descriptorPool;
+    if (!getDescriptorPool(&descriptorPool)) {
+        return;
+    }
+
+    for (auto it = ongoingSubmissions.begin(); it != ongoingSubmissions.end();) {
+
+        RenderSubmission* submission = it->get();
+        VkResult vkResult = vkWaitForFences(unityVulkanInstance.device, 1, &submission->fence, VK_TRUE, 0);
+        if (vkResult == VK_SUCCESS || vkResult == VK_ERROR_DEVICE_LOST) {
+            if (submission->releaseDescriptorSet(descriptorPool)) {
+                it = ongoingSubmissions.erase(it);
+                continue;
+            }
+        }
+
+        ++it;
     }
 }
 
@@ -344,6 +407,37 @@ bool VkRenderer::getGraphicsPipelineLayout(VkPipelineLayout* layout) {
     return true;
 }
 
+bool VkRenderer::getGraphicsPipelineDescriptorSet(VkDescriptorSet* descriptorSet) {
+
+    VkDescriptorPool descriptorPool;
+    if (!getDescriptorPool(&descriptorPool)) {
+        return false;
+    }
+
+    VkDescriptorSetLayout descriptorSetLayout;
+    if (!getGraphicsPipelineDescriptorSetLayout(&descriptorSetLayout)) {
+        return false;
+    }
+
+    VkDescriptorSetAllocateInfo allocateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .descriptorPool = descriptorPool,
+            .descriptorSetCount = 1,
+            .pSetLayouts = &descriptorSetLayout
+    };
+
+    VkDescriptorSet vkCreatedDescriptorSet;
+    VkResult vkResult = vkAllocateDescriptorSets(unityVulkanInstance.device, &allocateInfo, &vkCreatedDescriptorSet);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not allocate descriptor set due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *descriptorSet = vkCreatedDescriptorSet;
+    return true;
+}
+
 bool VkRenderer::getGraphicsPipelineDescriptorSetLayout(VkDescriptorSetLayout* descriptorSetLayout) {
 
     if (graphicsPipelineDescriptorSetLayout != VK_NULL_HANDLE) {
@@ -386,6 +480,53 @@ bool VkRenderer::getGraphicsPipelineDescriptorSetLayout(VkDescriptorSetLayout* d
     }
 
     *descriptorSetLayout = graphicsPipelineDescriptorSetLayout = vkCreatedDescriptorSetLayout;
+    return true;
+}
+
+bool VkRenderer::getDescriptorPool(VkDescriptorPool* descriptorPool) {
+
+    if (submissionDescriptorPool != VK_NULL_HANDLE) {
+        *descriptorPool = submissionDescriptorPool;
+        return true;
+    }
+
+    VkPhysicalDeviceMaintenance6PropertiesKHR physicalDeviceMaintenanceProperties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES_KHR,
+            .pNext = nullptr
+    };
+
+    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &physicalDeviceMaintenanceProperties,
+    };
+
+    vkGetPhysicalDeviceProperties2(unityVulkanInstance.physicalDevice, &physicalDeviceProperties);
+    LogD("Physical device supported Vulkan version: %d.%d",
+         VK_API_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
+         VK_API_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion));
+
+    VkDescriptorPoolSize poolSize = {
+        .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .descriptorCount = physicalDeviceMaintenanceProperties.maxCombinedImageSamplerDescriptorCount
+    };
+
+    VkDescriptorPoolCreateInfo poolCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+            .maxSets = 30,
+            .poolSizeCount = 1,
+            .pPoolSizes = &poolSize
+    };
+
+    VkDescriptorPool vkCreatedDescriptorPool;
+    VkResult vkResult = vkCreateDescriptorPool(unityVulkanInstance.device, &poolCreateInfo, nullptr, &vkCreatedDescriptorPool);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create descriptor pool due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *descriptorPool = submissionDescriptorPool = vkCreatedDescriptorPool;
     return true;
 }
 
@@ -531,8 +672,8 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
         return nullptr;
     }
 
-    VkSamplerYcbcrConversion yuvSampler;
-    if (!getSamplerYuvConversion(bufferFormatProperties, &externalFormatAndroid, useLinearFiltering, &yuvSampler)) {
+    importedImage->usedConversionObjects = getYuvConversionObjects(bufferFormatProperties, &externalFormatAndroid, useLinearFiltering);
+    if (!importedImage->usedConversionObjects) {
         // TODO: Signal fatal error to C#
         return nullptr;
     }
@@ -540,7 +681,7 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
     VkSamplerYcbcrConversionInfo yuvConversionInfo = {
             .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO,
             .pNext = nullptr,
-            .conversion = yuvSampler
+            .conversion = importedImage->usedConversionObjects->samplerConversion
     };
 
     VkImageViewCreateInfo imageViewCreateInfo = {
@@ -574,10 +715,8 @@ std::unique_ptr<VkRenderer::ImportedImage> VkRenderer::processHardwareBuffer(AHa
     return importedImage;
 }
 
-
-bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
-                                         const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering,
-                                         VkSamplerYcbcrConversion* sampler) {
+const VkRenderer::YuvConversionObjects* VkRenderer::getYuvConversionObjects(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
+                                                                            const VkExternalFormatANDROID* externalFormat, bool useLinearFiltering) {
 
     YuvHardwareBufferFormat format = {
             .format = bufferFormatProperties.format,
@@ -592,10 +731,10 @@ bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProp
 
     auto it = samplerYuvConversions.find(format);
     if (it != samplerYuvConversions.end()) {
-        *sampler = it->second;
-        return true;
+        return it->second.get();
     }
 
+    VkFilter chromaFilter = useLinearFiltering ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
     VkSamplerYcbcrConversionCreateInfo createInfo = {
             .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
             .pNext = externalFormat,
@@ -605,20 +744,52 @@ bool VkRenderer::getSamplerYuvConversion(const VkAndroidHardwareBufferFormatProp
             .components = bufferFormatProperties.samplerYcbcrConversionComponents,
             .xChromaOffset = bufferFormatProperties.suggestedXChromaOffset,
             .yChromaOffset = bufferFormatProperties.suggestedYChromaOffset,
-            .chromaFilter = useLinearFiltering ? VK_FILTER_LINEAR : VK_FILTER_NEAREST,
+            .chromaFilter = chromaFilter,
             .forceExplicitReconstruction = VK_FALSE,
     };
 
-    VkSamplerYcbcrConversion conversion;
-    VkResult vkResult = vkCreateSamplerYcbcrConversion(unityVulkanInstance.device, &createInfo, nullptr, &conversion);
+    auto yuvConversionObjects = std::make_unique<YuvConversionObjects>(unityVulkanInstance.device);
+    VkResult vkResult = vkCreateSamplerYcbcrConversion(unityVulkanInstance.device, &createInfo, nullptr, &yuvConversionObjects->samplerConversion);
     if (vkResult != VK_SUCCESS) {
         LogE("Could not create sampler YUV conversion due to error, code: %d.", vkResult);
-        return false;
+        return nullptr;
     }
 
-    samplerYuvConversions[format] = conversion;
-    *sampler = conversion;
-    return true;
+    VkSamplerYcbcrConversionInfo yuvConversionInfo = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO,
+            .pNext = nullptr,
+            .conversion = yuvConversionObjects->samplerConversion
+    };
+
+    VkSamplerCreateInfo samplerCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = &yuvConversionInfo,
+            .flags = 0,
+            .magFilter = chromaFilter,
+            .minFilter = chromaFilter,
+            .mipmapMode = useLinearFiltering ? VK_SAMPLER_MIPMAP_MODE_LINEAR
+                                             : VK_SAMPLER_MIPMAP_MODE_NEAREST,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, // TODO: this is for debugging
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = VK_FALSE,
+            .maxAnisotropy = 1.0f,
+            .compareEnable = VK_FALSE,
+            .compareOp = VK_COMPARE_OP_NEVER,
+            .minLod = 0.0f,
+            .maxLod = 0.0f,
+            .borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+            .unnormalizedCoordinates = VK_FALSE
+    };
+
+    vkResult = vkCreateSampler(unityVulkanInstance.device, &samplerCreateInfo, nullptr, &yuvConversionObjects->sampler);
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create sampler due to error, code: %d.", vkResult);
+        return nullptr;
+    }
+
+    return (samplerYuvConversions[format] = std::move(yuvConversionObjects)).get();
 }
 
 bool VkRenderer::getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties, uint32_t* memTypeIndex) {
