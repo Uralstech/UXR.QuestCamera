@@ -102,11 +102,11 @@ endforeach()
 # used in the AndroidManifest.xml file.
 add_library(${CMAKE_PROJECT_NAME} SHARED
     # List C/C++ source files with relative paths to this CMakeLists.txt.
-    VkRenderer/VkRenderer.h
-    VkRenderer/VkRenderer.cpp
-    VkRenderer/VkRendererStatic.cpp
+    VulkanRenderManager/VulkanRenderManager.h
+    VulkanRenderManager/VulkanRenderManager.cpp
+    VulkanRenderManager/VulkanRenderManagerStatic.cpp
 
-    VkUnityInterface.cpp
+    UnityPluginInterface.cpp
     ${GENERATED_SOURCES})
 
 target_include_directories(

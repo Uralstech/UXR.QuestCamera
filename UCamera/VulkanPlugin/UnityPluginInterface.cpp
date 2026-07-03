@@ -18,14 +18,14 @@
 #include "IUnityInterface.h"
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
-#include "VkRenderer/VkRenderer.h"
+#include "VulkanRenderManager/VulkanRenderManager.h"
 
 #define TAG "UXRQC.VkInterface"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, TAG, __VA_ARGS__)
 
-static std::unique_ptr<VkRenderer> s_renderer = nullptr;
+static std::unique_ptr<VulkanRenderManager> s_renderManager = nullptr;
 
 static IUnityGraphics* s_unityGraphics = nullptr;
 static IUnityGraphicsVulkanV2* s_unityVulkanV2 = nullptr;
@@ -55,9 +55,9 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
 
     bool interceptAdded = false;
     if (s_unityVulkanV2) {
-        interceptAdded = s_unityVulkanV2->AddInterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr, 0);
+        interceptAdded = s_unityVulkanV2->AddInterceptInitialization(VulkanRenderManager::hookVulkanInitialization, nullptr, 0);
     } else {
-        interceptAdded = s_unityVulkanV1->InterceptInitialization(VkRenderer::hookVulkanInitialization, nullptr);
+        interceptAdded = s_unityVulkanV1->InterceptInitialization(VulkanRenderManager::hookVulkanInitialization, nullptr);
     }
 
     if (!interceptAdded) {
@@ -82,7 +82,7 @@ extern "C" void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
     }
 
     if (s_unityVulkanV2) {
-        s_unityVulkanV2->RemoveInterceptInitialization(VkRenderer::hookVulkanInitialization);
+        s_unityVulkanV2->RemoveInterceptInitialization(VulkanRenderManager::hookVulkanInitialization);
     }
 
     s_unityVulkanV2 = nullptr;
@@ -105,7 +105,7 @@ static void UNITY_INTERFACE_API
         return;
     }
 
-    if (!VkRenderer::isVulkanSetup()) {
+    if (!VulkanRenderManager::isRuntimeSupported()) {
         LOGD("Renderer hooks not setup, cannot continue.");
         return;
     }
@@ -113,18 +113,18 @@ static void UNITY_INTERFACE_API
     switch (eventType) {
         case kUnityGfxDeviceEventInitialize:
             LOGD("Graphics device initialized.");
-            if (s_renderer) return;
+            if (s_renderManager) return;
 
-            s_renderer = std::make_unique<VkRenderer>(s_unityVulkanV1);
-            s_renderer->onDeviceInitialized();
+            s_renderManager = std::make_unique<VulkanRenderManager>(s_unityVulkanV1);
+            s_renderManager->onDeviceInitialized();
             break;
 
         case kUnityGfxDeviceEventShutdown:
             LOGD("Graphics device shut down.");
-            if (!s_renderer) return;
+            if (!s_renderManager) return;
 
-            s_renderer->onDeviceShutdown();
-            s_renderer.reset();
+            s_renderManager->onDeviceShutdown();
+            s_renderManager.reset();
             break;
 
         default: break;
@@ -134,14 +134,14 @@ static void UNITY_INTERFACE_API
 static void UNITY_INTERFACE_API
     renderEvent(int eventId, void* data) {
 
-    if (!s_renderer) {
+    if (!s_renderManager) {
         LOGE("Render event invoked with uninitialized renderer! (eventId: %i)", eventId);
         return;
     }
 
     switch (eventId) {
         case EVENT_ID_RENDER:
-            s_renderer->render(reinterpret_cast<RenderData*>(data));
+            s_renderManager->render(reinterpret_cast<RenderData*>(data));
             break;
 
         default:
