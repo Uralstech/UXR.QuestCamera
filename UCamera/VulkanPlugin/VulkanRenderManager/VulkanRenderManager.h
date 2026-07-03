@@ -16,6 +16,7 @@
 #define UXR_QUESTCAMERA_VULKANRENDERMANAGER_H
 
 #include <array>
+#include <vector>
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -62,10 +63,13 @@
     apply(vkAllocateDescriptorSets);                    \
     apply(vkFreeDescriptorSets);                        \
     apply(vkUpdateDescriptorSets);                      \
-    apply(vkCreateFence);                               \
-    apply(vkDestroyFence);                              \
-    apply(vkWaitForFences);                             \
-    apply(vkCmdPipelineBarrier);
+    apply(vkCmdPipelineBarrier);                        \
+    apply(vkCmdBeginRenderingKHR);                      \
+    apply(vkCmdEndRenderingKHR);                        \
+    apply(vkCmdBindPipeline);                           \
+    apply(vkCmdSetViewport);                            \
+    apply(vkCmdSetScissor);                             \
+    apply(vkCmdDraw);
 
 // endregion
 
@@ -115,13 +119,14 @@ private:
     static bool isVulkanInstanceSupported;
     static bool isVulkanDeviceSupported;
 
-    static constexpr std::array<const char*, 6> reqDeviceExtensions = {
+    static constexpr std::array<const char*, 7> reqDeviceExtensions = {
             VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
-            VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
-            VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
             VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
             VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
-            VK_KHR_MAINTENANCE_6_EXTENSION_NAME
+            VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
+            VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
+            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+            VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
     };
 
     static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
@@ -153,7 +158,6 @@ private:
         VkPipeline pipeline                         = VK_NULL_HANDLE;
         VkPipelineLayout pipelineLayout             = VK_NULL_HANDLE;
         VkDescriptorSetLayout descriptorSetLayout   = VK_NULL_HANDLE;
-        VkRenderPass pipelineRenderPass             = VK_NULL_HANDLE;
         VkSampler sampler                           = VK_NULL_HANDLE;
         VkSamplerYcbcrConversion conversion         = VK_NULL_HANDLE;
 
@@ -179,8 +183,6 @@ private:
             if (descriptorSetLayout != VK_NULL_HANDLE) {
                 vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
             }
-
-            pipelineRenderPass = VK_NULL_HANDLE;
 
             if (sampler != VK_NULL_HANDLE) {
                 vkDestroySampler(device, sampler, nullptr);
@@ -228,68 +230,72 @@ private:
         VkDevice device;
     };
 
-    struct YuvHardwareBufferFormat {
-        VkFormat format;
-        uint64_t externalFormat;
+    struct RenderPipelineKey {
+    private:
+        VkFormat srcFormat;
+        uint64_t srcExternalFormat;
 
-        VkComponentMapping componentMapping;
-        VkSamplerYcbcrModelConversion model;
-        VkSamplerYcbcrRange range;
-        VkChromaLocation xChromaOffset;
-        VkChromaLocation yChromaOffset;
+        VkComponentMapping srcComponentMapping;
+        VkSamplerYcbcrModelConversion srcModel;
+        VkSamplerYcbcrRange srcRange;
+        VkChromaLocation srcXChromaOffset;
+        VkChromaLocation srcYChromaOffset;
 
-        static YuvHardwareBufferFormat fromHardwareBufferFormat(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties) {
-            return YuvHardwareBufferFormat {
-                    .format = bufferFormatProperties.format,
-                    .externalFormat = bufferFormatProperties.externalFormat,
+        VkFormat targetFormat;
 
-                    .componentMapping = bufferFormatProperties.samplerYcbcrConversionComponents,
-                    .model = bufferFormatProperties.suggestedYcbcrModel,
-                    .range = bufferFormatProperties.suggestedYcbcrRange,
-                    .xChromaOffset = bufferFormatProperties.suggestedXChromaOffset,
-                    .yChromaOffset = bufferFormatProperties.suggestedYChromaOffset,
-            };
-        }
+    public:
+
+        RenderPipelineKey(const VkAndroidHardwareBufferFormatPropertiesANDROID& src, VkFormat targetFormat_)
+            : srcFormat(src.format),
+              srcExternalFormat(src.externalFormat),
+              srcComponentMapping(src.samplerYcbcrConversionComponents),
+              srcModel(src.suggestedYcbcrModel),
+              srcRange(src.suggestedYcbcrRange),
+              srcXChromaOffset(src.suggestedXChromaOffset),
+              srcYChromaOffset(src.suggestedYChromaOffset),
+              targetFormat(targetFormat_) { }
 
         struct Hasher {
-            size_t operator()(const YuvHardwareBufferFormat& val) const {
+            size_t operator()(const RenderPipelineKey& val) const {
                 size_t seed = 0;
 
-                hash_combine(seed, val.format);
-                hash_combine(seed, val.externalFormat);
+                hash_combine(seed, val.srcFormat);
+                hash_combine(seed, val.srcExternalFormat);
 
-                hash_combine(seed, val.componentMapping.r);
-                hash_combine(seed, val.componentMapping.g);
-                hash_combine(seed, val.componentMapping.b);
-                hash_combine(seed, val.componentMapping.a);
+                hash_combine(seed, val.srcComponentMapping.r);
+                hash_combine(seed, val.srcComponentMapping.g);
+                hash_combine(seed, val.srcComponentMapping.b);
+                hash_combine(seed, val.srcComponentMapping.a);
 
-                hash_combine(seed, val.model);
-                hash_combine(seed, val.range);
-                hash_combine(seed, val.xChromaOffset);
-                hash_combine(seed, val.yChromaOffset);
+                hash_combine(seed, val.srcModel);
+                hash_combine(seed, val.srcRange);
+                hash_combine(seed, val.srcXChromaOffset);
+                hash_combine(seed, val.srcYChromaOffset);
 
+                hash_combine(seed, val.targetFormat);
                 return seed;
             }
         };
 
-        bool operator==(const YuvHardwareBufferFormat& rhs) const {
-            return format == rhs.format
-                   && externalFormat == rhs.externalFormat
-                   && componentMapping.r == rhs.componentMapping.r
-                   && componentMapping.g == rhs.componentMapping.g
-                   && componentMapping.b == rhs.componentMapping.b
-                   && componentMapping.a == rhs.componentMapping.a
-                   && model == rhs.model
-                   && range == rhs.range
-                   && xChromaOffset == rhs.xChromaOffset
-                   && yChromaOffset == rhs.yChromaOffset;
+        bool operator==(const RenderPipelineKey& rhs) const {
+            return srcFormat == rhs.srcFormat
+                   && srcExternalFormat == rhs.srcExternalFormat
+                   && srcComponentMapping.r == rhs.srcComponentMapping.r
+                   && srcComponentMapping.g == rhs.srcComponentMapping.g
+                   && srcComponentMapping.b == rhs.srcComponentMapping.b
+                   && srcComponentMapping.a == rhs.srcComponentMapping.a
+                   && srcModel == rhs.srcModel
+                   && srcRange == rhs.srcRange
+                   && srcXChromaOffset == rhs.srcXChromaOffset
+                   && srcYChromaOffset == rhs.srcYChromaOffset
+                   && targetFormat == rhs.targetFormat;
         }
     };
 
     struct RenderSubmission {
         std::unique_ptr<ImportedYuvImage> srcImage  = nullptr;
         VkDescriptorSet descriptorSet               = VK_NULL_HANDLE;
-        VkFence fence                               = VK_NULL_HANDLE;
+        unsigned long long frameNumber              = 0;
 
         RenderSubmission(VkDevice device_)
             : device(device_) { }
@@ -318,15 +324,6 @@ private:
             return true;
         }
 
-        ~RenderSubmission() {
-
-            if (fence != VK_NULL_HANDLE) {
-                vkDestroyFence(device, fence, nullptr);
-            }
-
-            // srcImage is auto-deleted
-        }
-
     private:
         VkDevice device;
     };
@@ -339,17 +336,13 @@ private:
     std::unordered_map<VkFormat, ExternalFormatProperties> externalFormatProperties;
     std::optional<VkPhysicalDeviceMemoryProperties2> deviceMemoryProperties;
 
-    std::unordered_map<YuvHardwareBufferFormat, std::unique_ptr<YuvGraphicsPipeline>,
-                       YuvHardwareBufferFormat::Hasher> graphicsPipelines;
+    std::unordered_map<RenderPipelineKey, std::unique_ptr<YuvGraphicsPipeline>,
+                       RenderPipelineKey::Hasher> graphicsPipelines;
 
     VkDescriptorPool submissionsDescriptorPool = VK_NULL_HANDLE;
     std::vector<std::unique_ptr<RenderSubmission>> ongoingSubmissions;
 
     std::unordered_map<VkImage, VkImageView> targetImageViews;
-
-    void pruneOngoingSubmissions();
-
-    bool getDescriptorPool(VkDescriptorPool* descriptorPool);
 
     bool getHardwareBufferProperties(AHardwareBuffer* hardwareBuffer,
                                      VkAndroidHardwareBufferPropertiesANDROID* bufferProperties,
@@ -359,7 +352,7 @@ private:
 
     const YuvGraphicsPipeline*
         getGraphicsPipeline(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
-                            VkFormatFeatureFlags bufferFormatFeatures, VkRenderPass renderPass);
+                            VkFormatFeatureFlags bufferFormatFeatures, VkFormat targetFormat);
     bool constructYuvSampler(const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
                              VkFormatFeatureFlags bufferFormatFeatures, VkSamplerYcbcrConversion* conversion,
                              VkSampler* sampler);
@@ -377,6 +370,9 @@ private:
     bool getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags requiredMemProperties,
                             uint32_t* memTypeIndex);
 
+    void pruneOngoingSubmissions(unsigned long long safeFrame);
+
+    bool getDescriptorPool(VkDescriptorPool* descriptorPool);
     bool allocateDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout,
                                VkDescriptorSet* descriptorSet);
 

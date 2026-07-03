@@ -203,6 +203,14 @@ VKAPI_ATTR VkResult VKAPI_CALL
             = tryGetLinkedStructure<VkPhysicalDeviceMaintenance6FeaturesKHR,
                 VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR>(&createInfoOverride);
 
+    const VkPhysicalDeviceVulkan13Features* vulkan13FeaturesPtr
+            = tryGetLinkedStructure<VkPhysicalDeviceVulkan13Features,
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES>(&createInfoOverride);
+
+    const VkPhysicalDeviceDynamicRenderingFeaturesKHR* dynamicRenderingFeaturesPtr
+            = tryGetLinkedStructure<VkPhysicalDeviceDynamicRenderingFeaturesKHR,
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR>(&createInfoOverride);
+
     const VkBaseInStructure* lastProvidedNode = getLastNode(&createInfoOverride);
     bool hasModifiedLastProvidedNode = false;
     VkBaseInStructure* newLastNode = nullptr;
@@ -217,6 +225,12 @@ VKAPI_ATTR VkResult VKAPI_CALL
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR,
             .pNext = nullptr,
             .maintenance6 = VK_TRUE
+    };
+
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeaturesOverride = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+            .pNext = nullptr,
+            .dynamicRendering = VK_TRUE
     };
 
     if ((!vulkan11FeaturesPtr && !yuvFeaturesPtr)
@@ -279,6 +293,42 @@ VKAPI_ATTR VkResult VKAPI_CALL
             newLastNode = ptr;
         } else {
             const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = newLastNode = reinterpret_cast<VkBaseInStructure*>(&maintenance6FeaturesOverride);
+            hasModifiedLastProvidedNode = true;
+        }
+    }
+
+    if ((!vulkan13FeaturesPtr && !dynamicRenderingFeaturesPtr)
+        || (vulkan13FeaturesPtr && vulkan13FeaturesPtr->dynamicRendering != VK_TRUE)
+        || (dynamicRenderingFeaturesPtr && dynamicRenderingFeaturesPtr->dynamicRendering != VK_TRUE)) {
+
+        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeaturesOut = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+                .pNext = nullptr,
+        };
+
+        VkPhysicalDeviceFeatures2 features2 = {
+                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+                .pNext = &dynamicRenderingFeaturesOut
+        };
+
+        vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+        if (dynamicRenderingFeaturesOut.dynamicRendering != VK_TRUE) {
+            LogE("Device does not support dynamic rendering, cannot continue.");
+            isVulkanDeviceSupported = false;
+
+            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+        }
+
+        if (vulkan13FeaturesPtr) {
+            const_cast<VkPhysicalDeviceVulkan13Features*>(vulkan13FeaturesPtr)->dynamicRendering = VK_TRUE;
+        } else if (dynamicRenderingFeaturesPtr) {
+            const_cast<VkPhysicalDeviceDynamicRenderingFeaturesKHR *>(dynamicRenderingFeaturesPtr)->dynamicRendering = VK_TRUE;
+        } else if (newLastNode) {
+            VkBaseInStructure* ptr = reinterpret_cast<VkBaseInStructure*>(&dynamicRenderingFeaturesOverride);
+            newLastNode->pNext = ptr;
+            newLastNode = ptr;
+        } else {
+            const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = newLastNode = reinterpret_cast<VkBaseInStructure*>(&dynamicRenderingFeaturesOverride);
             hasModifiedLastProvidedNode = true;
         }
     }

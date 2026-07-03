@@ -91,7 +91,6 @@ void VulkanRenderManager::render(RenderData* data) {
     }
 
     unityVulkan->EnsureOutsideRenderPass();
-    pruneOngoingSubmissions();
 
     VkAndroidHardwareBufferPropertiesANDROID hardwareBufferProperties;
     VkAndroidHardwareBufferFormatPropertiesANDROID hardwareBufferFormatProperties;
@@ -147,16 +146,20 @@ void VulkanRenderManager::render(RenderData* data) {
     // endregion
 
     // region Acquire Vulkan Resources, Release HardwareBuffer
-    UnityVulkanRecordingState recording;
-    if (!unityVulkan->CommandRecordingState(&recording, kUnityVulkanGraphicsQueueAccess_DontCare)) {
-        LogE("Could not get Unity command recording state (0).");
+    UnityVulkanImage targetImage;
+    if (!unityVulkan->AccessTexture(
+            data->dstImage, UnityVulkanWholeImage,
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, kUnityVulkanResourceAccess_PipelineBarrier, &targetImage)) {
+
+        LogE("Could not get UnityVulkanImage from target image.");
         return;
     }
 
     const YuvGraphicsPipeline* graphicsPipeline = getGraphicsPipeline(
             hardwareBufferFormatProperties,
             hardwareBufferFormatFeatures,
-            recording.renderPass
+            targetImage.format
     );
 
     if (graphicsPipeline == nullptr) {
@@ -179,6 +182,15 @@ void VulkanRenderManager::render(RenderData* data) {
     scopeExit.buffer = nullptr;
     AHardwareBuffer_release(hardwareBuffer);
     // endregion
+
+    // Start recording CommandBuffer
+    UnityVulkanRecordingState recording;
+    if (!unityVulkan->CommandRecordingState(&recording, kUnityVulkanGraphicsQueueAccess_DontCare)) {
+        LogE("Could not access Unity CommandBuffer.");
+        return;
+    }
+
+    pruneOngoingSubmissions(recording.safeFrameNumber);
 
     // region Update Image Layout
     VkImageMemoryBarrier imageMemoryBarrier = {
@@ -240,111 +252,78 @@ void VulkanRenderManager::render(RenderData* data) {
                            0, nullptr);
     // endregion
 
-    unityVulkan->EnsureInsideRenderPass();
-
-    // region Begin Rendering
-
-    UnityVulkanImage targetImage;
-    if (!unityVulkan->AccessTexture(
-            data->dstImage, UnityVulkanWholeImage,
-            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, kUnityVulkanResourceAccess_PipelineBarrier, &targetImage)) {
-
-        LogE("Could not get UnityVulkanImage from target image.");
-        return;
-    }
+    // region Render
 
     VkImageView targetImageView;
     if (!getTargetImageView(targetImage, &targetImageView)) {
         return;
     }
 
-    if (!unityVulkan->CommandRecordingState(&recording, kUnityVulkanGraphicsQueueAccess_DontCare)) {
-        LogE("Could not get Unity command recording state (1).");
-        return;
-    }
+    VkRenderingAttachmentInfoKHR renderingAttachmentInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+            .pNext = nullptr,
+            .imageView = targetImageView,
+            .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .resolveMode = VK_RESOLVE_MODE_NONE_KHR,
+            .resolveImageView = VK_NULL_HANDLE,
+            .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+            .clearValue = VkClearValue {
+                0.0f,
+                0.0f,
+                0.0f,
+                1.0f
+            }
+    };
+
+    VkRect2D viewRect = {
+            .offset = VkOffset2D { .x = 0, .y = 0 },
+            .extent = VkExtent2D {
+                    .width = targetImage.extent.width,
+                    .height = targetImage.extent.height
+            }
+    };
+
+    VkRenderingInfoKHR renderingInfo = {
+            .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .renderArea = viewRect,
+            .layerCount = 1,
+            .viewMask = 0,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &renderingAttachmentInfo,
+            .pDepthAttachment = nullptr,
+            .pStencilAttachment = nullptr
+    };
+
+    vkCmdBeginRenderingKHR(recording.commandBuffer, &renderingInfo);
+    vkCmdBindPipeline(recording.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->pipeline);
+
+    VkViewport viewport = {
+            .x = 0.0f, .y = 0.0f,
+            .width = static_cast<float>(targetImage.extent.width),
+            .height = static_cast<float>(targetImage.extent.height),
+            .minDepth = 0.0f, .maxDepth = 1.0f
+    };
+
+    vkCmdSetViewport(recording.commandBuffer, 0,
+                     1, &viewport);
+
+    vkCmdSetScissor(recording.commandBuffer, 0,
+                    1, &viewRect);
+
+    vkCmdDraw(recording.commandBuffer,
+              3, 1,
+              0, 0);
+
+    vkCmdEndRenderingKHR(recording.commandBuffer);
 
     // endregion
-}
 
-void VulkanRenderManager::pruneOngoingSubmissions() {
-
-    if (ongoingSubmissions.empty()) {
-        return;
-    }
-
-    VkDescriptorPool descriptorPool;
-    if (!getDescriptorPool(&descriptorPool)) {
-        return;
-    }
-
-    for (auto it = ongoingSubmissions.begin(); it != ongoingSubmissions.end();) {
-
-        RenderSubmission* submission = it->get();
-        VkResult vkResult = vkWaitForFences(unityVulkanInstance.device,
-                                            1, &submission->fence,
-                                            VK_TRUE, 0);
-
-        if (vkResult == VK_SUCCESS || vkResult == VK_ERROR_DEVICE_LOST) {
-            if (submission->freeDescriptorSet(descriptorPool)) {
-                it = ongoingSubmissions.erase(it);
-                continue;
-            }
-        }
-
-        ++it;
-    }
-}
-
-bool VulkanRenderManager::getDescriptorPool(VkDescriptorPool* descriptorPool) {
-
-    if (submissionsDescriptorPool != VK_NULL_HANDLE) {
-        *descriptorPool = submissionsDescriptorPool;
-        return true;
-    }
-
-    VkPhysicalDeviceMaintenance6PropertiesKHR physicalDeviceMaintenance6Properties = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES_KHR,
-            .pNext = nullptr
-    };
-
-    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-            .pNext = &physicalDeviceMaintenance6Properties,
-    };
-
-    vkGetPhysicalDeviceProperties2(unityVulkanInstance.physicalDevice, &physicalDeviceProperties);
-    LogD("Physical device supported Vulkan version: %d.%d, max yuv descriptor count: %d",
-         VK_API_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
-         VK_API_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
-         physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount);
-
-    constexpr uint32_t maxSamplers = 30;
-    VkDescriptorPoolSize poolSize = {
-            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount * maxSamplers
-    };
-
-    VkDescriptorPoolCreateInfo poolCreateInfo = {
-            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-            .maxSets = maxSamplers,
-            .poolSizeCount = 1,
-            .pPoolSizes = &poolSize
-    };
-
-    VkDescriptorPool vkCreatedDescriptorPool;
-    VkResult vkResult = vkCreateDescriptorPool(unityVulkanInstance.device, &poolCreateInfo,
-                                               nullptr, &vkCreatedDescriptorPool);
-
-    if (vkResult != VK_SUCCESS) {
-        LogE("Could not create descriptor pool due to error, code: %d.", vkResult);
-        return false;
-    }
-
-    *descriptorPool = submissionsDescriptorPool = vkCreatedDescriptorPool;
-    return true;
+    submission->frameNumber = recording.currentFrameNumber;
+    ongoingSubmissions.push_back(std::move(submission));
 }
 
 bool VulkanRenderManager::getHardwareBufferProperties(AHardwareBuffer* hardwareBuffer,
@@ -436,17 +415,16 @@ bool VulkanRenderManager::getExternalFormatProperties(VkFormat format, ExternalF
 
 const VulkanRenderManager::YuvGraphicsPipeline* VulkanRenderManager::getGraphicsPipeline(
         const VkAndroidHardwareBufferFormatPropertiesANDROID& bufferFormatProperties,
-        VkFormatFeatureFlags bufferFormatFeatures, VkRenderPass renderPass) {
+        VkFormatFeatureFlags bufferFormatFeatures, VkFormat targetFormat) {
 
-    YuvHardwareBufferFormat key = YuvHardwareBufferFormat::fromHardwareBufferFormat(bufferFormatProperties);
+    RenderPipelineKey key = RenderPipelineKey {
+        bufferFormatProperties,
+        targetFormat
+    };
 
     auto cached = graphicsPipelines.find(key);
     if (cached != graphicsPipelines.end()) {
-        if (cached->second->pipelineRenderPass == renderPass) {
-            return cached->second.get();
-        } else {
-            graphicsPipelines.erase(cached);
-        }
+        return cached->second.get();
     }
 
     LogD("Creating graphics pipeline.");
@@ -607,9 +585,19 @@ const VulkanRenderManager::YuvGraphicsPipeline* VulkanRenderManager::getGraphics
             .pDynamicStates = dynamicStates
     };
 
+    VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+            .pNext = nullptr,
+            .viewMask = 0,
+            .colorAttachmentCount = 1,
+            .pColorAttachmentFormats = &targetFormat,
+            .depthAttachmentFormat = VK_FORMAT_UNDEFINED,
+            .stencilAttachmentFormat = VK_FORMAT_UNDEFINED
+    };
+
     VkGraphicsPipelineCreateInfo pipelineCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-            .pNext = nullptr,
+            .pNext = &pipelineRenderingCreateInfo,
             .flags = 0,
             .stageCount = 2,
             .pStages = shaderStageCreateInfos,
@@ -623,7 +611,7 @@ const VulkanRenderManager::YuvGraphicsPipeline* VulkanRenderManager::getGraphics
             .pColorBlendState = &colorBlendStateCreateInfo,
             .pDynamicState = &dynamicStateCreateInfo,
             .layout = graphicsPipeline->pipelineLayout,
-            .renderPass = renderPass,
+            .renderPass = VK_NULL_HANDLE,
             .subpass = 0,
             .basePipelineHandle = VK_NULL_HANDLE,
             .basePipelineIndex = -1,
@@ -640,8 +628,6 @@ const VulkanRenderManager::YuvGraphicsPipeline* VulkanRenderManager::getGraphics
         LogE("Could not create graphics pipeline due to error, code: %d.", vkResult);
         return nullptr;
     }
-
-    graphicsPipeline->pipelineRenderPass = renderPass;
 
     auto it = (graphicsPipelines.emplace(key, std::move(graphicsPipeline))).first;
     return it->second.get();
@@ -700,9 +686,9 @@ bool VulkanRenderManager::constructYuvSampler(
             .minFilter = chromaFilter,
             .mipmapMode = useLinearFiltering ? VK_SAMPLER_MIPMAP_MODE_LINEAR
                                              : VK_SAMPLER_MIPMAP_MODE_NEAREST,
-            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER, // TODO: this is for debugging
-            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             .mipLodBias = 0.0f,
             .anisotropyEnable = VK_FALSE,
             .maxAnisotropy = 1.0f,
@@ -955,6 +941,84 @@ bool VulkanRenderManager::getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags
     }
 
     return false;
+}
+
+void VulkanRenderManager::pruneOngoingSubmissions(unsigned long long safeFrame) {
+
+    if (ongoingSubmissions.empty()) {
+        return;
+    }
+
+    VkDescriptorPool descriptorPool;
+    if (!getDescriptorPool(&descriptorPool)) {
+        return;
+    }
+
+    for (auto it = ongoingSubmissions.begin(); it != ongoingSubmissions.end();) {
+
+        RenderSubmission* submission = it->get();
+
+        // Additional safety frame before release, this may not be needed
+        if (submission->frameNumber + 1 <= safeFrame) {
+            if (submission->freeDescriptorSet(descriptorPool)) {
+                it = ongoingSubmissions.erase(it);
+                continue;
+            }
+        }
+
+        ++it;
+    }
+}
+
+bool VulkanRenderManager::getDescriptorPool(VkDescriptorPool* descriptorPool) {
+
+    if (submissionsDescriptorPool != VK_NULL_HANDLE) {
+        *descriptorPool = submissionsDescriptorPool;
+        return true;
+    }
+
+    VkPhysicalDeviceMaintenance6PropertiesKHR physicalDeviceMaintenance6Properties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES_KHR,
+            .pNext = nullptr
+    };
+
+    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &physicalDeviceMaintenance6Properties,
+    };
+
+    vkGetPhysicalDeviceProperties2(unityVulkanInstance.physicalDevice, &physicalDeviceProperties);
+    LogD("Physical device supported Vulkan version: %d.%d, max yuv descriptor count: %d",
+         VK_API_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
+         VK_API_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
+         physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount);
+
+    constexpr uint32_t maxSamplers = 60;
+    VkDescriptorPoolSize poolSize = {
+            .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            .descriptorCount = physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount * maxSamplers
+    };
+
+    VkDescriptorPoolCreateInfo poolCreateInfo = {
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+            .maxSets = maxSamplers,
+            .poolSizeCount = 1,
+            .pPoolSizes = &poolSize
+    };
+
+    VkDescriptorPool vkCreatedDescriptorPool;
+    VkResult vkResult = vkCreateDescriptorPool(unityVulkanInstance.device, &poolCreateInfo,
+                                               nullptr, &vkCreatedDescriptorPool);
+
+    if (vkResult != VK_SUCCESS) {
+        LogE("Could not create descriptor pool due to error, code: %d.", vkResult);
+        return false;
+    }
+
+    *descriptorPool = submissionsDescriptorPool = vkCreatedDescriptorPool;
+    return true;
 }
 
 bool VulkanRenderManager::allocateDescriptorSet(VkDescriptorPool descriptorPool,
