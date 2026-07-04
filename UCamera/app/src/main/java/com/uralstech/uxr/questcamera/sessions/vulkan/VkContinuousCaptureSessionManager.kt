@@ -42,12 +42,12 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
          * If this method returns normally, the caller relinquishes ownership.
          * If it throws, it must not have retained the buffer pointer.
          */
-        fun onFrameReady(acquiredBufferPtr: Long, bufferId: Long, timestamp: Long)
+        fun onFrameReady(acquiredBufferPtr: Long, bufferDataSpace: Int, bufferId: Long, timestamp: Long)
     }
 
     constructor(width: Int, height: Int, callbacks: Callbacks) : this(width, height, callbacks, "VkContinuousSession")
 
-    @RequiresApi(Build.VERSION_CODES.S)
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun imageHandover(image: Image) {
 
         val buffer = image.hardwareBuffer
@@ -64,9 +64,10 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
 
             acquiredBufferPtr = acquireHardwareBuffer(buffer)
             val bufferId = getHardwareBufferId(acquiredBufferPtr)
+            val bufferDataSpace = image.dataSpace
 
             if (acquiredBufferPtr != 0L && bufferId != 0L) {
-                callbacks.onFrameReady(acquiredBufferPtr, bufferId, timestamp)
+                callbacks.onFrameReady(acquiredBufferPtr, bufferDataSpace, bufferId, timestamp)
                 acquiredBufferPtr = 0L
             }
         } catch (ex: Exception) {

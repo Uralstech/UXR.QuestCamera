@@ -341,7 +341,7 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
     bool result = false;
     int updateResult;
 
-    // REQUIRED to make this work well in Unity with sRGB
+    // Likely similar to https://github.com/KhronosGroup/Vulkan-Docs/issues/2356
     bool srgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB_EXT);
     glDisable(GL_FRAMEBUFFER_SRGB_EXT);
 

@@ -6,5 +6,8 @@ layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    outColor = texture(src, uv);
+    vec4 color = texture(src, uv);
+
+    // TODO: well, uh... yeah.
+    outColor = vec4(pow(color.rgb, vec3(2.2)), color.a);
 }

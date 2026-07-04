@@ -24,6 +24,7 @@
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_android.h>
 #include <android/hardware_buffer.h>
+#include <android/data_space.h>
 #include "IUnityInterface.h"
 #include "IUnityGraphics.h"
 #include "IUnityGraphicsVulkan.h"
@@ -79,6 +80,7 @@
 
 struct RenderData {
     AHardwareBuffer* srcHardwareBuffer;
+    ADataSpace srcHardwareBufferDataSpace;
     uint64_t srcHardwareBufferId;
     VkImage* dstImage;
     void (*onDone)(int64_t hardwareBufferId);
@@ -129,6 +131,7 @@ private:
             std::make_pair(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,                           VK_API_VERSION_1_2),
             std::make_pair(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,                         VK_API_VERSION_1_2),
             std::make_pair(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,                             VK_API_VERSION_1_3)
+            // NOTE: VK_QCOM_ycbcr_degamma might help convert sampled YUV colors to linear RGB, but isn't support on Quest 3, as of HzOS v2.5
     };
 
     static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
