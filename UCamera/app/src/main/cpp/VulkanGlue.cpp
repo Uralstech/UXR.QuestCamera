@@ -32,7 +32,7 @@ JNIEXPORT jlong JNICALL
 Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_acquireHardwareBuffer(
         JNIEnv *env, jobject, jobject buffer) {
 
-    auto* nativeBuffer = AHardwareBuffer_fromHardwareBuffer(env, buffer);
+    AHardwareBuffer* nativeBuffer = AHardwareBuffer_fromHardwareBuffer(env, buffer);
     if (nativeBuffer == nullptr) {
         LOGE("Could not create native hardware buffer from Kotlin.");
         return 0;
@@ -47,7 +47,7 @@ JNIEXPORT jlong JNICALL
 Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_getHardwareBufferId(
         JNIEnv*, jobject, jlong acquiredBufferPtr) {
 
-    auto* hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
+    auto hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
     if (hardwareBuffer == nullptr) {
         LOGE("Cannot get ID of nullptr native hardware buffer.");
         return 0;
@@ -73,7 +73,7 @@ JNIEXPORT void JNICALL
 Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_releaseHardwareBuffer(
         JNIEnv*, jobject, jlong acquiredBufferPtr) {
 
-    auto* hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
+    auto hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
     if (hardwareBuffer == nullptr) {
         LOGE("Cannot release nullptr native hardware buffer.");
         return;

@@ -16,6 +16,7 @@
 #define UXR_QUESTCAMERA_VULKANRENDERMANAGER_H
 
 #include <array>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <optional>
@@ -119,14 +120,14 @@ private:
     static bool isVulkanInstanceSupported;
     static bool isVulkanDeviceSupported;
 
-    static constexpr std::array<const char*, 7> reqDeviceExtensions = {
-            VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
-            VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,
-            VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
-            VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
-            VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
-            VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-            VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
+    // Extension name : Core version in which it got (fully) promoted, or 0
+    static constexpr std::array<const std::pair<const char*, uint32_t>, 6> reqDeviceExtensions = {
+            std::make_pair(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,                      VK_API_VERSION_1_1),
+            std::make_pair(VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME,                          0),
+            std::make_pair(VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,   0),
+            std::make_pair(VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,                           VK_API_VERSION_1_2),
+            std::make_pair(VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,                         VK_API_VERSION_1_2),
+            std::make_pair(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,                             VK_API_VERSION_1_3)
     };
 
     static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
@@ -140,11 +141,18 @@ private:
         Hook_vkCreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo* pCreateInfo,
                             const VkAllocationCallbacks* pAllocator, VkDevice* pDevice);
 
+    static bool verifyDeviceExtensionSupport(VkPhysicalDevice physicalDevice);
+    static bool verifyDeviceExtensionFeatureSupport(VkPhysicalDevice physicalDevice);
+    static std::vector<const char*> getDeduplicatedExtensions(const VkDeviceCreateInfo* createInfo);
+
+    template<typename T> static void
+        appendFeatureToCreateDeviceInfoChain(VkBaseInStructure*& newLastNode,
+                                             const VkBaseInStructure* lastCallerProvidedNode,
+                                             bool& didModifyLastCallerProvidedNode,
+                                             T* override, const char* featureName);
+
     static void loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
                                     VkInstance instance);
-
-    static bool tryGetDeviceSupportedExtensions(VkPhysicalDevice device,
-                                                std::vector<VkExtensionProperties>* result);
 
     // endregion
 

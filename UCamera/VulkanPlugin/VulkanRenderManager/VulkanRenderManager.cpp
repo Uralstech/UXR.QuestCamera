@@ -929,7 +929,7 @@ bool VulkanRenderManager::getMemoryTypeIndex(uint32_t supportedMemTypes, VkFlags
         deviceMemoryProperties = properties;
     }
 
-    auto* memoryProperties = &deviceMemoryProperties->memoryProperties;
+    VkPhysicalDeviceMemoryProperties* memoryProperties = &deviceMemoryProperties->memoryProperties;
     for (uint32_t i = 0; i < memoryProperties->memoryTypeCount; ++i) {
         if ((supportedMemTypes & 1) == 1
             && (memoryProperties->memoryTypes[i].propertyFlags & requiredMemProperties) == requiredMemProperties) {
@@ -977,26 +977,10 @@ bool VulkanRenderManager::getDescriptorPool(VkDescriptorPool* descriptorPool) {
         return true;
     }
 
-    VkPhysicalDeviceMaintenance6PropertiesKHR physicalDeviceMaintenance6Properties = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_PROPERTIES_KHR,
-            .pNext = nullptr
-    };
-
-    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
-            .pNext = &physicalDeviceMaintenance6Properties,
-    };
-
-    vkGetPhysicalDeviceProperties2(unityVulkanInstance.physicalDevice, &physicalDeviceProperties);
-    LogD("Physical device supported Vulkan version: %d.%d, max yuv descriptor count: %d",
-         VK_API_VERSION_MAJOR(physicalDeviceProperties.properties.apiVersion),
-         VK_API_VERSION_MINOR(physicalDeviceProperties.properties.apiVersion),
-         physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount);
-
     constexpr uint32_t maxSamplers = 60;
     VkDescriptorPoolSize poolSize = {
             .type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            .descriptorCount = physicalDeviceMaintenance6Properties.maxCombinedImageSamplerDescriptorCount * maxSamplers
+            .descriptorCount = 3 * maxSamplers
     };
 
     VkDescriptorPoolCreateInfo poolCreateInfo = {

@@ -85,43 +85,33 @@ VKAPI_ATTR VkResult VKAPI_CALL
 
     bool shouldLoadFunctions = true;
     if (!pCreateInfo->pApplicationInfo || pCreateInfo->pApplicationInfo->apiVersion < minimumVulkanAPI) {
-        LogE("Unknown/unsupported Vulkan API version, cannot continue.");
+        LogE("App targets unknown/unsupported Vulkan API version, cannot continue.");
+        shouldLoadFunctions = isVulkanInstanceSupported = false;
+    }
+
+    auto vkEnumerateInstanceVersion = (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
+    if (vkEnumerateInstanceVersion == nullptr) {
+        LogE("Current Vulkan API is version 1.0, cannot continue.");
         shouldLoadFunctions = isVulkanInstanceSupported = false;
     }
 
     auto vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE,
                                                                         "vkCreateInstance");
-    VkResult result = vkCreateInstance(pCreateInfo, pAllocator, pInstance);
+    VkResult vkResult = vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 
-    if (result == VK_SUCCESS && shouldLoadFunctions) {
+    if (vkResult == VK_SUCCESS && shouldLoadFunctions) {
         loadVulkanFunctions(vkGetInstanceProcAddr, *pInstance);
         isVulkanInstanceSupported = true;
 
         LogD("Vulkan instance created.");
     }
 
-    return result;
-}
-
-static bool vecContains(const std::vector<const char*>& vec, const char* val) {
-    for (const char* i : vec)
-        if (strcmp(i, val) == 0)
-            return true;
-
-    return false;
-}
-
-static bool vecContains(const std::vector<VkExtensionProperties>& vec, const char* extName) {
-    for (const VkExtensionProperties& i : vec)
-        if (strcmp(i.extensionName, extName) == 0)
-            return true;
-
-    return false;
+    return vkResult;
 }
 
 static const VkBaseInStructure* getLastNode(const VkDeviceCreateInfo* createInfo) {
 
-    auto* result = reinterpret_cast<const VkBaseInStructure*>(createInfo);
+    auto result = reinterpret_cast<const VkBaseInStructure*>(createInfo);
     while (result->pNext) {
         result = result->pNext;
     }
@@ -132,7 +122,7 @@ static const VkBaseInStructure* getLastNode(const VkDeviceCreateInfo* createInfo
 template<typename T, VkStructureType structureType>
 static const T* tryGetLinkedStructure(const VkDeviceCreateInfo* createInfo) {
 
-    for (const auto* data = reinterpret_cast<const VkBaseInStructure*>(createInfo->pNext);
+    for (auto data = reinterpret_cast<const VkBaseInStructure*>(createInfo->pNext);
          data != nullptr; data = data->pNext) {
 
         if (data->sType == structureType) {
@@ -148,83 +138,12 @@ VKAPI_ATTR VkResult VKAPI_CALL
                                              const VkDeviceCreateInfo* pCreateInfo,
                                              const VkAllocationCallbacks* pAllocator, VkDevice* pDevice) {
 
-    if (!isVulkanInstanceSupported) {
-        LogD("Ignoring device extension registration as Vulkan instance is plugin-unusable.");
-        isVulkanDeviceSupported = false;
+    // region Feature Overrides
 
-        return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
-    }
-
-    std::vector<const char*> extensions;
-    extensions.reserve(pCreateInfo->enabledExtensionCount + reqDeviceExtensions.size());
-
-    if (pCreateInfo->enabledExtensionCount > 0) {
-        extensions.insert(extensions.end(),
-                          pCreateInfo->ppEnabledExtensionNames,
-                          pCreateInfo->ppEnabledExtensionNames + pCreateInfo->enabledExtensionCount);
-    }
-
-    std::vector<VkExtensionProperties> supportedExtensions;
-    for (const char* extName : reqDeviceExtensions) {
-        if (vecContains(extensions, extName)) {
-            continue;
-        }
-
-        if (supportedExtensions.empty()
-            && !tryGetDeviceSupportedExtensions(physicalDevice, &supportedExtensions)) {
-            isVulkanDeviceSupported = false;
-
-            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
-        }
-
-        if (!vecContains(supportedExtensions, extName)) {
-            LogE("Device does not support extension '%s', cannot continue.", extName);
-            isVulkanDeviceSupported = false;
-
-            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
-        }
-
-        extensions.push_back(extName);
-    }
-
-    VkDeviceCreateInfo createInfoOverride = *pCreateInfo;
-    createInfoOverride.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-    createInfoOverride.ppEnabledExtensionNames = extensions.data();
-
-    const VkPhysicalDeviceSamplerYcbcrConversionFeatures* yuvFeaturesPtr
-            = tryGetLinkedStructure<VkPhysicalDeviceSamplerYcbcrConversionFeatures,
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES>(&createInfoOverride);
-
-    const VkPhysicalDeviceVulkan11Features* vulkan11FeaturesPtr
-            = tryGetLinkedStructure<VkPhysicalDeviceVulkan11Features,
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES>(&createInfoOverride);
-
-    const VkPhysicalDeviceMaintenance6FeaturesKHR* maintenance6FeaturesPtr
-            = tryGetLinkedStructure<VkPhysicalDeviceMaintenance6FeaturesKHR,
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR>(&createInfoOverride);
-
-    const VkPhysicalDeviceVulkan13Features* vulkan13FeaturesPtr
-            = tryGetLinkedStructure<VkPhysicalDeviceVulkan13Features,
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES>(&createInfoOverride);
-
-    const VkPhysicalDeviceDynamicRenderingFeaturesKHR* dynamicRenderingFeaturesPtr
-            = tryGetLinkedStructure<VkPhysicalDeviceDynamicRenderingFeaturesKHR,
-                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR>(&createInfoOverride);
-
-    const VkBaseInStructure* lastProvidedNode = getLastNode(&createInfoOverride);
-    bool hasModifiedLastProvidedNode = false;
-    VkBaseInStructure* newLastNode = nullptr;
-
-    VkPhysicalDeviceSamplerYcbcrConversionFeatures yuvFeaturesOverride = {
+    VkPhysicalDeviceSamplerYcbcrConversionFeatures samplerYuvConversionFeaturesOverride = {
             .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
             .pNext = nullptr,
             .samplerYcbcrConversion = VK_TRUE,
-    };
-
-    VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6FeaturesOverride = {
-            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR,
-            .pNext = nullptr,
-            .maintenance6 = VK_TRUE
     };
 
     VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeaturesOverride = {
@@ -233,143 +152,250 @@ VKAPI_ATTR VkResult VKAPI_CALL
             .dynamicRendering = VK_TRUE
     };
 
-    if ((!vulkan11FeaturesPtr && !yuvFeaturesPtr)
-        || (vulkan11FeaturesPtr && vulkan11FeaturesPtr->samplerYcbcrConversion != VK_TRUE)
-        || (yuvFeaturesPtr && yuvFeaturesPtr->samplerYcbcrConversion != VK_TRUE)) {
+    // endregion
 
-        VkPhysicalDeviceSamplerYcbcrConversionFeatures yuvFeaturesOut = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
-                .pNext = nullptr,
-        };
+    isVulkanDeviceSupported = false;
+    if (!isVulkanInstanceSupported) {
+        LogD("Ignoring device extension registration as Vulkan instance is plugin-unusable.");
+        return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+    }
 
-        VkPhysicalDeviceFeatures2 features2 = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                .pNext = &yuvFeaturesOut
-        };
+    if (!verifyDeviceExtensionSupport(physicalDevice)
+        || !verifyDeviceExtensionFeatureSupport(physicalDevice)) {
+        return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+    }
 
-        vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
-        if (yuvFeaturesOut.samplerYcbcrConversion != VK_TRUE) {
-            LogE("Device does not support YUV sampler, cannot continue.");
-            isVulkanDeviceSupported = false;
+    std::vector<const char*> extensions = getDeduplicatedExtensions(pCreateInfo);
 
-            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+    VkDeviceCreateInfo createInfoOverride = *pCreateInfo;
+    createInfoOverride.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
+    createInfoOverride.ppEnabledExtensionNames = extensions.data();
+
+    const VkBaseInStructure* lastCallerProvidedNode = getLastNode(&createInfoOverride);
+    bool hasModifiedLastCallerProvidedNode = false;
+    VkBaseInStructure* newLastNode = nullptr;
+
+    // region Vulkan 1.1 Feature Override Handling
+
+    auto vulkan11FeaturesPtr
+            = tryGetLinkedStructure<VkPhysicalDeviceVulkan11Features,
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES>(&createInfoOverride);
+
+    if (vulkan11FeaturesPtr) {
+
+        auto mutableCast = const_cast<VkPhysicalDeviceVulkan11Features*>(vulkan11FeaturesPtr);
+        if (vulkan11FeaturesPtr->samplerYcbcrConversion != VK_TRUE) {
+            mutableCast->samplerYcbcrConversion = VK_TRUE;
+            LogD("Updated Vulkan11Features flag for samplerYcbcrConversion.");
         }
+    } else {
 
-        if (vulkan11FeaturesPtr) {
-            const_cast<VkPhysicalDeviceVulkan11Features*>(vulkan11FeaturesPtr)->samplerYcbcrConversion = VK_TRUE;
-        } else if (yuvFeaturesPtr) {
-            const_cast<VkPhysicalDeviceSamplerYcbcrConversionFeatures*>(yuvFeaturesPtr)->samplerYcbcrConversion = VK_TRUE;
+        auto samplerYuvConversionFeaturesPtr
+                = tryGetLinkedStructure<VkPhysicalDeviceSamplerYcbcrConversionFeatures,
+                        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES>(&createInfoOverride);
+
+        if (samplerYuvConversionFeaturesPtr) {
+
+            auto mutableCast = const_cast<VkPhysicalDeviceSamplerYcbcrConversionFeatures*>(samplerYuvConversionFeaturesPtr);
+            if (samplerYuvConversionFeaturesPtr->samplerYcbcrConversion != VK_TRUE) {
+                mutableCast->samplerYcbcrConversion = VK_TRUE;
+                LogD("Updated SamplerYcbcrConversionFeatures flag for samplerYcbcrConversion.");
+            }
         } else {
-            const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = newLastNode = reinterpret_cast<VkBaseInStructure*>(&yuvFeaturesOverride);
-            hasModifiedLastProvidedNode = true;
+            appendFeatureToCreateDeviceInfoChain(
+                    newLastNode, lastCallerProvidedNode,
+                    hasModifiedLastCallerProvidedNode,
+                    &samplerYuvConversionFeaturesOverride,
+                    "SamplerYcbcrConversionFeatures"
+            );
         }
     }
 
-    if (!maintenance6FeaturesPtr || maintenance6FeaturesPtr->maintenance6 != VK_TRUE) {
+    // endregion
 
-        VkPhysicalDeviceMaintenance6FeaturesKHR maintenance6FeaturesOut = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_6_FEATURES_KHR,
-                .pNext = nullptr,
-        };
+    // region Vulkan 1.3 Feature Override Handling
 
-        VkPhysicalDeviceFeatures2 features2 = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                .pNext = &maintenance6FeaturesOut
-        };
+    auto vulkan13FeaturesPtr
+            = tryGetLinkedStructure<VkPhysicalDeviceVulkan13Features,
+                    VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES>(&createInfoOverride);
 
-        vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
-        if (maintenance6FeaturesOut.maintenance6 != VK_TRUE) {
-            LogE("Device does not support maintenance6 extension, cannot continue.");
-            isVulkanDeviceSupported = false;
+    if (vulkan13FeaturesPtr) {
 
-            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
+        auto mutableCast = const_cast<VkPhysicalDeviceVulkan13Features*>(vulkan13FeaturesPtr);
+        if (vulkan13FeaturesPtr->dynamicRendering != VK_TRUE) {
+            mutableCast->dynamicRendering = VK_TRUE;
+            LogD("Updated Vulkan13Features flag for dynamicRendering.");
         }
+    } else {
 
-        if (maintenance6FeaturesPtr) {
-            const_cast<VkPhysicalDeviceMaintenance6FeaturesKHR*>(maintenance6FeaturesPtr)->maintenance6 = VK_TRUE;
-        } else if (newLastNode) {
-            VkBaseInStructure* ptr = reinterpret_cast<VkBaseInStructure*>(&maintenance6FeaturesOverride);
-            newLastNode->pNext = ptr;
-            newLastNode = ptr;
+        auto dynamicRenderingFeaturesPtr
+                = tryGetLinkedStructure<VkPhysicalDeviceDynamicRenderingFeaturesKHR,
+                        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR>(&createInfoOverride);
+
+        if (dynamicRenderingFeaturesPtr) {
+
+            auto mutableCast = const_cast<VkPhysicalDeviceDynamicRenderingFeaturesKHR*>(dynamicRenderingFeaturesPtr);
+            if (dynamicRenderingFeaturesPtr->dynamicRendering != VK_TRUE) {
+                mutableCast->dynamicRendering = VK_TRUE;
+                LogD("Updated DynamicRenderingFeaturesKHR flag for dynamicRendering.");
+            }
         } else {
-            const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = newLastNode = reinterpret_cast<VkBaseInStructure*>(&maintenance6FeaturesOverride);
-            hasModifiedLastProvidedNode = true;
+            appendFeatureToCreateDeviceInfoChain(
+                    newLastNode, lastCallerProvidedNode,
+                    hasModifiedLastCallerProvidedNode,
+                    &dynamicRenderingFeaturesOverride,
+                    "DynamicRenderingFeaturesKHR"
+            );
         }
     }
 
-    if ((!vulkan13FeaturesPtr && !dynamicRenderingFeaturesPtr)
-        || (vulkan13FeaturesPtr && vulkan13FeaturesPtr->dynamicRendering != VK_TRUE)
-        || (dynamicRenderingFeaturesPtr && dynamicRenderingFeaturesPtr->dynamicRendering != VK_TRUE)) {
+    // endregion
 
-        VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeaturesOut = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-                .pNext = nullptr,
-        };
-
-        VkPhysicalDeviceFeatures2 features2 = {
-                .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                .pNext = &dynamicRenderingFeaturesOut
-        };
-
-        vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
-        if (dynamicRenderingFeaturesOut.dynamicRendering != VK_TRUE) {
-            LogE("Device does not support dynamic rendering, cannot continue.");
-            isVulkanDeviceSupported = false;
-
-            return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
-        }
-
-        if (vulkan13FeaturesPtr) {
-            const_cast<VkPhysicalDeviceVulkan13Features*>(vulkan13FeaturesPtr)->dynamicRendering = VK_TRUE;
-        } else if (dynamicRenderingFeaturesPtr) {
-            const_cast<VkPhysicalDeviceDynamicRenderingFeaturesKHR *>(dynamicRenderingFeaturesPtr)->dynamicRendering = VK_TRUE;
-        } else if (newLastNode) {
-            VkBaseInStructure* ptr = reinterpret_cast<VkBaseInStructure*>(&dynamicRenderingFeaturesOverride);
-            newLastNode->pNext = ptr;
-            newLastNode = ptr;
-        } else {
-            const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = newLastNode = reinterpret_cast<VkBaseInStructure*>(&dynamicRenderingFeaturesOverride);
-            hasModifiedLastProvidedNode = true;
-        }
+    VkResult vkResult = vkCreateDevice(physicalDevice, &createInfoOverride, pAllocator, pDevice);
+    if (hasModifiedLastCallerProvidedNode) {
+        const_cast<VkBaseInStructure*>(lastCallerProvidedNode)->pNext = nullptr;
+        LogD("Removed inserted structure(s) from features chain.");
     }
 
-    VkResult result = vkCreateDevice(physicalDevice, &createInfoOverride, pAllocator, pDevice);
-    if (hasModifiedLastProvidedNode) {
-        const_cast<VkBaseInStructure*>(lastProvidedNode)->pNext = nullptr;
-    }
-
-    if (result == VK_SUCCESS) {
+    if (vkResult == VK_SUCCESS) {
         isVulkanDeviceSupported = true;
         LogD("Vulkan device created.");
     }
 
-    return result;
+    return vkResult;
 }
 
-bool VulkanRenderManager::tryGetDeviceSupportedExtensions(VkPhysicalDevice device,
-                                                          std::vector<VkExtensionProperties>* result) {
+bool VulkanRenderManager::verifyDeviceExtensionSupport(VkPhysicalDevice physicalDevice) {
 
-    uint32_t count = 0;
-    result->clear();
-
-    VkResult vkResult = vkEnumerateDeviceExtensionProperties(device, nullptr,
-                                                             &count, nullptr);
+    uint32_t extensionCount = 0;
+    VkResult vkResult = vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr,
+                                                             &extensionCount, nullptr);
 
     if (vkResult != VK_SUCCESS) {
         LogE("Could not get device extension property count due to error, code: %d.", vkResult);
         return false;
     }
 
-    result->resize(count);
-    vkResult = vkEnumerateDeviceExtensionProperties(device, nullptr,
-                                                    &count, result->data());
+    std::vector<VkExtensionProperties> extensionProperties(extensionCount);
+    vkResult = vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr,
+                                                    &extensionCount, extensionProperties.data());
 
     if (vkResult != VK_SUCCESS) {
         LogE("Could not get device extension properties due to error, code: %d.", vkResult);
         return false;
     }
 
+    VkPhysicalDeviceProperties2 physicalDeviceProperties = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = nullptr
+    };
+
+    vkGetPhysicalDeviceProperties2(physicalDevice, &physicalDeviceProperties);
+    for (const auto& requiredExtension : reqDeviceExtensions) {
+
+        // Is current driver-supported Vulkan version >= Vulkan version in which this extension was added to core?
+        if (requiredExtension.second > 0
+            && physicalDeviceProperties.properties.apiVersion >= requiredExtension.second) {
+            continue;
+        }
+
+        bool isSupported = false;
+        for (const VkExtensionProperties& extension : extensionProperties) {
+
+            if (strcmp(extension.extensionName, requiredExtension.first) == 0) {
+                isSupported = true; break;
+            }
+        }
+
+        if (!isSupported) {
+            LogE("Required extension '%s' not supported by device.", requiredExtension.first);
+            return false;
+        }
+    }
+
     return true;
+}
+
+
+bool VulkanRenderManager::verifyDeviceExtensionFeatureSupport(VkPhysicalDevice physicalDevice) {
+
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+            .pNext = nullptr,
+    };
+
+    VkPhysicalDeviceSamplerYcbcrConversionFeatures samplerYuvConversionFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
+            .pNext = &dynamicRenderingFeatures,
+    };
+
+    VkPhysicalDeviceFeatures2 physicalDeviceFeatures = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            .pNext = &samplerYuvConversionFeatures
+    };
+
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &physicalDeviceFeatures);
+
+    if (samplerYuvConversionFeatures.samplerYcbcrConversion != VK_TRUE) {
+        LogE("Required extension feature (samplerYcbcrConversion) not supported by device.");
+        return false;
+    }
+
+    if (dynamicRenderingFeatures.dynamicRendering != VK_TRUE) {
+        LogE("Required extension feature (dynamicRendering) not supported by device.");
+        return false;
+    }
+
+    return true;
+}
+
+std::vector<const char*>
+    VulkanRenderManager::getDeduplicatedExtensions(const VkDeviceCreateInfo* createInfo) {
+
+    std::vector<const char*> extensions;
+    extensions.reserve(createInfo->enabledExtensionCount + reqDeviceExtensions.size());
+
+    if (createInfo->enabledExtensionCount > 0) {
+        extensions.insert(extensions.end(),
+                          createInfo->ppEnabledExtensionNames,
+                          createInfo->ppEnabledExtensionNames + createInfo->enabledExtensionCount);
+    }
+
+    for (const auto& requiredExtension : reqDeviceExtensions) {
+
+        bool alreadyExists = false;
+        for (const char* extension : extensions) {
+
+            if (strcmp(extension, requiredExtension.first) == 0) {
+                alreadyExists = true; break;
+            }
+        }
+
+        if (!alreadyExists) {
+            extensions.push_back(requiredExtension.first);
+            LogD("Inserting extension: '%s'.", requiredExtension.first);
+        }
+    }
+
+    return extensions;
+}
+
+template<typename T> void
+    VulkanRenderManager::appendFeatureToCreateDeviceInfoChain(VkBaseInStructure*& newLastNode,
+                                                              const VkBaseInStructure* lastCallerProvidedNode,
+                                                              bool& didModifyLastCallerProvidedNode,
+                                                              T* override, const char* featureName) {
+
+    auto node = reinterpret_cast<VkBaseInStructure*>(override);
+    if (!newLastNode) {
+        const_cast<VkBaseInStructure*>(lastCallerProvidedNode)->pNext = node;
+        didModifyLastCallerProvidedNode = true;
+    } else {
+        newLastNode->pNext = node;
+    }
+
+    newLastNode = node;
+    LogD("Linked new %s to features chain.", featureName);
 }
 
 void VulkanRenderManager::loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
