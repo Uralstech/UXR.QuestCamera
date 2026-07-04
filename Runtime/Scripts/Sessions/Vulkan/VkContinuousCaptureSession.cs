@@ -28,7 +28,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
 {
     public class VkContinuousCaptureSession : CaptureSessionBase<VkContinuousCaptureSession.Proxy>
     {
-        public delegate void OnFrameReadyCallback(IntPtr acquiredBufferPtr, long bufferId, long timestampNs);
+        public delegate void OnFrameReadyCallback(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs);
         
         /// <inheritdoc/>
         public sealed class Proxy : ProxyBase
@@ -45,10 +45,11 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
                     return base.Invoke(methodName, javaArgs);
                 
                 IntPtr acquiredBufferPtr = (IntPtr)JNIExtensions.UnboxLongElement(javaArgs, 0);
-                long bufferId = JNIExtensions.UnboxLongElement(javaArgs, 1);
-                long timestampNs = JNIExtensions.UnboxLongElement(javaArgs, 2);
+                int bufferDataSpace = JNIExtensions.UnboxIntElement(javaArgs, 1);
+                long bufferId = JNIExtensions.UnboxLongElement(javaArgs, 2);
+                long timestampNs = JNIExtensions.UnboxLongElement(javaArgs, 3);
                 
-                OnFrameReady?.Invoke(acquiredBufferPtr, bufferId, timestampNs);
+                OnFrameReady?.Invoke(acquiredBufferPtr, bufferDataSpace, bufferId, timestampNs);
                 return IntPtr.Zero;
             }
         }
@@ -60,8 +61,12 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         private readonly CommandBuffer _commandBuffer;
         private readonly IntPtr _texturePtr;
         private int _isProcessing;
-        
-        public VkContinuousCaptureSession(Resolution resolution) : this(resolution, ClassName) { }
+
+        public VkContinuousCaptureSession(Resolution resolution) : this(resolution, ClassName)
+        {
+            if (AndroidAPILevel.Current < AndroidAPILevel.Tiramisu)
+                throw new NotSupportedException($"{nameof(VkContinuousCaptureSession)} requires Android 13 (API level 33) or higher to function!");
+        }
 
         // Creates proxy and returns it via out param so it can be passed to both base and native constructor
         private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
@@ -85,7 +90,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             UnityEngine.Object.Destroy(Texture);
         }
 
-        private void OnFrameReadyNative(IntPtr acquiredBufferPtr, long bufferId, long timestampNs)
+        private void OnFrameReadyNative(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
         {
             if (State != ResourceState.Valid || Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 1)
             {
@@ -93,10 +98,10 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
                 return;
             }
             
-            DispatchFrameConversionAsync(acquiredBufferPtr, bufferId, timestampNs).Forget();
+            DispatchFrameConversionAsync(acquiredBufferPtr, bufferDataSpace, bufferId, timestampNs).Forget();
         }
 
-        private async Task DispatchFrameConversionAsync(IntPtr acquiredBufferPtr, long bufferId, long timestampNs)
+        private async Task DispatchFrameConversionAsync(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
         {
             try
             {
@@ -108,6 +113,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
 
                 RenderData data = new(
                     acquiredBufferPtr,
+                    bufferDataSpace,
                     (ulong)bufferId,
                     _texturePtr,
                     VkAPI.RenderCallbackPtr);
