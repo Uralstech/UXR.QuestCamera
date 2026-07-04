@@ -70,6 +70,7 @@
     apply(vkCmdBindPipeline);                           \
     apply(vkCmdSetViewport);                            \
     apply(vkCmdSetScissor);                             \
+    apply(vkCmdBindDescriptorSets);                     \
     apply(vkCmdDraw);
 
 // endregion

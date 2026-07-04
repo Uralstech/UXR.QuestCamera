@@ -314,6 +314,11 @@ void VulkanRenderManager::render(RenderData* data) {
     vkCmdSetScissor(recording.commandBuffer, 0,
                     1, &viewRect);
 
+    vkCmdBindDescriptorSets(recording.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            graphicsPipeline->pipelineLayout, 0,
+                            1, &submission->descriptorSet,
+                            0, nullptr);
+
     vkCmdDraw(recording.commandBuffer,
               3, 1,
               0, 0);
