@@ -307,6 +307,7 @@ private:
     struct RenderSubmission {
         std::unique_ptr<ImportedYuvImage> srcImage  = nullptr;
         VkDescriptorSet descriptorSet               = VK_NULL_HANDLE;
+        VkImageView targetImageView                 = VK_NULL_HANDLE;
         unsigned long long frameNumber              = 0;
 
         RenderSubmission(VkDevice device_)
@@ -336,6 +337,13 @@ private:
             return true;
         }
 
+        ~RenderSubmission() {
+
+            if (targetImageView != VK_NULL_HANDLE) {
+                vkDestroyImageView(device, targetImageView, nullptr);
+            }
+        }
+
     private:
         VkDevice device;
     };
@@ -353,8 +361,6 @@ private:
 
     VkDescriptorPool submissionsDescriptorPool = VK_NULL_HANDLE;
     std::vector<std::unique_ptr<RenderSubmission>> ongoingSubmissions;
-
-    std::unordered_map<VkImage, VkImageView> targetImageViews;
 
     bool getHardwareBufferProperties(AHardwareBuffer* hardwareBuffer,
                                      VkAndroidHardwareBufferPropertiesANDROID* bufferProperties,
@@ -388,7 +394,7 @@ private:
     bool allocateDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout,
                                VkDescriptorSet* descriptorSet);
 
-    bool getTargetImageView(const UnityVulkanImage& image, VkImageView* imageView);
+    bool constructTargetImageView(const UnityVulkanImage& image, VkImageView* imageView);
 };
 
 

@@ -41,11 +41,6 @@ void VulkanRenderManager::onDeviceInitialized() {
 
 void VulkanRenderManager::onDeviceShutdown() {
 
-    for (auto it = targetImageViews.begin(); it != targetImageViews.end();) {
-        vkDestroyImageView(unityVulkanInstance.device, it->second, nullptr);
-        it = targetImageViews.erase(it);
-    }
-
     ongoingSubmissions.clear();
 
     if (submissionsDescriptorPool != VK_NULL_HANDLE) {
@@ -254,15 +249,14 @@ void VulkanRenderManager::render(RenderData* data) {
 
     // region Render
 
-    VkImageView targetImageView;
-    if (!getTargetImageView(targetImage, &targetImageView)) {
+    if (!constructTargetImageView(targetImage, &submission->targetImageView)) {
         return;
     }
 
     VkRenderingAttachmentInfoKHR renderingAttachmentInfo = {
             .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
             .pNext = nullptr,
-            .imageView = targetImageView,
+            .imageView = submission->targetImageView,
             .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
             .resolveMode = VK_RESOLVE_MODE_NONE_KHR,
             .resolveImageView = VK_NULL_HANDLE,
@@ -963,8 +957,7 @@ void VulkanRenderManager::pruneOngoingSubmissions(unsigned long long safeFrame) 
 
         RenderSubmission* submission = it->get();
 
-        // Additional safety frame before release, this may not be needed
-        if (submission->frameNumber + 1 <= safeFrame) {
+        if (submission->frameNumber <= safeFrame) {
             if (submission->freeDescriptorSet(descriptorPool)) {
                 it = ongoingSubmissions.erase(it);
                 continue;
@@ -1031,13 +1024,7 @@ bool VulkanRenderManager::allocateDescriptorSet(VkDescriptorPool descriptorPool,
     return true;
 }
 
-bool VulkanRenderManager::getTargetImageView(const UnityVulkanImage& image, VkImageView* imageView) {
-
-    auto cached = targetImageViews.find(image.image);
-    if (cached != targetImageViews.end()) {
-        *imageView = cached->second;
-        return true;
-    }
+bool VulkanRenderManager::constructTargetImageView(const UnityVulkanImage& image, VkImageView* imageView) {
 
     VkImageViewUsageCreateInfo imageViewUsageCreateInfo = {
             .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
@@ -1065,16 +1052,13 @@ bool VulkanRenderManager::getTargetImageView(const UnityVulkanImage& image, VkIm
             }
     };
 
-    VkImageView vkCreatedImageView;
     VkResult vkResult = vkCreateImageView(unityVulkanInstance.device, &createInfo,
-                                          nullptr, &vkCreatedImageView);
+                                          nullptr, imageView);
 
     if (vkResult != VK_SUCCESS) {
         LogE("Could not create image view for target image due to error, code: %d.", vkResult);
         return false;
     }
 
-    targetImageViews.emplace(image.image, vkCreatedImageView);
-    *imageView = vkCreatedImageView;
     return true;
 }
