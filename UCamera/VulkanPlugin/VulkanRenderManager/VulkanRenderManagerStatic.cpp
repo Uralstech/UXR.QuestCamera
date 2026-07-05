@@ -21,6 +21,7 @@
 
 #define INIT_VULKAN_FUNCTIONPTR(func) PFN_##func VulkanRenderManager::func = nullptr
 INIT_VULKAN_FUNCTIONPTR(vkGetInstanceProcAddr);
+INIT_VULKAN_FUNCTIONPTR(vkCreateDevice);
 USED_VULKAN_FUNCTIONS(INIT_VULKAN_FUNCTIONPTR)
 #undef INIT_VULKAN_FUNCTIONPTR
 
@@ -83,27 +84,27 @@ VKAPI_ATTR VkResult VKAPI_CALL
                                                const VkAllocationCallbacks* pAllocator,
                                                VkInstance* pInstance) {
 
-    bool shouldLoadFunctions = true;
+    bool shouldLoadAllFunctions = true;
+    isVulkanInstanceSupported = false;
+
     if (!pCreateInfo->pApplicationInfo || pCreateInfo->pApplicationInfo->apiVersion < minimumVulkanAPI) {
         LogE("App targets unknown/unsupported Vulkan API version, cannot continue.");
-        shouldLoadFunctions = isVulkanInstanceSupported = false;
+        shouldLoadAllFunctions = false;
     }
 
     auto vkEnumerateInstanceVersion = (PFN_vkEnumerateInstanceVersion)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion");
     if (vkEnumerateInstanceVersion == nullptr) {
         LogE("Current Vulkan API is version 1.0, cannot continue.");
-        shouldLoadFunctions = isVulkanInstanceSupported = false;
+        shouldLoadAllFunctions = false;
     }
 
     auto vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE,
                                                                         "vkCreateInstance");
     VkResult vkResult = vkCreateInstance(pCreateInfo, pAllocator, pInstance);
 
-    if (vkResult == VK_SUCCESS && shouldLoadFunctions) {
-        loadVulkanFunctions(vkGetInstanceProcAddr, *pInstance);
-        isVulkanInstanceSupported = true;
-
-        LogD("Vulkan instance created.");
+    if (vkResult == VK_SUCCESS) {
+        isVulkanInstanceSupported = loadVulkanFunctions(vkGetInstanceProcAddr, *pInstance, shouldLoadAllFunctions);
+        LogD("Vulkan instance created, supported: %d.", isVulkanInstanceSupported);
     }
 
     return vkResult;
@@ -155,6 +156,12 @@ VKAPI_ATTR VkResult VKAPI_CALL
     // endregion
 
     isVulkanDeviceSupported = false;
+    if (vkCreateDevice == nullptr) {
+        // Something went VERY wrong during Hook_vkCreateInstance.
+        LogE("vkCreateDevice is nullptr?");
+        return VK_ERROR_UNKNOWN;
+    }
+
     if (!isVulkanInstanceSupported) {
         LogD("Ignoring device extension registration as Vulkan instance is plugin-unusable.");
         return vkCreateDevice(physicalDevice, pCreateInfo, pAllocator, pDevice);
@@ -398,14 +405,29 @@ template<typename T> void
     LogD("Linked new %s to features chain.", featureName);
 }
 
-void VulkanRenderManager::loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
-                                              VkInstance instance) {
+bool VulkanRenderManager::loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
+                                              VkInstance instance, bool shouldLoadAllFunctions) {
 
-    if (!vkGetInstanceProcAddr && getInstanceProcAddr) {
-        vkGetInstanceProcAddr = getInstanceProcAddr;
+    if (!getInstanceProcAddr) {
+        LogE("loadVulkanFunctions invoked with nullptr getInstanceProcAddr?");
+        return false;
     }
 
-#define LOAD_VULKAN_FUNCTION(func) if (!func) func = (PFN_##func)vkGetInstanceProcAddr(instance, #func)
+    vkGetInstanceProcAddr = getInstanceProcAddr;
+    vkCreateDevice = (PFN_vkCreateDevice)getInstanceProcAddr(instance, "vkCreateDevice");
+
+    if (!shouldLoadAllFunctions) {
+        return false;
+    }
+
+#define LOAD_VULKAN_FUNCTION(func)                                                  \
+    if ((func = (PFN_##func)vkGetInstanceProcAddr(instance, #func)) == nullptr) {   \
+        LogE("Could not load required Vulkan function '%s'.", #func);               \
+        return false;                                                               \
+    }
+
     USED_VULKAN_FUNCTIONS(LOAD_VULKAN_FUNCTION)
 #undef LOAD_VULKAN_FUNCTION
+
+    return true;
 }

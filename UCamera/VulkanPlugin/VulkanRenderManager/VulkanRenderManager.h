@@ -32,7 +32,6 @@
 
 // region Used Vulkan Functions
 #define USED_VULKAN_FUNCTIONS(apply)                    \
-    apply(vkCreateDevice);                              \
     apply(vkEnumerateDeviceExtensionProperties);        \
     apply(vkGetPhysicalDeviceFeatures2);                \
     apply(vkGetPhysicalDeviceProperties2);              \
@@ -111,6 +110,7 @@ private:
     // region Static
 #define DEFINE_VULKAN_FUNCTIONPTR(func) static PFN_##func func
     DEFINE_VULKAN_FUNCTIONPTR(vkGetInstanceProcAddr);
+    DEFINE_VULKAN_FUNCTIONPTR(vkCreateDevice);
     USED_VULKAN_FUNCTIONS(DEFINE_VULKAN_FUNCTIONPTR);
 #undef DEFINE_VULKAN_FUNCTIONPTR
 
@@ -155,8 +155,8 @@ private:
                                              bool& didModifyLastCallerProvidedNode,
                                              T* override, const char* featureName);
 
-    static void loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
-                                    VkInstance instance);
+    static bool loadVulkanFunctions(PFN_vkGetInstanceProcAddr getInstanceProcAddr,
+                                    VkInstance instance, bool shouldLoadAllFunctions);
 
     // endregion
 
