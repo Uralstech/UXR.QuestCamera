@@ -120,6 +120,9 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
 
         private async Task DispatchFrameConversionAsync(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
         {
+            IntPtr ownedBufferPtr = acquiredBufferPtr;
+            IntPtr ownedAllocatedMemoryPtr = IntPtr.Zero;
+            
             try
             {
 #if UNITY_6000_0_OR_NEWER
@@ -128,30 +131,60 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
                 await Awaiters.UnityMainThread;
 #endif
                 if (State != ResourceState.Valid)
-                {
-                    VulkanAPI.releaseHardwareBuffer(acquiredBufferPtr);
                     return;
-                }
 
                 RenderData data = new(
-                    acquiredBufferPtr,
+                    ownedBufferPtr,
                     bufferDataSpace,
                     (ulong)bufferId,
                     _texturePtr,
                     VulkanAPI.RenderCallbackPtr);
 
-                IntPtr allocated = VulkanAPI.AllocateRenderData(data);
-                VulkanAPI.RenderCallbacksRegistry[bufferId] = allocated;
+                ownedAllocatedMemoryPtr = VulkanAPI.AllocateRenderData(ref data);
+                if (!VulkanAPI.RenderCallbacksRegistry.TryAdd(bufferId, new ManagedRenderCallback(
+                        ownedAllocatedMemoryPtr, timestampNs, OnRenderCompleted
+                    )))
+                {
+                    Debug.LogError($"Encountered duplicate render callback registrations with buffer ID {bufferId}.");
+                    return;
+                }
 
                 _commandBuffer.Clear();
-                _commandBuffer.IssuePluginEventAndData(VulkanAPI.getVulkanRenderEvent(), 1, allocated);
+                _commandBuffer.IssuePluginEventAndData(VulkanAPI.getVulkanRenderEvent(), 1, ownedAllocatedMemoryPtr);
+                
                 Graphics.ExecuteCommandBuffer(_commandBuffer);
+                ownedAllocatedMemoryPtr = IntPtr.Zero;
+                ownedBufferPtr = IntPtr.Zero;
             }
-            catch
+            finally
             {
-                VulkanAPI.releaseHardwareBuffer(acquiredBufferPtr);
-                VulkanAPI.TryFreeRenderData(bufferId);
-                throw;
+                if (ownedBufferPtr != IntPtr.Zero)
+                    VulkanAPI.releaseHardwareBuffer(ownedBufferPtr);
+                
+                if (ownedAllocatedMemoryPtr != IntPtr.Zero)
+                    VulkanAPI.FreeRenderData(ownedAllocatedMemoryPtr);
+            }
+        }
+
+        private async void OnRenderCompleted(bool success, long timestampNs)
+        {
+            try
+            {
+                if (!success) return;
+                
+#if UNITY_6000_0_OR_NEWER
+                await Awaitable.MainThreadAsync();
+#else
+                await Awaiters.UnityMainThread;
+#endif
+                
+                CaptureTimestamp = timestampNs;
+                _lastUpdateFrame = Time.frameCount;
+                OnFrameProcessed?.Invoke(Texture, timestampNs);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogException(ex);
             }
         }
 
