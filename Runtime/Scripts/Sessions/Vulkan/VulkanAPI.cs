@@ -23,17 +23,31 @@ using UnityEngine;
 #nullable enable
 namespace Uralstech.UXR.QuestCamera.Vulkan
 {
-    public static class VkAPI
+    /// <summary>Exposes the native Vulkan Texture Conversion API.</summary>
+    public static class VulkanAPI
     {
-        [DllImport("UXRQC_VkGluePlugin")]
+        /// <summary>Releases an acquired AHardwareBuffer object.</summary>
+        /// <param name="acquiredBufferPtr">The buffer to release.</param>
+        [DllImport("UXRQC_VulkanGluePlugin")]
         public static extern void releaseHardwareBuffer(IntPtr acquiredBufferPtr);
         
+        /// <summary>Returns a pointer to the native rendering function.</summary>
         [DllImport("GfxPlugin_UXRQC_VulkanPlugin")]
         public static extern IntPtr getVulkanRenderEvent();
         
+        /// <summary>Registry of render callbacks.</summary>
         public static readonly ConcurrentDictionary<long, IntPtr> RenderCallbacksRegistry = new();
+        
+        /// <summary>Static marshalled pointer to <see cref="OnRenderDone"/>.</summary>
         public static readonly IntPtr RenderCallbackPtr = Marshal.GetFunctionPointerForDelegate<RenderData.Callback>(OnRenderDone);
         
+        /// <summary>Allocates native memory of a <see cref="RenderData"/> struct to use with <see cref="OnRenderDone"/>/<see cref="TryFreeRenderData"/>.</summary>
+        /// <remarks>
+        /// Allocations are made with <see cref="UnsafeUtility"/> and <see cref="Allocator.TempJob"/>,
+        /// matching de-allocation in <see cref="OnRenderDone"/> and <see cref="TryFreeRenderData"/>.
+        /// </remarks>
+        /// <param name="renderData">The data to allocate.</param>
+        /// <returns>A pointer to the allocated memory.</returns>
         public static unsafe IntPtr AllocateRenderData(RenderData renderData)
         {
             void* allocated = UnsafeUtility.Malloc(RenderData.Size, RenderData.Align, Allocator.TempJob);
@@ -41,6 +55,12 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             return new IntPtr(allocated);
         }
         
+        /// <summary>
+        /// Tries to free the memory of a <see cref="RenderData"/> struct registered in <see cref="RenderCallbacksRegistry"/>
+        /// and allocated using <see cref="AllocateRenderData"/>.
+        /// </summary>
+        /// <param name="hardwareBufferId">The buffer ID the struct is registered with.</param>
+        /// <returns><see langword="true"/> if the memory was freed; <see langword="false"/> if it was not registered.</returns>
         public static unsafe bool TryFreeRenderData(long hardwareBufferId)
         {
             if (!RenderCallbacksRegistry.TryRemove(hardwareBufferId, out IntPtr dataToFree))
@@ -50,6 +70,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             return true;
         }
         
+        /// <inheritdoc cref="RenderData.Callback"/>
         [MonoPInvokeCallback(typeof(RenderData.Callback))]
         public static void OnRenderDone(ulong hardwareBufferId)
         {

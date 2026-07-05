@@ -268,14 +268,16 @@ namespace Uralstech.UXR.QuestCamera
             return session;
         }
         
-        public VkContinuousCaptureSession CreateVkContinuousSession(Resolution resolution, CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None)
+        public VulkanContinuousCaptureSession CreateVulkanContinuousSession(Resolution resolution,
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
+            GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
             long[] streamUseCases = streamUseCase is not StreamUseCase.None
                 ? new long[] { (long)streamUseCase }
                 : Array.Empty<long>();
 
-            VkContinuousCaptureSession session = new(resolution);
+            VulkanContinuousCaptureSession session = new(resolution, textureFormat);
 
             bool initResult = _native.Call<bool>("initializeVulkanSession", session._native, (int)template, streamUseCases);
             if (!initResult)

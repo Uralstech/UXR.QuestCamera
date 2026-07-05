@@ -24,7 +24,7 @@ using UnityEngine.Rendering;
 namespace Uralstech.UXR.QuestCamera.GLES
 {
     /// <summary>Manages a camera capture session with a repeating request, but supports both repeating and on-demand conversion.</summary>
-    /// <remarks>Texture conversion is done in native OpenGL-ES.</remarks>
+    /// <remarks>Texture conversion is done through a native OpenGL-ES plugin.</remarks>
     public sealed class GLESCaptureSession : CaptureSessionBase<GLESCaptureSession.Proxy>
     {
         /// <inheritdoc/>
@@ -35,6 +35,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
         private static readonly int s_largestDataStructSize = Marshal.SizeOf<RenderJobSetupData>();
 
         /// <summary>Callback for when a frame has been processed, with the frame texture and capture timestamp.</summary>
+        /// <remarks>The image at this point has not <i>actually</i> finished processing, but all GPU commands to do so have been executed.</remarks>
         public event Action<Texture2D, long>? OnFrameProcessed;
 
         /// <summary><see langword="true"/> if a capture was processed this frame; <see langword="false"/> otherwise.</summary>
@@ -57,9 +58,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
 
         private bool _isJobDisposed;
         private Task? _runsLoop;
-
-        private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
-
+        
         private static int MakeTexture(Resolution resolution, GraphicsFormat textureFormat, out Texture2D texture, out uint textureId)
         {
             if (textureFormat == GraphicsFormat.None)
