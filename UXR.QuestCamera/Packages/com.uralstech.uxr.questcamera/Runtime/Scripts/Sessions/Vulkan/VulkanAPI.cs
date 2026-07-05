@@ -36,46 +36,42 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         public static extern IntPtr getVulkanRenderEvent();
         
         /// <summary>Registry of render callbacks.</summary>
-        public static readonly ConcurrentDictionary<long, IntPtr> RenderCallbacksRegistry = new();
+        public static readonly ConcurrentDictionary<long, ManagedRenderCallback> RenderCallbacksRegistry = new();
         
         /// <summary>Static marshalled pointer to <see cref="OnRenderDone"/>.</summary>
         public static readonly IntPtr RenderCallbackPtr = Marshal.GetFunctionPointerForDelegate<RenderData.Callback>(OnRenderDone);
         
-        /// <summary>Allocates native memory of a <see cref="RenderData"/> struct to use with <see cref="OnRenderDone"/>/<see cref="TryFreeRenderData"/>.</summary>
+        /// <summary>Allocates native memory of a <see cref="RenderData"/> struct to use with <see cref="OnRenderDone"/>/<see cref="FreeRenderData"/>.</summary>
         /// <remarks>
         /// Allocations are made with <see cref="UnsafeUtility"/> and <see cref="Allocator.TempJob"/>,
-        /// matching de-allocation in <see cref="OnRenderDone"/> and <see cref="TryFreeRenderData"/>.
+        /// matching de-allocation in <see cref="OnRenderDone"/> and <see cref="FreeRenderData"/>.
         /// </remarks>
         /// <param name="renderData">The data to allocate.</param>
         /// <returns>A pointer to the allocated memory.</returns>
-        public static unsafe IntPtr AllocateRenderData(RenderData renderData)
+        public static unsafe IntPtr AllocateRenderData(ref RenderData renderData)
         {
             void* allocated = UnsafeUtility.Malloc(RenderData.Size, RenderData.Align, Allocator.TempJob);
             UnsafeUtility.CopyStructureToPtr(ref renderData, allocated);
             return new IntPtr(allocated);
         }
-        
-        /// <summary>
-        /// Tries to free the memory of a <see cref="RenderData"/> struct registered in <see cref="RenderCallbacksRegistry"/>
-        /// and allocated using <see cref="AllocateRenderData"/>.
-        /// </summary>
-        /// <param name="hardwareBufferId">The buffer ID the struct is registered with.</param>
-        /// <returns><see langword="true"/> if the memory was freed; <see langword="false"/> if it was not registered.</returns>
-        public static unsafe bool TryFreeRenderData(long hardwareBufferId)
-        {
-            if (!RenderCallbacksRegistry.TryRemove(hardwareBufferId, out IntPtr dataToFree))
-                return false;
-            
-            UnsafeUtility.Free((void*)dataToFree, Allocator.TempJob);
-            return true;
-        }
-        
+
+        /// <summary>Frees the memory of a <see cref="RenderData"/> struct allocated using <see cref="AllocateRenderData"/>.</summary>
+        /// <param name="renderDataPtr">The memory to free.</param>
+        public static unsafe void FreeRenderData(in IntPtr renderDataPtr) =>
+            UnsafeUtility.Free((void*)renderDataPtr, Allocator.TempJob);
+
         /// <inheritdoc cref="RenderData.Callback"/>
         [MonoPInvokeCallback(typeof(RenderData.Callback))]
-        public static void OnRenderDone(ulong hardwareBufferId)
+        public static void OnRenderDone(byte success, ulong hardwareBufferId)
         {
-            if (!TryFreeRenderData((long)hardwareBufferId))
+            if (!RenderCallbacksRegistry.TryRemove((long)hardwareBufferId, out ManagedRenderCallback callback))
+            {
                 Debug.LogWarning($"Dangling {nameof(OnRenderDone)} for hardware buffer ID {hardwareBufferId}.");
+                return;
+            }
+
+            FreeRenderData(callback.RenderDataMemory);
+            callback.OnDone(success != 0, callback.TimestampNs);
         }
     }
 }

@@ -64,12 +64,13 @@ void VulkanRenderManager::render(RenderData* data) {
     struct ScopeExit {
         RenderData* data = nullptr;
         AHardwareBuffer* buffer = nullptr;
+        uint8_t success = false;
         ~ScopeExit() {
             if (buffer)
                 AHardwareBuffer_release(buffer);
 
             if (data->onDone)
-                data->onDone(data->srcHardwareBufferId);
+                data->onDone(success, data->srcHardwareBufferId);
         }
     } scopeExit{data};
 
@@ -323,6 +324,8 @@ void VulkanRenderManager::render(RenderData* data) {
 
     submission->frameNumber = recording.currentFrameNumber;
     ongoingSubmissions.push_back(std::move(submission));
+
+    scopeExit.success = true;
 }
 
 bool VulkanRenderManager::getHardwareBufferProperties(AHardwareBuffer* hardwareBuffer,

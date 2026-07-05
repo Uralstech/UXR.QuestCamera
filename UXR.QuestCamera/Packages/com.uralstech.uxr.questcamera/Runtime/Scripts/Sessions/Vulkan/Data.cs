@@ -45,8 +45,9 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         public readonly IntPtr OnDone;
 
         /// <summary>Callback for when the event completes.</summary>
+        /// <param name="success">Was the event executed successfully?</param>
         /// <param name="hardwareBufferId"><see cref="SourceHardwareBufferId"/>, for lookup.</param>
-        public delegate void Callback(ulong hardwareBufferId);
+        public delegate void Callback(byte success, ulong hardwareBufferId);
 
         public RenderData(IntPtr sourceHardwareBuffer, int sourceHardwareBufferDataSpace,
             ulong sourceHardwareBufferId, IntPtr destinationImage, IntPtr onDone)
@@ -55,6 +56,27 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             SourceHardwareBufferDataSpace = sourceHardwareBufferDataSpace;
             SourceHardwareBufferId = sourceHardwareBufferId;
             DestinationImage = destinationImage;
+            OnDone = onDone;
+        }
+    }
+        
+    /// <summary>A managed callback for a <see cref="VulkanAPI"/> render event.</summary>
+    public readonly struct ManagedRenderCallback
+    {
+        /// <summary>The native memory allocated for event data.</summary>
+        public readonly IntPtr RenderDataMemory;
+        
+        /// <summary>The timestamp of the frame being rendered, in nanoseconds.</summary>
+        public readonly long TimestampNs;
+
+        /// <summary>The managed callback (bool Success, long <see cref="TimestampNs"/>).</summary>
+        /// <remarks>This will be invoked from the render thread, do not call Unity APIs from it.</remarks>
+        public readonly Action<bool, long> OnDone;
+
+        public ManagedRenderCallback(IntPtr renderDataMemory, long timestampNs, Action<bool, long> onDone)
+        {
+            RenderDataMemory = renderDataMemory;
+            TimestampNs = timestampNs;
             OnDone = onDone;
         }
     }

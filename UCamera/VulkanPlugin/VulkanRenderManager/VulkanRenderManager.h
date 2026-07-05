@@ -82,7 +82,7 @@ struct RenderData {
     ADataSpace srcHardwareBufferDataSpace;
     uint64_t srcHardwareBufferId;
     VkImage* dstImage;
-    void (*onDone)(int64_t hardwareBufferId);
+    void (*onDone)(uint8_t success, int64_t hardwareBufferId);
 };
 
 class VulkanRenderManager {
