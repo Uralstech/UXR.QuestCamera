@@ -56,7 +56,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         
         private const string ClassName = "com.uralstech.uxr.questcamera.sessions.vulkan.VkContinuousCaptureSessionManager";
 
-        public readonly Texture2D Texture;
+        public readonly RenderTexture Texture;
 
         private readonly CommandBuffer _commandBuffer;
         private readonly IntPtr _texturePtr;
@@ -75,7 +75,12 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             : base(MakeProxy(out Proxy proxy), new(className, resolution.width, resolution.height, proxy))
         {
             GraphicsFormat textureFormat = GraphicsFormatUtility.GetGraphicsFormat(RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
-            Texture = new Texture2D(resolution.width, resolution.height, textureFormat, TextureCreationFlags.DontUploadUponCreate | TextureCreationFlags.DontInitializePixels);
+            
+            Texture = new RenderTexture(resolution.width, resolution.height, 0, textureFormat);
+            if (!Texture.Create())
+                throw new InvalidOperationException(
+                    $"Failed to create RenderTexture ({resolution.width}x{resolution.height}, format: {textureFormat}).");
+            
             _texturePtr = Texture.GetNativeTexturePtr();
             
             _commandBuffer = new CommandBuffer();
@@ -85,8 +90,9 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         public override async ValueTask DisposeAsync()
         {
             await base.DisposeAsync();
-            
             _commandBuffer.Dispose();
+            
+            Texture.Release();
             UnityEngine.Object.Destroy(Texture);
         }
 
