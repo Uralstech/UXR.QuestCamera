@@ -42,7 +42,7 @@ target_link_libraries(${GLES_PLUGIN_NAME}
     GLESv3
     log)
 
-set(VKGLUE_PLUGIN_NAME UXRQC_VkGluePlugin)
+set(VKGLUE_PLUGIN_NAME UXRQC_VulkanGluePlugin)
 
 add_library(${VKGLUE_PLUGIN_NAME} SHARED
         VulkanGlue.cpp)

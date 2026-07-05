@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.uralstech.uxr.questcamera.sessions.vulkan
+package com.uralstech.uxr.questcamera.sessions
 
 import android.graphics.ImageFormat
 import android.hardware.HardwareBuffer
@@ -22,15 +22,14 @@ import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import com.uralstech.uxr.questcamera.CustomErrorCodes
-import com.uralstech.uxr.questcamera.sessions.ImageReaderCaptureSessionManagerBase
 
-open class VkContinuousCaptureSessionManager protected constructor(width: Int, height: Int, protected val callbacks: Callbacks, logPrefix: String)
-    : ImageReaderCaptureSessionManagerBase(width, height, ImageFormat.PRIVATE, 3,
-        HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE, callbacks, logPrefix)  {
+class VulkanCaptureSessionManager(width: Int, height: Int, private val callbacks: Callbacks)
+    : ImageReaderCaptureSessionManagerBase(width, height, ImageFormat.PRIVATE, 2,
+        HardwareBuffer.USAGE_GPU_SAMPLED_IMAGE, callbacks, "VulkanSession")  {
 
     companion object {
         init {
-            System.loadLibrary("UXRQC_VkGluePlugin")
+            System.loadLibrary("UXRQC_VulkanGluePlugin")
         }
     }
 
@@ -44,8 +43,6 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
          */
         fun onFrameReady(acquiredBufferPtr: Long, bufferDataSpace: Int, bufferId: Long, timestamp: Long)
     }
-
-    constructor(width: Int, height: Int, callbacks: Callbacks) : this(width, height, callbacks, "VkContinuousSession")
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun imageHandover(image: Image) {
@@ -82,7 +79,7 @@ open class VkContinuousCaptureSessionManager protected constructor(width: Int, h
         }
     }
 
-    internal open fun initialize(
+    internal fun initialize(
         camera: CameraDevice, captureTemplate: Int, streamUseCases: LongArray
     ) {
         Log.i(TAG, "($logPrefix) Initializing session.")

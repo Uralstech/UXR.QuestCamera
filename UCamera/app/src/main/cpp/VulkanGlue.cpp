@@ -29,7 +29,7 @@ static GetIdFn getIdFn = []() -> GetIdFn {
 
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_acquireHardwareBuffer(
+Java_com_uralstech_uxr_questcamera_sessions_VulkanCaptureSessionManager_acquireHardwareBuffer(
         JNIEnv *env, jobject, jobject buffer) {
 
     AHardwareBuffer* nativeBuffer = AHardwareBuffer_fromHardwareBuffer(env, buffer);
@@ -44,7 +44,7 @@ Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionMan
 
 extern "C"
 JNIEXPORT jlong JNICALL
-Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_getHardwareBufferId(
+Java_com_uralstech_uxr_questcamera_sessions_VulkanCaptureSessionManager_getHardwareBufferId(
         JNIEnv*, jobject, jlong acquiredBufferPtr) {
 
     auto hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);
@@ -70,7 +70,7 @@ Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionMan
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_uralstech_uxr_questcamera_sessions_vulkan_VkContinuousCaptureSessionManager_releaseHardwareBuffer(
+Java_com_uralstech_uxr_questcamera_sessions_VulkanCaptureSessionManager_releaseHardwareBuffer(
         JNIEnv*, jobject, jlong acquiredBufferPtr) {
 
     auto hardwareBuffer = reinterpret_cast<AHardwareBuffer*>(acquiredBufferPtr);

@@ -94,8 +94,6 @@ namespace Uralstech.UXR.QuestCamera
         
         public ContinuousCaptureSession(Resolution resolution) : this(resolution, ClassName) { }
 
-        // Creates proxy and returns it via out param so it can be passed to both base and native constructor
-        private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
         protected ContinuousCaptureSession(Resolution resolution, string className)
             : base(MakeProxy(out Proxy proxy), new(className, resolution.width, resolution.height, proxy)) { }
     }
