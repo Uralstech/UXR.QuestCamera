@@ -23,8 +23,7 @@
 
 //region Shader sources
 
-const char* VERTEX_SHADER_SOURCE = R"glsl(
-#version 300 es
+const char* VERTEX_SHADER_SOURCE = R"glsl(#version 300 es
 
 // Input vertex data
 layout(location = 0) in vec4 aPosition;
@@ -42,8 +41,7 @@ void main() {
 }
 )glsl";
 
-const char* FRAGMENT_SHADER_SOURCE = R"glsl(
-#version 300 es
+const char* FRAGMENT_SHADER_SOURCE = R"glsl(#version 300 es
 #extension GL_EXT_YUV_target : require
 precision mediump float;
 

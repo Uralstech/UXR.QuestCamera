@@ -8,6 +8,7 @@ layout(location = 0) out vec4 outColor;
 void main() {
     vec4 color = texture(src, uv);
 
-    // TODO: well, uh... yeah.
+    // TODO: implement conversions from
+    // https://developer.android.com/reference/android/hardware/DataSpace#TRANSFER_GAMMA2_2
     outColor = vec4(pow(color.rgb, vec3(2.2)), color.a);
 }
