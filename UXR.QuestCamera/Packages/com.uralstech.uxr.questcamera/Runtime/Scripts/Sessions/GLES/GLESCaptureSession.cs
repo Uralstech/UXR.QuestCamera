@@ -128,6 +128,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
         /// <summary>Starts continuous frame processing.</summary>
         /// <param name="maxFramerate">The maximum rate at which frames will be processed by the GLES pipeline.</param>
         /// <exception cref="InvalidOperationException">Thrown if continuous processing is already active.</exception>
+        /// <exception cref="ObjectDisposedException"/>
         public void StartContinuousProcessing(int maxFramerate = 60)
         {
             ThrowIfDisposed();
@@ -166,7 +167,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
                 Graphics.ExecuteCommandBuffer(_eventsCommandBuffer);
 
                 long timestamp;
-                using (CancellationTokenRegistration _ = token.Register(tcs.SetCanceled))
+                await using (_ = token.Register(tcs.SetCanceled))
                     timestamp = await tcs.Task;
 
                 return (timestamp, Texture);
