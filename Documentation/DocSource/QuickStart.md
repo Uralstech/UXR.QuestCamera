@@ -247,8 +247,9 @@ Note that an awaiter of `TakePicture` also has to wait for the camera device and
 ### Vulkan-specific Capture Sessions (Experimental)
 
 If your app uses the Vulkan Graphics API and targets API Level 33 (Android 13) or higher, you can use
-`VulkanContinuousCaptureSession`, in the `Uralstech.UXR.QuestCamera.Vulkan` namespace, instead of `ContinuousCaptureSession`.
-It can improve memory usage and performance as it uses a native rendering plugin to perform YUV-to-RGBA conversion
+`VulkanContinuousCaptureSession` and `VulkanOnDemandCaptureSession`, in the `Uralstech.UXR.QuestCamera.Vulkan` namespace,
+instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage and
+performance as it uses a native rendering plugin to perform YUV-to-RGBA conversion
 on the GPU without any CPU copies.
 
 You can create them by calling `CameraDevice.CreateVulkanContinuousSession()`, like so:
@@ -272,6 +273,9 @@ if (!await session.WaitForInitializationAsync())
 // Set the image texture.
 _rawImage.texture = session.Texture;
 ```
+
+For on-demand Vulkan sessions, create it with `camera.CreateVulkanOnDemandSession(Resolution)`
+and use `await session.ProcessSingleFrameAsync()` to get a captured frame. 
 
 ### OpenGL-specific Capture Sessions
 
