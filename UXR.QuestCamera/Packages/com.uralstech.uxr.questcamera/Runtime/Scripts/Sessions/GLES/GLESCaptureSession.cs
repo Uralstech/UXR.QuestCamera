@@ -24,17 +24,18 @@ using UnityEngine.Rendering;
 namespace Uralstech.UXR.QuestCamera.GLES
 {
     /// <summary>Manages a camera capture session with a repeating request, but supports both repeating and on-demand conversion.</summary>
-    /// <remarks>Texture conversion is done in native OpenGL-ES.</remarks>
+    /// <remarks>Texture conversion is done through a native OpenGL-ES plugin.</remarks>
     public sealed class GLESCaptureSession : CaptureSessionBase<GLESCaptureSession.Proxy>
     {
         /// <inheritdoc/>
         public sealed class Proxy : ProxyBase { }
 
-        private const string ClassName = "com.uralstech.uxr.questcamera.GLESCaptureSessionManager";
+        private const string ClassName = "com.uralstech.uxr.questcamera.sessions.GLESCaptureSessionManager";
 
         private static readonly int s_largestDataStructSize = Marshal.SizeOf<RenderJobSetupData>();
 
         /// <summary>Callback for when a frame has been processed, with the frame texture and capture timestamp.</summary>
+        /// <remarks>The image at this point has not <i>actually</i> finished processing, but all GPU commands to do so have been executed.</remarks>
         public event Action<Texture2D, long>? OnFrameProcessed;
 
         /// <summary><see langword="true"/> if a capture was processed this frame; <see langword="false"/> otherwise.</summary>
@@ -57,9 +58,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
 
         private bool _isJobDisposed;
         private Task? _runsLoop;
-
-        private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
-
+        
         private static int MakeTexture(Resolution resolution, GraphicsFormat textureFormat, out Texture2D texture, out uint textureId)
         {
             if (textureFormat == GraphicsFormat.None)
@@ -73,9 +72,13 @@ namespace Uralstech.UXR.QuestCamera.GLES
         }
 
         /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        /// <exception cref="NotSupportedException">Thrown if this constructor is invoked in an environment where OpenGL ES 3 is unavailable.</exception>
         public GLESCaptureSession(Resolution resolution, GraphicsFormat textureFormat = GraphicsFormat.None)
             : base(MakeProxy(out Proxy proxy), new(ClassName, MakeTexture(resolution, textureFormat, out Texture2D texture, out uint textureId), proxy))
         {
+            if (SystemInfo.graphicsDeviceType != GraphicsDeviceType.OpenGLES3)
+                throw new NotSupportedException("Unsupported graphics device, requires OpenGL ES 3!");
+            
             Texture = texture;
             _textureId = textureId;
             
@@ -125,6 +128,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
         /// <summary>Starts continuous frame processing.</summary>
         /// <param name="maxFramerate">The maximum rate at which frames will be processed by the GLES pipeline.</param>
         /// <exception cref="InvalidOperationException">Thrown if continuous processing is already active.</exception>
+        /// <exception cref="ObjectDisposedException"/>
         public void StartContinuousProcessing(int maxFramerate = 60)
         {
             ThrowIfDisposed();
@@ -163,7 +167,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
                 Graphics.ExecuteCommandBuffer(_eventsCommandBuffer);
 
                 long timestamp;
-                using (CancellationTokenRegistration _ = token.Register(tcs.SetCanceled))
+                await using (_ = token.Register(tcs.SetCanceled))
                     timestamp = await tcs.Task;
 
                 return (timestamp, Texture);

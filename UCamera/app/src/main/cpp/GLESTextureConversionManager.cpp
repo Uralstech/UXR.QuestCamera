@@ -13,10 +13,9 @@
 // limitations under the License.
 
 #include <android/log.h>
-#include <mutex>
-#include <unordered_map>
-#include <GLES3/gl3.h>
 #include <android/surface_texture_jni.h>
+#include <unordered_map>
+#include <mutex>
 
 #include "GLES_YUVConverter.h"
 #include "IUnityInterface.h"
@@ -29,11 +28,11 @@
 using namespace std;
 
 struct RenderJob {
-    jobject srcTextureJava;
-    ASurfaceTexture* srcTextureNative;
+    jobject srcTextureJava = nullptr;
+    ASurfaceTexture* srcTextureNative = nullptr;
 
     unique_ptr<GLES_YUVConverter> converter;
-    bool awaitingDispose;
+    bool awaitingDispose = false;
 };
 
 static unordered_map<GLuint, unique_ptr<RenderJob>> g_renderJobs;
@@ -43,7 +42,7 @@ static mutex g_renderJobsMutex;
 
 extern "C"
 JNIEXPORT jboolean JNICALL
-Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env,
+Java_com_uralstech_uxr_questcamera_sessions_GLESCaptureSessionManager_bindJob(JNIEnv *env,
                                                                      jobject,
                                                                      jint jobTexId,
                                                                      jobject surfaceTexture) {
@@ -92,7 +91,7 @@ Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_bindJob(JNIEnv *env
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_uralstech_uxr_questcamera_GLESCaptureSessionManager_unbindJob(JNIEnv *env,
+Java_com_uralstech_uxr_questcamera_sessions_GLESCaptureSessionManager_unbindJob(JNIEnv *env,
                                                                       jobject,
                                                                       jint jobTexId) {
 
@@ -171,9 +170,7 @@ static void setupJob(void* data) {
         }
 
         g_renderJobs[renderTexture] = make_unique<RenderJob>(RenderJob{
-                nullptr, nullptr,
-                std::move(converter),
-                false
+                .converter = std::move(converter),
         });
 
         LOGI("Converter initialized.");

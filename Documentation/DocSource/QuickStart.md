@@ -244,10 +244,43 @@ public async Task TakePicture()
 
 Note that an awaiter of `TakePicture` also has to wait for the camera device and pipeline to close.
 
-### Save Memory in OpenGL
+### Vulkan-specific Capture Sessions (Experimental)
+
+If your app uses the Vulkan Graphics API and targets API Level 33 (Android 13) or higher, you can use
+`VulkanContinuousCaptureSession` and `VulkanOnDemandCaptureSession`, in the `Uralstech.UXR.QuestCamera.Vulkan` namespace,
+instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage and
+performance as it uses a native rendering plugin to perform YUV-to-RGBA conversion
+on the GPU without any CPU copies.
+
+You can create them by calling `CameraDevice.CreateVulkanContinuousSession()`, like so:
+
+```csharp
+CameraDevice camera =...;
+Resolution resolution =...;
+
+// Create a Vulkan capture session with the camera at the chosen resolution.
+VulkanContinuousCaptureSession session = camera.CreateVulkanContinuousSession(resolution, streamUseCase: StreamUseCase.Preview);
+if (!await session.WaitForInitializationAsync())
+{
+    Debug.LogError("Could not open camera session!");
+
+    // Release camera and session resources - MUST be awaited
+    await session.DisposeAsync();
+    await camera.DisposeAsync();
+    return;
+}
+
+// Set the image texture.
+_rawImage.texture = session.Texture;
+```
+
+For on-demand Vulkan sessions, create it with `camera.CreateVulkanOnDemandSession(Resolution)`
+and use `await session.ProcessSingleFrameAsync()` to get a captured frame. 
+
+### OpenGL-specific Capture Sessions
 
 If your app uses the OpenGL Graphics API, you can use `GLESCaptureSession`, in the `Uralstech.UXR.QuestCamera.GLES` namespace,
-instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage as it uses low-level OpenGL shaders
+instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage and performance as it uses low-level OpenGL shaders
 for YUV-to-RGBA conversion on the GPU, without any copies.
 
 It's also simpler to use, as it doesn't require an additional texture converter and provides a read-only `Texture` property (a `Texture2D`) that stores the camera images.
@@ -418,3 +451,15 @@ The package contains a Computer Vision sample that uses an MNIST trained model t
 This sample requires the Unity Sentis (formerly known as Unity Inference Engine (formerly known as Unity Sentis)) package (`com.unity.ai.inference`) and was built with version 2.6.1 of the package.
 
 This sample also uses the old input system. There is no code that references it, but you will have to change the UI input module in the scenes.
+
+## Known Issues
+
+### YUV Conversion Accuracy
+
+OpenGL's `EXT_YUV_target`[<sup>[1]</sup>](#yuvconversionaccuracy_ref1) and Vulkan's `VK_KHR_sampler_ycbcr_conversion`[<sup>[2]</sup>](#yuvconversionaccuracy_ref2) may produce non-linear R'G'B' values when sampling YUV images. This package applies only rudimentary transfer-function corrections to convert these values to linear RGB, which may result in inaccurate colors.
+
+Both the compute-shader-based YUV converter and the OpenGL converter are potentially inaccurate because they currently assume
+full-range BT.601 YUV data and do not account for the actual color range or standard of the source image.
+
+<a id="yuvconversionaccuracy_ref1"></a> <sup>[1]</sup> <https://registry.khronos.org/OpenGL/extensions/EXT/EXT_YUV_target.txt> (Issues, 9. Should sampling return samples converted in to linear space or raw samples?)<br/>
+<a id="yuvconversionaccuracy_ref2"></a> <sup>[2]</sup> <https://github.com/KhronosGroup/Vulkan-Docs/issues/2356>

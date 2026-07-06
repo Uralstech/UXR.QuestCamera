@@ -25,7 +25,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
     public static class GLESAPI
     {
         /// <summary>Returns a pointer to the native render job management function.</summary>
-        [DllImport("UXRQC_NativeConverters")]
+        [DllImport("UXRQC_GLESPlugin")]
         public static extern IntPtr getGLESManageConverterJobEvent();
 
         /// <summary>Registry of job setup callbacks. This is a single-call registry, i.e. the entry is removed after the callback occurs.</summary>

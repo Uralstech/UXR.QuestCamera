@@ -23,8 +23,7 @@
 
 //region Shader sources
 
-const char* VERTEX_SHADER_SOURCE = R"glsl(
-#version 300 es
+const char* VERTEX_SHADER_SOURCE = R"glsl(#version 300 es
 
 // Input vertex data
 layout(location = 0) in vec4 aPosition;
@@ -42,8 +41,7 @@ void main() {
 }
 )glsl";
 
-const char* FRAGMENT_SHADER_SOURCE = R"glsl(
-#version 300 es
+const char* FRAGMENT_SHADER_SOURCE = R"glsl(#version 300 es
 #extension GL_EXT_YUV_target : require
 precision mediump float;
 
@@ -248,7 +246,7 @@ static bool setupGeometry(GLuint* vertexArrayObj, GLuint* vertexBufferObj) {
 
 bool GLES_YUVConverter::registerStaticResourceRef() {
     if (s_staticReferenceHolders > 0) {
-        s_staticReferenceHolders++;
+        ++s_staticReferenceHolders;
         return true;
     }
 
@@ -262,7 +260,7 @@ bool GLES_YUVConverter::registerStaticResourceRef() {
         return false;
     }
 
-    s_staticReferenceHolders++;
+    ++s_staticReferenceHolders;
     return true;
 }
 
@@ -341,7 +339,7 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
     bool result = false;
     int updateResult;
 
-    // REQUIRED to make this work well in Unity with sRGB
+    // Likely similar to https://github.com/KhronosGroup/Vulkan-Docs/issues/2356
     bool srgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB_EXT);
     glDisable(GL_FRAMEBUFFER_SRGB_EXT);
 

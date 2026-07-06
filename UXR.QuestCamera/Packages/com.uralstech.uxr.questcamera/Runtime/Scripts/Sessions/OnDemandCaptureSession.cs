@@ -22,7 +22,7 @@ namespace Uralstech.UXR.QuestCamera
     /// <inheritdoc/>
     public sealed class OnDemandCaptureSession : ContinuousCaptureSession
     {
-        private const string ClassName = "com.uralstech.uxr.questcamera.OnDemandCaptureSessionManager";
+        private const string ClassName = "com.uralstech.uxr.questcamera.sessions.cpu.OnDemandCaptureSessionManager";
 
         /// <summary>Status for on-demand capture requests.</summary>
         public readonly struct RequestStatus

@@ -17,6 +17,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
 using Uralstech.UXR.QuestCamera.GLES;
+using Uralstech.UXR.QuestCamera.Vulkan;
 
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
@@ -185,13 +186,9 @@ namespace Uralstech.UXR.QuestCamera
         public ContinuousCaptureSession CreateContinuousSession(Resolution resolution, CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None)
         {
             ThrowIfDisposed();
-            long[] streamUseCases = streamUseCase is not StreamUseCase.None
-                ? new long[] { (long)streamUseCase }
-                : Array.Empty<long>();
-
             ContinuousCaptureSession session = new(resolution);
 
-            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)template, streamUseCases);
+            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)template, GetStreamUseCases(streamUseCase));
             if (!initResult)
             {
                 // Invalidates the session immediately.
@@ -210,13 +207,9 @@ namespace Uralstech.UXR.QuestCamera
         public OnDemandCaptureSession CreateOnDemandSession(Resolution resolution, StreamUseCase streamUseCase = StreamUseCase.None)
         {
             ThrowIfDisposed();
-            long[] streamUseCases = streamUseCase is not StreamUseCase.None
-                ? new long[] { (long)StreamUseCase.Preview, (long)streamUseCase }
-                : Array.Empty<long>();
-
             OnDemandCaptureSession session = new(resolution);
 
-            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)CaptureTemplate.Preview, streamUseCases);
+            bool initResult = _native.Call<bool>("initializeSession", session._native, (int)CaptureTemplate.Preview, GetStreamUseCases(streamUseCase));
             if (!initResult)
             {
                 // Invalidates the session immediately.
@@ -243,10 +236,6 @@ namespace Uralstech.UXR.QuestCamera
             GraphicsFormat textureFormat = GraphicsFormat.None)
         {
             ThrowIfDisposed();
-            long[] streamUseCases = streamUseCase is not StreamUseCase.None
-                ? new long[] { (long)streamUseCase }
-                : Array.Empty<long>();
-
             GLESCaptureSession session = new(resolution, textureFormat);
             uint textureId = await session.SetupJobAsync();
 
@@ -257,7 +246,57 @@ namespace Uralstech.UXR.QuestCamera
                 return session;
             }
 
-            bool initResult = _native.Call<bool>("initializeGLESSession", session._native, (int)template, streamUseCases, resolution.width, resolution.height, (int)textureId);
+            bool initResult = _native.Call<bool>("initializeGLESSession", session._native, (int)template, GetStreamUseCases(streamUseCase), resolution.width, resolution.height, (int)textureId);
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
+            return session;
+        }
+        
+        /// <summary>Creates a Vulkan-based continuous capture session for use.</summary>
+        /// <remarks>To shut down and dispose the session, use <see cref="VulkanContinuousCaptureSession.DisposeAsync()"/>.</remarks>
+        /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
+        /// <param name="template">The template to use for the captures.</param>
+        /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
+        /// <param name="textureFormat">The output texture format for the converted frames. See <see cref="VulkanContinuousCaptureSession(Resolution, GraphicsFormat)"/> for default.</param>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="VulkanContinuousCaptureSession"/>) for the state of the session.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public VulkanContinuousCaptureSession CreateVulkanContinuousSession(Resolution resolution,
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
+            GraphicsFormat textureFormat = GraphicsFormat.None)
+        {
+            ThrowIfDisposed();
+            VulkanContinuousCaptureSession session = new(resolution, textureFormat);
+
+            bool initResult = _native.Call<bool>("initializeVulkanSession", session._native, (int)template, GetStreamUseCases(streamUseCase));
+            if (!initResult)
+            {
+                // Invalidates the session immediately.
+                _ = session.DisposeAsync();
+            }
+
+            return session;
+        }
+        
+        /// <summary>Creates a Vulkan-based on-demand capture session for use.</summary>
+        /// <remarks>To shut down and dispose the session, use <see cref="VulkanContinuousCaptureSession.DisposeAsync()"/> (inherited by <see cref="VulkanOnDemandCaptureSession"/>).</remarks>
+        /// <param name="resolution">The capture resolution. Must be from <see cref="CameraInfo.SupportedResolutions"/>.</param>
+        /// <param name="template">The template to use for the captures.</param>
+        /// <param name="streamUseCase">The stream use case for this session. Must be from <see cref="CameraInfo.SupportedStreamUseCases"/> or <see cref="StreamUseCase.None"/>.</param>
+        /// <param name="textureFormat">The output texture format for the converted frames. See <see cref="VulkanOnDemandCaptureSession(Resolution, GraphicsFormat)"/> for default.</param>
+        /// <returns>Returns the session. Check <see cref="StatefulResource.State"/> (inherited by <see cref="VulkanOnDemandCaptureSession"/>) for the state of the session.</returns>
+        /// <exception cref="ObjectDisposedException"/>
+        public VulkanOnDemandCaptureSession CreateVulkanOnDemandSession(Resolution resolution,
+            CaptureTemplate template = CaptureTemplate.Preview, StreamUseCase streamUseCase = StreamUseCase.None,
+            GraphicsFormat textureFormat = GraphicsFormat.None)
+        {
+            ThrowIfDisposed();
+            VulkanOnDemandCaptureSession session = new(resolution, textureFormat);
+
+            bool initResult = _native.Call<bool>("initializeVulkanSession", session._native, (int)template, GetStreamUseCases(streamUseCase));
             if (!initResult)
             {
                 // Invalidates the session immediately.
@@ -327,6 +366,13 @@ namespace Uralstech.UXR.QuestCamera
 
         #endregion
 
+        private static long[] GetStreamUseCases(StreamUseCase streamUseCase)
+        {
+            return streamUseCase is not StreamUseCase.None
+                ? new[] { (long)streamUseCase }
+                : Array.Empty<long>();
+        }
+        
         protected override void ThrowIfDisposed()
         {
             if (_disposed)

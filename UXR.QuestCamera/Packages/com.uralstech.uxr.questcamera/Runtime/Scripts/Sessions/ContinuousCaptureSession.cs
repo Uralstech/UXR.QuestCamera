@@ -49,7 +49,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <inheritdoc/>
         public sealed class Proxy : ProxyBase
         {
-            private const string ClassName = "com.uralstech.uxr.questcamera.ContinuousCaptureSessionManager$Callbacks";
+            private const string ClassName = "com.uralstech.uxr.questcamera.sessions.cpu.ContinuousCaptureSessionManager$Callbacks";
 
             /// <inheritdoc cref="OnFrameReadyCallback"/>
             /// <remarks>See <see cref="OnFrameReadyCallback"/> for parameters.</remarks>
@@ -90,12 +90,10 @@ namespace Uralstech.UXR.QuestCamera
             }
         }
 
-        private const string ClassName = "com.uralstech.uxr.questcamera.ContinuousCaptureSessionManager";
+        private const string ClassName = "com.uralstech.uxr.questcamera.sessions.cpu.ContinuousCaptureSessionManager";
         
         public ContinuousCaptureSession(Resolution resolution) : this(resolution, ClassName) { }
 
-        // Creates proxy and returns it via out param so it can be passed to both base and native constructor
-        private static Proxy MakeProxy(out Proxy proxy) => proxy = new Proxy();
         protected ContinuousCaptureSession(Resolution resolution, string className)
             : base(MakeProxy(out Proxy proxy), new(className, resolution.width, resolution.height, proxy)) { }
     }

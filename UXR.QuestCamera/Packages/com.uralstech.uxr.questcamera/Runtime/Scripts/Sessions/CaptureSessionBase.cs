@@ -64,7 +64,7 @@ namespace Uralstech.UXR.QuestCamera
         /// <remarks>All event callbacks will be on a Java thread, and are performance sensitive.</remarks>
         public abstract class ProxyBase : AndroidJavaProxy
         {
-            private const string ClassName = "com.uralstech.uxr.questcamera.CaptureSessionManagerBase$CallbacksBase";
+            private const string ClassName = "com.uralstech.uxr.questcamera.sessions.CaptureSessionManagerBase$CallbacksBase";
 
             /// <remarks>You should generally avoid configuring the request if <c>isRepeatingRequest</c> is <see langword="true"/> for on-demand sessions.</remarks>
             /// <inheritdoc cref="ModifyRequestBuilderCallback"/>
@@ -230,9 +230,11 @@ namespace Uralstech.UXR.QuestCamera
         /// <summary>Native callback handler.</summary>
         public readonly TProxy NativeProxy;
 
-        internal protected readonly AndroidJavaObject _native;
+        protected internal readonly AndroidJavaObject _native;
         protected bool _disposed;
 
+        protected static T MakeProxy<T>(out T proxy) where T : ProxyBase, new() => proxy = new T();
+        
         protected CaptureSessionBase(TProxy proxy, AndroidJavaObject native)
         {
             NativeProxy = proxy;
