@@ -61,7 +61,7 @@ class VulkanCaptureSessionManager(width: Int, height: Int, private val callbacks
 
             acquiredBufferPtr = acquireHardwareBuffer(buffer)
             val bufferId = getHardwareBufferId(acquiredBufferPtr)
-            val bufferDataSpace = image.dataSpace
+            val bufferDataSpace = image.dataSpace // Seems to be consistently DATASPACE_UNKNOWN on Quest, as of HzOS v2.5
 
             if (acquiredBufferPtr != 0L && bufferId != 0L) {
                 callbacks.onFrameReady(acquiredBufferPtr, bufferDataSpace, bufferId, timestamp)
