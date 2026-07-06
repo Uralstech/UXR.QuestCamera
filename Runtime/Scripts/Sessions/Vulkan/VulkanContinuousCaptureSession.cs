@@ -69,7 +69,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         private const string ClassName = "com.uralstech.uxr.questcamera.sessions.VulkanCaptureSessionManager";
 
         /// <summary>Callback for when a frame has been processed, with the frame texture and capture timestamp.</summary>
-        /// <remarks>The image at this point has not <i>actually</i> finished processing, but all GPU commands to do so have been executed.</remarks>
+        /// <remarks>The image at this point has not <i>actually</i> finished processing, but all GPU commands to do so have been enqueued.</remarks>
         public event Action<RenderTexture, long>? OnFrameProcessed;
 
         /// <summary><see langword="true"/> if a capture was processed this frame; <see langword="false"/> otherwise.</summary>
@@ -85,6 +85,11 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         private readonly IntPtr _texturePtr;
         private int _lastUpdateFrame;
         
+        /// <param name="textureFormat">If not specified, uses equivalent of <see cref="RenderTextureFormat.ARGB32"/>.</param>
+        /// <exception cref="NotSupportedException">
+        /// Thrown if this constructor is invoked in an environment where Vulkan is unavailable
+        /// or if the current runtime's Android API Level is lower than 33 (Android 13).
+        /// </exception>
         public VulkanContinuousCaptureSession(Resolution resolution, GraphicsFormat textureFormat = GraphicsFormat.None)
             : base(MakeProxy(out Proxy proxy), new(ClassName, resolution.width, resolution.height, proxy))
         {
@@ -110,7 +115,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
             NativeProxy.OnFrameReady += OnFrameReadyNative;
         }
 
-        private void OnFrameReadyNative(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
+        protected virtual void OnFrameReadyNative(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
         {
             if (State != ResourceState.Valid)
                 VulkanAPI.releaseHardwareBuffer(acquiredBufferPtr);
@@ -118,7 +123,7 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
                 DispatchFrameConversionAsync(acquiredBufferPtr, bufferDataSpace, bufferId, timestampNs).Forget();
         }
 
-        private async Task DispatchFrameConversionAsync(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
+        protected async Task DispatchFrameConversionAsync(IntPtr acquiredBufferPtr, int bufferDataSpace, long bufferId, long timestampNs)
         {
             IntPtr ownedBufferPtr = acquiredBufferPtr;
             IntPtr ownedAllocatedMemoryPtr = IntPtr.Zero;
