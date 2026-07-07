@@ -1,7 +1,7 @@
 # Quick Start
 
 The example code provided in this quick start guide is for educational and demonstration purposes only. It may not represent best practices for production use.
-This quick start was last updated for **UXR.QuestCamera v4.1.0**.
+This quick start was last updated for **UXR.QuestCamera v4.2.1**.
 
 ## Breaking Changes Notice
 
