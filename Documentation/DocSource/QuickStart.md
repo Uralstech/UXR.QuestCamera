@@ -246,7 +246,7 @@ Note that an awaiter of `TakePicture` also has to wait for the camera device and
 
 ### Vulkan-specific Capture Sessions (Experimental)
 
-If your app uses the Vulkan Graphics API and targets API Level 33 (Android 13) or higher, you can use
+If your app uses the Vulkan Graphics API and Linear color space, and targets API Level 33 (Android 13) or higher, you can use
 `VulkanContinuousCaptureSession` and `VulkanOnDemandCaptureSession`, in the `Uralstech.UXR.QuestCamera.Vulkan` namespace,
 instead of `ContinuousCaptureSession` and `OnDemandCaptureSession`. It can improve memory usage and
 performance as it uses a native rendering plugin to perform YUV-to-RGBA conversion
@@ -456,10 +456,11 @@ This sample also uses the old input system. There is no code that references it,
 
 ### YUV Conversion Accuracy
 
-OpenGL's `EXT_YUV_target`[<sup>[1]</sup>](#yuvconversionaccuracy_ref1) and Vulkan's `VK_KHR_sampler_ycbcr_conversion`[<sup>[2]</sup>](#yuvconversionaccuracy_ref2) may produce non-linear R'G'B' values when sampling YUV images. This package applies only rudimentary transfer-function corrections to convert these values to linear RGB, which may result in inaccurate colors.
-
-Both the compute-shader-based YUV converter and the OpenGL converter are potentially inaccurate because they currently assume
-full-range BT.601 YUV data and do not account for the actual color range or standard of the source image.
+OpenGL's `EXT_YUV_target`[<sup>[1]</sup>](#yuvconversionaccuracy_ref1) and Vulkan's `VK_KHR_sampler_ycbcr_conversion`[<sup>[2]</sup>](#yuvconversionaccuracy_ref2) may produce non-linear R'G'B'
+values when sampling YUV images. Starting with UXR.QuestCamera v4.2.1, the package's Vulkan capture sessions use the SMPTE 170M[<sup>[3]</sup>](#yuvconversionaccuracy_ref3) inverse transfer
+function to convert sampled colors to linear RGB. The included compute-shader-based converter and OpenGL session currently assume full-range BT.601 YUV data and treat sampled colors as
+if they are in gamma space.
 
 <a id="yuvconversionaccuracy_ref1"></a> <sup>[1]</sup> <https://registry.khronos.org/OpenGL/extensions/EXT/EXT_YUV_target.txt> (Issues, 9. Should sampling return samples converted in to linear space or raw samples?)<br/>
-<a id="yuvconversionaccuracy_ref2"></a> <sup>[2]</sup> <https://github.com/KhronosGroup/Vulkan-Docs/issues/2356>
+<a id="yuvconversionaccuracy_ref2"></a> <sup>[2]</sup> <https://github.com/KhronosGroup/Vulkan-Docs/issues/2356><br/>
+<a id="yuvconversionaccuracy_ref3"></a> <sup>[3]</sup> <https://developer.android.com/reference/android/hardware/DataSpace#TRANSFER_SMPTE_170M>
