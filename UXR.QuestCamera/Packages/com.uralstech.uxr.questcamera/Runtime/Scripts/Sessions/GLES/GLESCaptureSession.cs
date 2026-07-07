@@ -42,6 +42,7 @@ namespace Uralstech.UXR.QuestCamera.GLES
         public bool HasNewFrame => _lastUpdateFrame == Time.frameCount;
 
         /// <summary>The output texture with converted frames.</summary>
+        // TODO: Change to RenderTexture and update conversion to use same transfer as the Vulkan shader.
         public readonly Texture2D Texture;
 
         /// <summary>The capture timestamp of the last processed frame.</summary>
