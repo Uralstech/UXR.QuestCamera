@@ -50,29 +50,10 @@ in vec2 vTexCoord;
 uniform __samplerExternal2DY2YEXT sYUVTexture;
 out vec4 outColor;
 
-// Inverse transfer function for SMPTE 170M, formulae from:
-// https://www.kernel.org/doc/Documentation/media/uapi/v4l/colorspaces-details.rst
-// Adjusted for 0-1 input range.
-
-const float inverseExponent = 1.0 / 0.45;
-
-float smpte170mInverseTransfer(float val) {
-
-    return val >= 0.081
-        ? pow((val + 0.099) / 1.099, inverseExponent)
-        : val / 4.5;
-}
-
 void main() {
     vec3 yuv = texture(sYUVTexture, vTexCoord).xyz;
-    vec3 rgb = yuv_2_rgb(yuv, itu_601);
-
-    outColor = vec4(
-        smpte170mInverseTransfer(rgb.r),
-        smpte170mInverseTransfer(rgb.g),
-        smpte170mInverseTransfer(rgb.b),
-        1.0
-    );
+    vec3 rgb = yuv_2_rgb(yuv, itu_601_full_range);
+    outColor = vec4(rgb, 1.0);
 }
 )glsl";
 
@@ -358,6 +339,10 @@ bool GLES_YUVConverter::render(ASurfaceTexture *surfaceTexture) const {
     bool result = false;
     int updateResult;
 
+    // Likely similar to https://github.com/KhronosGroup/Vulkan-Docs/issues/2356
+    bool srgbEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB_EXT);
+    glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+
     // Record and restore all modified states so that GL.InvalidateState doesn't have to be called.
 
     GLint oldDrawFrameBuffer, oldViewport[4], oldProgram, oldActiveTexture, oldExtTexture, oldVao;
@@ -419,6 +404,11 @@ draw_cleanup:
     );
 
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, oldDrawFrameBuffer);
+
+    if (srgbEnabled) {
+        glEnable(GL_FRAMEBUFFER_SRGB_EXT);
+    }
+
     return result;
 }
 
