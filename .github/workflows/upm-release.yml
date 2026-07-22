@@ -1,0 +1,70 @@
+name: UPM Release
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: upm-release
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    permissions:
+      pages: write
+      contents: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ github.ref }}
+        fetch-depth: 0
+
+    - name: Dotnet Setup
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.x
+
+    - name: Install DocFX
+      run: dotnet tool update -g docfx
+        
+    - name: Generate Documentation
+      run: docfx Documentation/docfx.json
+
+    - name: Copy PDFs
+      run: |
+        mkdir -p "UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera/Documentation~"
+        cp -f "Documentation/_site/api/APIReferenceManual.pdf" "UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera/Documentation~"
+        cp -f "Documentation/_site/DocSource/Documentation.pdf" "UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera/Documentation~"
+
+    - name: Commit PDFs *locally*
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add "UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera/Documentation~"
+        git commit -m "chore: include generated PDFs in package" || echo "No changes to commit"
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v5
+      with:
+        path: 'Documentation/_site'
+        
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+    - name: Clean up untracked DocFX files
+      run: git clean -fdx
+
+    - name: Publish Release
+      uses: RageAgainstThePixel/upm-release@v2
+      with:
+          organization-id: ${{ secrets.UNITY_ORG_ID }}
+          upm-service-account-key-id: ${{ secrets.UPM_SERVICE_ACCOUNT_KEY_ID }}
+          upm-service-account-key-secret: ${{ secrets.UPM_SERVICE_ACCOUNT_KEY_SECRET }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          package-json: 'UXR.QuestCamera/Packages/com.uralstech.uxr.questcamera/package.json'
+          split-upm-branch: 'upm'

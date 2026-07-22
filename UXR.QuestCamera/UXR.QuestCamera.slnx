@@ -1,5 +1,0 @@
-﻿<Solution>
-  <Project Path="UXR.QuestCamera.Samples.DigitRecognition.csproj" />
-  <Project Path="UXR.QuestCamera.Runtime.csproj" />
-  <Project Path="Assembly-CSharp.csproj" />
-</Solution>
