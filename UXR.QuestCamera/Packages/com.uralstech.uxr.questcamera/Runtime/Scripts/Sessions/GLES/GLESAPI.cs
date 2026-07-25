@@ -22,19 +22,28 @@ using UnityEngine;
 namespace Uralstech.UXR.QuestCamera.GLES
 {
     /// <summary>Exposes the native GLES Texture Conversion API.</summary>
-    public static class GLESAPI
+    public static partial class GLESAPI
     {
         /// <summary>Returns a pointer to the native render job management function.</summary>
         [DllImport("UXRQC_GLESPlugin")]
         public static extern IntPtr getGLESManageConverterJobEvent();
 
         /// <summary>Registry of job setup callbacks. This is a single-call registry, i.e. the entry is removed after the callback occurs.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobSetupData.Callback>      SetupCallbacksRegistry     = new();
 
         /// <summary>Registry of job disposal callbacks. This is a single-call registry, i.e. the entry is removed after the callback occurs.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobDisposeData.Callback>    DisposeCallbacksRegistry   = new();
 
         /// <summary>Registry of job run callbacks.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobRunData.Callback>        RunCallbacksRegistry       = new();
 
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobSetup"/>.</summary>
