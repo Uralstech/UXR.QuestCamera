@@ -45,15 +45,19 @@ namespace Uralstech.UXR.QuestCamera.GLES
         [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
 #endif
         public static readonly ConcurrentDictionary<uint, RenderJobRunData.Callback>        RunCallbacksRegistry       = new();
-
+        
+        private static readonly RenderJobSetupData.Callback s_renderJobSetupCallbackInst        = OnRenderJobSetup;
+        private static readonly RenderJobDisposeData.Callback s_renderJobDisposeCallbackInst    = OnRenderJobDispose;
+        private static readonly RenderJobRunData.Callback s_renderJobRunCallbackInst            = OnRenderJobRun;
+        
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobSetup"/>.</summary>
-        public static readonly IntPtr RenderJobSetupCallbackPtr     = Marshal.GetFunctionPointerForDelegate<RenderJobSetupData.Callback>(OnRenderJobSetup);
+        public static readonly IntPtr RenderJobSetupCallbackPtr     = Marshal.GetFunctionPointerForDelegate(s_renderJobSetupCallbackInst);
 
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobDispose"/>.</summary>
-        public static readonly IntPtr RenderJobDisposeCallbackPtr   = Marshal.GetFunctionPointerForDelegate<RenderJobDisposeData.Callback>(OnRenderJobDispose);
+        public static readonly IntPtr RenderJobDisposeCallbackPtr   = Marshal.GetFunctionPointerForDelegate(s_renderJobDisposeCallbackInst);
 
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobRun"/>.</summary>
-        public static readonly IntPtr RenderJobRunCallbackPtr       = Marshal.GetFunctionPointerForDelegate<RenderJobRunData.Callback>(OnRenderJobRun);
+        public static readonly IntPtr RenderJobRunCallbackPtr       = Marshal.GetFunctionPointerForDelegate(s_renderJobRunCallbackInst);
 
         /// <inheritdoc cref="RenderJobSetupData.Callback"/>
         [MonoPInvokeCallback(typeof(RenderJobSetupData.Callback))]
