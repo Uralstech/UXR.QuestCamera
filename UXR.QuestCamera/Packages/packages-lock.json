@@ -182,7 +182,7 @@
       }
     },
     "com.uralstech.utils.singleton": {
-      "version": "1.2.3",
+      "version": "2.0.0",
       "depth": 1,
       "source": "registry",
       "dependencies": {},
@@ -193,7 +193,7 @@
       "depth": 0,
       "source": "embedded",
       "dependencies": {
-        "com.uralstech.utils.singleton": "1.2.3",
+        "com.uralstech.utils.singleton": "2.0.0",
         "com.unity.modules.androidjni": "1.0.0"
       }
     },
