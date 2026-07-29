@@ -22,29 +22,42 @@ using UnityEngine;
 namespace Uralstech.UXR.QuestCamera.GLES
 {
     /// <summary>Exposes the native GLES Texture Conversion API.</summary>
-    public static class GLESAPI
+    public static partial class GLESAPI
     {
         /// <summary>Returns a pointer to the native render job management function.</summary>
         [DllImport("UXRQC_GLESPlugin")]
         public static extern IntPtr getGLESManageConverterJobEvent();
 
         /// <summary>Registry of job setup callbacks. This is a single-call registry, i.e. the entry is removed after the callback occurs.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobSetupData.Callback>      SetupCallbacksRegistry     = new();
 
         /// <summary>Registry of job disposal callbacks. This is a single-call registry, i.e. the entry is removed after the callback occurs.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobDisposeData.Callback>    DisposeCallbacksRegistry   = new();
 
         /// <summary>Registry of job run callbacks.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<uint, RenderJobRunData.Callback>        RunCallbacksRegistry       = new();
-
+        
+        private static readonly RenderJobSetupData.Callback s_renderJobSetupCallbackInst        = OnRenderJobSetup;
+        private static readonly RenderJobDisposeData.Callback s_renderJobDisposeCallbackInst    = OnRenderJobDispose;
+        private static readonly RenderJobRunData.Callback s_renderJobRunCallbackInst            = OnRenderJobRun;
+        
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobSetup"/>.</summary>
-        public static readonly IntPtr RenderJobSetupCallbackPtr     = Marshal.GetFunctionPointerForDelegate<RenderJobSetupData.Callback>(OnRenderJobSetup);
+        public static readonly IntPtr RenderJobSetupCallbackPtr     = Marshal.GetFunctionPointerForDelegate(s_renderJobSetupCallbackInst);
 
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobDispose"/>.</summary>
-        public static readonly IntPtr RenderJobDisposeCallbackPtr   = Marshal.GetFunctionPointerForDelegate<RenderJobDisposeData.Callback>(OnRenderJobDispose);
+        public static readonly IntPtr RenderJobDisposeCallbackPtr   = Marshal.GetFunctionPointerForDelegate(s_renderJobDisposeCallbackInst);
 
         /// <summary>Static marshalled pointer to <see cref="OnRenderJobRun"/>.</summary>
-        public static readonly IntPtr RenderJobRunCallbackPtr       = Marshal.GetFunctionPointerForDelegate<RenderJobRunData.Callback>(OnRenderJobRun);
+        public static readonly IntPtr RenderJobRunCallbackPtr       = Marshal.GetFunctionPointerForDelegate(s_renderJobRunCallbackInst);
 
         /// <inheritdoc cref="RenderJobSetupData.Callback"/>
         [MonoPInvokeCallback(typeof(RenderJobSetupData.Callback))]

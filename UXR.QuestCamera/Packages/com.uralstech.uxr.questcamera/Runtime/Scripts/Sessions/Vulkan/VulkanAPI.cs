@@ -24,7 +24,7 @@ using UnityEngine;
 namespace Uralstech.UXR.QuestCamera.Vulkan
 {
     /// <summary>Exposes the native Vulkan Texture Conversion API.</summary>
-    public static class VulkanAPI
+    public static partial class VulkanAPI
     {
         /// <summary>Releases an acquired AHardwareBuffer object.</summary>
         /// <param name="acquiredBufferPtr">The buffer to release.</param>
@@ -36,10 +36,15 @@ namespace Uralstech.UXR.QuestCamera.Vulkan
         public static extern IntPtr getVulkanRenderEvent();
         
         /// <summary>Registry of render callbacks.</summary>
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         public static readonly ConcurrentDictionary<long, ManagedRenderCallback> RenderCallbacksRegistry = new();
         
+        private static readonly RenderData.Callback s_renderCallbackInst = OnRenderDone;
+        
         /// <summary>Static marshalled pointer to <see cref="OnRenderDone"/>.</summary>
-        public static readonly IntPtr RenderCallbackPtr = Marshal.GetFunctionPointerForDelegate<RenderData.Callback>(OnRenderDone);
+        public static readonly IntPtr RenderCallbackPtr = Marshal.GetFunctionPointerForDelegate(s_renderCallbackInst);
         
         /// <summary>Allocates native memory of a <see cref="RenderData"/> struct to use with <see cref="OnRenderDone"/>/<see cref="FreeRenderData"/>.</summary>
         /// <remarks>

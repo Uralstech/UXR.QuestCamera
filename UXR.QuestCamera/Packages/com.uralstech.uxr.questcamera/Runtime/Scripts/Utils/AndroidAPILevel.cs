@@ -17,8 +17,11 @@ using UnityEngine;
 #nullable enable
 namespace Uralstech.UXR.QuestCamera
 {
-    internal static class AndroidAPILevel
+    internal static partial class AndroidAPILevel
     {
+#if UNITY_6000_5_OR_NEWER
+        [Unity.Scripting.LifecycleManagement.AutoStaticsCleanup]
+#endif
         private static int s_currentAPILevel = -1;
 
         public const int VanillaIceCream = 35;

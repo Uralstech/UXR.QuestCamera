@@ -3,7 +3,7 @@
   "displayName": "UXR.QuestCamera",
   "description": "A Unity package to use the new Meta Quest Passthrough Camera API.\n\nUXR.QuestCamera v4.0.0 is a rewrite of the package with lots of breaking changes. Please see the documentation, reference manual and updated sample for changes.",
   "keywords": [],
-  "version": "4.2.2",
+  "version": "4.2.3",
   "unity": "2022.3",
   "hideInEditor": false,
   "documentationUrl": "https://uralstech.github.io/UXR.QuestCamera/",
@@ -26,7 +26,7 @@
     "url": "https://github.com/Uralstech"
   },
   "dependencies": {
-    "com.uralstech.utils.singleton": "1.2.3",
+    "com.uralstech.utils.singleton": "2.0.0",
     "com.unity.modules.androidjni": "1.0.0"
   }
 }
