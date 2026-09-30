@@ -1,7 +1,7 @@
 [versions]
-agp = "9.0.0"
-coreKtx = "1.18.0"
-camera2 = "1.6.1"
+agp = "9.1.1"
+coreKtx = "1.19.1"
+camera2 = "1.6.2"
 
 [libraries]
 androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera2" }
