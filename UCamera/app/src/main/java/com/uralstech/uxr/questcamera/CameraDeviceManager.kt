@@ -131,7 +131,7 @@ class CameraDeviceManager(private val callbacks: Callbacks) {
 
         val device = getDeviceLogged() ?: return false
         session.initialize(device, captureTemplate, streamUseCases)
-        return true;
+        return true
     }
 
     fun initializeGLESSession(
